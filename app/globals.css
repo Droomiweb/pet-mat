@@ -1,0 +1,24 @@
+/* app/globals.css */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* You can also add custom styles below */
+body {
+  font-family: 'Poppins', sans-serif;
+  background-color: #F6F1E9;
+}
+.maintopbox {
+  width: 100vw;      /* full viewport width */
+  height: 100vh;     /* full viewport height */
+  overflow-y: hidden; /* disable vertical scroll */
+}
+
+/* 
+| Your Color | Hex       | Tailwind Equivalent (Closest)                                                    |
+| ---------- | --------- | -------------------------------------------------------------------------------- |
+| **Manja**  | `#FFD93D` | closest: `yellow-300` (`#FDE047`) or `amber-400` (`#FACC15`)                     |
+| **Orange** | `#FF9A00` | closest: `orange-500` (`#F97316`)                                                |
+| **BG**     | `#F6F1E9` | closest: `stone-100` (`#F5F5F4`) or `gray-100` (`#F3F4F6`)                       |
+| **Brown**  | `#4F200D` | closest: `brown-900` (if using `tailwindcss/colors`) or `orange-900` (`#7C2D12`) | */
