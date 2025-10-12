@@ -1,30 +1,55 @@
 "use client";
-
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { auth } from "../../lib/firebase";
 
 export default function PetDetailPage() {
   const [pet, setPet] = useState(null);
+  const [message, setMessage] = useState("");
+  const [newMessage, setNewMessage] = useState("");
   const params = useParams();
   const router = useRouter();
 
-  useEffect(() => {
-    const fetchPet = async () => {
-      try {
-        const res = await fetch(`/api/pet/${params.id}`);
-        if (!res.ok) {
-          console.error("Pet not found");
-          router.push("/"); // go back to homepage
-          return;
-        }
-        const data = await res.json();
-        setPet(data);
-      } catch (err) {
-        console.error(err);
-      }
-    };
+  const fetchPet = async () => {
+    try {
+      const res = await fetch(`/api/pet/${params.id}`);
+      if (!res.ok) return router.push("/");
+      const data = await res.json();
+      setPet(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
+  const sendMatingRequest = async () => {
+    const user = auth.currentUser;
+    if (!user) return alert("Login first");
+
+    try {
+      const res = await fetch(`/api/pet/${params.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "matingRequest",
+          requesterId: user.uid,
+          requesterName: user.email.split("@")[0],
+          messageText: newMessage,
+        }),
+      });
+
+      if (res.ok) {
+        alert("Mating request sent!");
+        setNewMessage("");
+        fetchPet();
+      } else {
+        alert("Failed to send request");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
     fetchPet();
   }, [params.id]);
 
@@ -53,6 +78,56 @@ export default function PetDetailPage() {
             View Certificate
           </a>
         )}
+
+        {/* Mating Request Section */}
+        <div className="mt-6 border-t pt-4">
+          <h2 className="text-xl font-bold text-[#4F200D] mb-2">Send Mating Request</h2>
+          <textarea
+            placeholder="Write a message to the owner..."
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            className="w-full border-2 border-[#4F200D] p-2 rounded-lg mb-2"
+          />
+          <button
+            onClick={sendMatingRequest}
+            className="bg-[#4F200D] hover:bg-orange-500 text-white px-4 py-2 rounded-lg"
+          >
+            Send Request
+          </button>
+        </div>
+
+        {/* Message Section */}
+        <div className="mt-6 border-t pt-4">
+          <h2 className="text-xl font-bold text-[#4F200D] mb-2">Messages</h2>
+          {pet.messages?.length === 0 ? (
+            <p className="text-[#4F200D]">No messages yet.</p>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {pet.messages.map((msg, idx) => (
+                <div key={idx} className="bg-yellow-100 p-2 rounded-md">
+                  <p className="font-bold text-[#4F200D]">{msg.senderName}:</p>
+                  <p className="text-[#4F200D]">{msg.text}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Mating History */}
+        <div className="mt-6 border-t pt-4">
+          <h2 className="text-xl font-bold text-[#4F200D] mb-2">Mating History</h2>
+          {pet.matingHistory?.length === 0 ? (
+            <p className="text-[#4F200D]">No mating requests yet.</p>
+          ) : (
+            <ul className="list-disc list-inside">
+              {pet.matingHistory.map((mh, idx) => (
+                <li key={idx} className="text-[#4F200D]">
+                  {mh.requesterName} - {mh.status} - {new Date(mh.timestamp).toLocaleString()}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -3,7 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../lib/firebase"; // make sure firebase.js exports auth
+import { auth } from "../lib/firebase";
 import { useRouter } from "next/navigation";
 
 export default function Signup() {
@@ -45,14 +45,14 @@ export default function Signup() {
     if (!phone || phone.length !== 10) return alert("Enter a valid 10-digit phone number");
     if (!pass) return alert("Enter your password");
     if (pass !== pass2) return alert("Passwords do not match");
+    if (!location.lat || !location.lng) return alert("Please share your location before signing up");
 
     try {
       // Firebase signup
       const userCredential = await createUserWithEmailAndPassword(auth, userN + "@example.com", pass);
       const user = userCredential.user;
-      console.log("Signed up user:", user.uid);
 
-      // Optional: save extra fields in your database
+      // Save extra fields in your database
       await fetch("/api/user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -60,7 +60,7 @@ export default function Signup() {
       });
 
       alert("Signup successful!");
-      router.push("/Addpet"); // redirect to Add Pet page
+      router.push("/Addpet");
     } catch (err) {
       console.error(err);
       setMessage(err.message);
@@ -80,7 +80,7 @@ export default function Signup() {
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 sm:shadow-lg sm:bg-white/80 p-10 rounded-lg flex flex-col items-center sm:w-96 w-80">
         <h1 className="text-[#4F200D] mb-6 text-center text-3xl font-bold">SIGN UP</h1>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="w-full flex flex-col">
           <label className="self-start text-xl mb-1">Name</label>
           <input
             type="text"
@@ -130,6 +130,7 @@ export default function Signup() {
             className="w-full outline-none bg-transparent mb-2 border-b-4 border-[#4F200D] p-1"
           />
 
+          {/* Location Button */}
           <button
             type="button"
             onClick={getLocation}
@@ -138,13 +139,26 @@ export default function Signup() {
             Share My Location
           </button>
 
-          <p>
-            Already have an account? <Link href="/Login">Login</Link>
+          {/* Show location if available */}
+          {location.lat && location.lng && (
+            <p className="text-[#4F200D] text-sm mb-2">
+              Location set: Lat {location.lat.toFixed(4)}, Lng {location.lng.toFixed(4)}
+            </p>
+          )}
+
+          <p className="mb-2">
+            Already have an account? <Link className="text-blue-600 underline" href="/Login">Login</Link>
           </p>
 
+          {/* Submit button disabled until location is set */}
           <button
             type="submit"
-            className="mt-4 bg-[#4F200D] text-white px-6 py-2 rounded-lg hover:bg-orange-500 transition"
+            disabled={!location.lat || !location.lng}
+            className={`mt-4 px-6 py-2 rounded-lg text-white font-bold transition ${
+              location.lat && location.lng
+                ? "bg-[#4F200D] hover:bg-orange-500"
+                : "bg-gray-400 cursor-not-allowed"
+            }`}
           >
             Sign Up
           </button>

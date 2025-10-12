@@ -1,20 +1,30 @@
 import mongoose from "mongoose";
 
-const PetSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true },
-    type: { 
-      type: String, 
-      required: true, 
-      enum: ["Dog", "Cat", "Rabbit", "Bird", "Other"], 
-    }, // New field for pet type
-    breed: { type: String, required: true },
-    age: { type: Number, required: true },
-    certificateUrl: { type: String, required: true },
-    imageUrls: { type: [String], default: [] },
-    ownerId: { type: String, required: true }, // Firebase UID
-  },
-  { timestamps: true }
-);
+const messageSchema = new mongoose.Schema({
+  senderId: String,
+  senderName: String,
+  text: String,
+  timestamp: { type: Date, default: Date.now },
+});
 
-export default mongoose.models.Pet || mongoose.model("Pet", PetSchema);
+const matingRequestSchema = new mongoose.Schema({
+  requesterId: String,
+  requesterName: String,
+  status: { type: String, enum: ["pending", "accepted", "rejected"], default: "pending" },
+  timestamp: { type: Date, default: Date.now },
+});
+
+const petSchema = new mongoose.Schema({
+  name: String,
+  type: String,
+  age: Number,
+  breed: String,
+  ownerId: String,
+  imageUrls: [String],
+  certificateUrl: String,
+  messages: [messageSchema], // for chat
+  matingHistory: [matingRequestSchema], // track mating requests
+});
+
+const Pet = mongoose.models.Pet || mongoose.model("Pet", petSchema);
+export default Pet;
