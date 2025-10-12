@@ -1,6 +1,14 @@
 import connectDB from "../../lib/mongodb";
 import Pet from "../../models/PetModel";
-import User from "../../models/User"; // make sure you have a User model
+import User from "../../models/User";
+import { v2 as cloudinary } from "cloudinary";
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 // Add a new pet
 export async function POST(req) {
@@ -12,10 +20,12 @@ export async function POST(req) {
       return new Response(JSON.stringify({ error: "All fields are required" }), { status: 400 });
     }
 
+    // Upload certificate
     const certUpload = await cloudinary.uploader.upload(certificateBase64, {
       folder: `certificates/${ownerId}`,
     });
 
+    // Upload pet images
     const imageUrls = [];
     for (const base64 of imagesBase64) {
       const upload = await cloudinary.uploader.upload(base64, {
@@ -53,7 +63,6 @@ export async function GET(req) {
     const breed = searchParams.get("breed");
     const city = searchParams.get("city");
 
-    // Build query for type and breed
     const petQuery = {};
     if (type) petQuery.type = type;
     if (breed) petQuery.breed = breed;
@@ -67,7 +76,7 @@ export async function GET(req) {
       pets = pets.filter(pet => userIds.includes(pet.ownerId));
     }
 
-    const formattedPets = pets.map(pet => ({
+    const formattedPets = pets.map((pet) => ({
       _id: pet._id.toString(),
       name: pet.name,
       type: pet.type,
