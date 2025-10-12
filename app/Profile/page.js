@@ -25,16 +25,13 @@ export default function ProfilePage() {
       setUserData(data);
 
       // Reverse geocode location if available
-      if (data.location && data.location.lat && data.location.lng) {
-        const { lat, lng } = data.location;
+      if (data.location?.lat && data.location?.lng) {
         const geoRes = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${data.location.lat}&lon=${data.location.lng}`
         );
         if (geoRes.ok) {
           const geoData = await geoRes.json();
           setLocationName(geoData.display_name);
-        } else {
-          console.error("Failed to fetch location:", await geoRes.text());
         }
       }
 
@@ -64,10 +61,7 @@ export default function ProfilePage() {
     if (!confirmDelete) return;
 
     try {
-      const res = await fetch(`/api/pet/${petId}`, {
-        method: "DELETE",
-      });
-
+      const res = await fetch(`/api/pet/${petId}`, { method: "DELETE" });
       if (res.ok) {
         setPets((prev) => prev.filter((pet) => pet._id !== petId));
       } else {
@@ -89,44 +83,56 @@ export default function ProfilePage() {
     fetchUserData();
   }, []);
 
-  if (!userData) return <p className="text-[#4F200D]">Loading...</p>;
+  if (!userData)
+    return <p className="text-[#4F200D] text-center mt-20">Loading profile...</p>;
+
+  const userId = auth.currentUser.email?.split("@")[0] || auth.currentUser.uid;
 
   return (
     <div className="min-h-screen bg-[#F6F1E9] p-4 md:p-10">
-      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-10">
-        <div className="flex flex-col md:flex-row md:justify-between items-start md:items-center">
+      <div className="max-w-5xl mx-auto bg-white rounded-3xl shadow-lg p-6 md:p-10">
+        {/* Header: User Info + Add Pet Button */}
+        <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-[#4F200D]">{userData.name}</h1>
-            <p className="text-[#4F200D] mt-1">Email: {auth.currentUser.email}</p>
-            <p className="text-[#4F200D] mt-1">Phone: {userData.phone}</p>
+            <p className="text-[#4F200D] mt-1">UserID: {userId}</p>
             <p className="text-[#4F200D] mt-1">
               Location: {locationName || "Not available"}
             </p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="mt-4 md:mt-0 bg-[#FF9A00] hover:bg-[#FFD93D] text-white font-bold py-2 px-6 rounded-full"
-          >
-            Logout
-          </button>
+          <div className="flex gap-3 mt-4 md:mt-0">
+            <button
+              onClick={() => router.push("/Addpet")}
+              className="bg-[#FF9A00] hover:bg-[#FFD93D] text-white font-bold py-2 px-6 rounded-full transition shadow-md"
+            >
+              + Add Pet
+            </button>
+            <button
+              onClick={handleLogout}
+              className="bg-[#4F200D] hover:bg-[#FF9A00] text-white font-bold py-2 px-6 rounded-full transition shadow-md"
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
-        <h2 className="text-2xl font-bold text-[#4F200D] mt-10 mb-4">My Pets</h2>
+        {/* Pets Section */}
+        <h2 className="text-2xl font-bold text-[#4F200D] mb-6">My Pets</h2>
         {pets.length === 0 ? (
           <p className="text-[#4F200D]">No pets added yet.</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
             {pets.map((pet) => (
               <div
                 key={pet._id}
-                className="bg-[#FFD93D] p-4 rounded-xl shadow-md text-[#4F200D] flex flex-col justify-between"
+                className="bg-[#FFD93D] p-4 rounded-2xl shadow-lg flex flex-col justify-between hover:scale-105 transform transition"
               >
                 <div>
                   {pet.imageUrls?.[0] && (
                     <img
                       src={pet.imageUrls[0]}
                       alt={pet.name}
-                      className="w-full h-48 object-cover rounded-lg mb-3"
+                      className="w-full h-48 object-cover rounded-xl mb-3"
                     />
                   )}
                   <h3 className="font-bold text-xl">{pet.name}</h3>
@@ -137,7 +143,7 @@ export default function ProfilePage() {
                       href={pet.certificateUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 underline mt-2 block"
+                      className="text-blue-700 underline mt-2 block"
                     >
                       View Certificate
                     </a>
