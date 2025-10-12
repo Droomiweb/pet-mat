@@ -11,7 +11,7 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-8 flex justify-between items-center py-3">
         {/* Logo / Left Links */}
         <div className="flex items-center space-x-2">
-          <h1 className="text-white font-bold text-xl sm:text-2xl">PetApp</h1>
+          <h1 className="text-white font-bold text-xl sm:text-2xl">PetMate</h1>
         </div>
 
         {/* Desktop Links */}
