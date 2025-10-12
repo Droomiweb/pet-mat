@@ -1,11 +1,7 @@
 import { connectDB } from "@/app/lib/mongodb";
 import Pet from "@/app/models/PetModel";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { initializeApp } from "firebase/app";
-import { firebaseConfig } from "@/app/lib/firebase"; // your config
-
-const app = initializeApp(firebaseConfig);
-const storage = getStorage(app);
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage } from "@/app/lib/firebase"; // ✅ use existing initialized storage
 
 export async function POST(req) {
   try {
@@ -40,7 +36,7 @@ export async function POST(req) {
       breed: petBreed,
       certificateUrl,
       imageUrls,
-      ownerId: "some-owner-id", // e.g., Firebase Auth UID
+      ownerId: "some-owner-id", // TODO: replace with actual Firebase UID
     });
 
     await newPet.save();
