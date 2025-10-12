@@ -1,7 +1,7 @@
-import { connectDB } from "@/app/lib/mongodb";
-import Pet from "@/app/models/PetModel";
+import  connectDB from "./../../../lib/mongodb";
+import Pet from "./../../../models/PetModel";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from "@/app/lib/firebase"; // ✅ use existing initialized storage
+import { storage } from "./../../../lib/firebase"; // ✅ use shared initialized storage
 
 export async function POST(req) {
   try {
@@ -20,7 +20,7 @@ export async function POST(req) {
     await uploadBytes(certRef, certBuffer, { contentType: certificate.type });
     const certificateUrl = await getDownloadURL(certRef);
 
-    // Upload each image
+    // Upload images
     const imageUrls = [];
     for (const img of petImages) {
       const imgBuffer = Buffer.from(await img.arrayBuffer());
@@ -36,7 +36,7 @@ export async function POST(req) {
       breed: petBreed,
       certificateUrl,
       imageUrls,
-      ownerId: "some-owner-id", // TODO: replace with actual Firebase UID
+      ownerId: "some-owner-id", // TODO: replace with Firebase UID
     });
 
     await newPet.save();
