@@ -5,7 +5,8 @@ import Pet from "./../../../models/PetModel";
 export async function GET(req, context) {
   try {
     await connectDB();
-    const { id } = context.params;
+
+    const { id } = await context.params; // ✅ await params
     const pet = await Pet.findById(id).lean();
 
     if (!pet) {
@@ -40,7 +41,7 @@ export async function GET(req, context) {
 export async function DELETE(req, context) {
   try {
     await connectDB();
-    const { id } = context.params;
+    const { id } = await context.params; // ✅ await params
     const deleted = await Pet.findByIdAndDelete(id);
 
     if (!deleted) {
@@ -58,16 +59,20 @@ export async function DELETE(req, context) {
 export async function PATCH(req, context) {
   try {
     await connectDB();
-    const { id } = context.params;
+    const { id } = await context.params; // ✅ await params
     const { action, requesterId, requesterName, messageText } = await req.json();
 
     const pet = await Pet.findById(id);
     if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
+    // Ensure arrays exist
+    if (!pet.matingHistory) pet.matingHistory = [];
+    if (!pet.messages) pet.messages = [];
+
     if (action === "matingRequest") {
-      pet.matingHistory.push({ requesterId, requesterName, status: "pending" });
+      pet.matingHistory.push({ requesterId, requesterName, status: "pending", requestedAt: new Date() });
       if (messageText) {
-        pet.messages.push({ senderId: requesterId, senderName: requesterName, text: messageText });
+        pet.messages.push({ senderId: requesterId, senderName: requesterName, text: messageText, sentAt: new Date() });
       }
       await pet.save();
       return new Response(JSON.stringify({ message: "Mating request sent!" }), { status: 200 });
@@ -77,7 +82,7 @@ export async function PATCH(req, context) {
       if (!messageText || !requesterId || !requesterName)
         return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400 });
 
-      pet.messages.push({ senderId: requesterId, senderName: requesterName, text: messageText });
+      pet.messages.push({ senderId: requesterId, senderName: requesterName, text: messageText, sentAt: new Date() });
       await pet.save();
       return new Response(JSON.stringify({ message: "Message added!" }), { status: 200 });
     }
