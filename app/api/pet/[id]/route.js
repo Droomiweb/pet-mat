@@ -1,6 +1,35 @@
 import connectDB from "./../../../lib/mongodb";
 import Pet from "./../../../models/PetModel";
 
+export async function GET(req, context) {
+  try {
+    await connectDB();
+
+    const { id } = await context.params;
+    const pet = await Pet.findById(id).lean();
+
+    if (!pet) {
+      return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
+    }
+
+    return new Response(JSON.stringify({
+      _id: pet._id.toString(),
+      name: pet.name,
+      age: pet.age,
+      breed: pet.breed,
+      imageUrls: pet.imageUrls || [],
+      certificateUrl: pet.certificateUrl || null,
+      ownerId: pet.ownerId,
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("Error fetching pet:", err);
+    return new Response(JSON.stringify({ error: "Internal Server Error" }), { status: 500 });
+  }
+}
+
 export async function DELETE(req, context) {
   try {
     await connectDB();
