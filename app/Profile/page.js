@@ -1,3 +1,4 @@
+// app/Profile/page.js
 "use client";
 
 import { useEffect, useState } from "react";
@@ -10,36 +11,30 @@ export default function ProfilePage() {
   const [locationName, setLocationName] = useState("");
   const router = useRouter();
 
-  const fetchUserData = async () => {
-    try {
-      const user = auth.currentUser;
-      if (!user) return router.push("/Login");
-
-      // Fetch user from MongoDB
-      const res = await fetch(`/api/user/${user.uid}`);
-      if (!res.ok) {
-        console.error("Failed to fetch user:", await res.text());
-        return;
-      }
-      const data = await res.json();
-      setUserData(data);
-
-      // Reverse geocode location if available
-      if (data.location?.lat && data.location?.lng) {
-        const geoRes = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${data.location.lat}&lon=${data.location.lng}`
-        );
-        if (geoRes.ok) {
-          const geoData = await geoRes.json();
-          setLocationName(geoData.display_name);
-        }
-      }
-
-      // Fetch user's pets
-      await fetchPets(user.uid);
-    } catch (err) {
-      console.error("Error fetching profile data:", err);
+  // Function to fetch all necessary user data
+  const fetchUserData = async (user) => {
+    // Fetch user from MongoDB
+    const res = await fetch(`/api/user/${user.uid}`);
+    if (!res.ok) {
+      console.error("Failed to fetch user:", await res.text());
+      return;
     }
+    const data = await res.json();
+    setUserData(data);
+
+    // Reverse geocode location if available
+    if (data.location?.lat && data.location?.lng) {
+      const geoRes = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${data.location.lat}&lon=${data.location.lng}`
+      );
+      if (geoRes.ok) {
+        const geoData = await geoRes.json();
+        setLocationName(geoData.display_name);
+      }
+    }
+
+    // Fetch user's pets
+    await fetchPets(user.uid);
   };
 
   const fetchPets = async (uid) => {
@@ -80,13 +75,19 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
-    fetchUserData();
+    const user = auth.currentUser;
+    if (!user) {
+      return router.push("/Login");
+    }
+    fetchUserData(user);
   }, []);
 
-  if (!userData)
+  if (!userData) {
     return <p className="text-[#4F200D] text-center mt-20">Loading profile...</p>;
+  }
 
-  const userId = auth.currentUser.email?.split("@")[0] || auth.currentUser.uid;
+  // ✅ Safely get the user ID here, after `userData` has been loaded
+  const userId = userData.username || auth.currentUser.uid;
 
   return (
     <div className="min-h-screen bg-[#F6F1E9] p-4 md:p-10">

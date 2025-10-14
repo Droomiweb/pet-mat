@@ -68,6 +68,27 @@ export default function AdminPanel(){
       console.error("Error updating status:", err);
     }
   };
+  
+  // NEW FUNCTION to handle pet deletion
+  const handleDeletePet = async (petId) => {
+    if (window.confirm("Are you sure you want to delete this pet? This action cannot be undone.")) {
+      try {
+        const res = await fetch(`/api/pet/${petId}`, {
+          method: "DELETE",
+        });
+
+        if (res.ok) {
+          setPets(prevPets => prevPets.filter(pet => pet._id !== petId));
+          alert("Pet deleted successfully!");
+        } else {
+          alert("Failed to delete pet.");
+        }
+      } catch (err) {
+        console.error("Error deleting pet:", err);
+        alert("An error occurred. Check the console for details.");
+      }
+    }
+  };
 
   const handleUserBan = async (userId) => {
     if (window.confirm("Are you sure you want to ban this user? This will also ban their pets.")) {
@@ -228,17 +249,21 @@ export default function AdminPanel(){
                         {pet.isBanned ? 'Banned' : pet.verificationStatus}
                       </span>
                     </td>
-                    <td className="py-4 px-6 text-center">
+                    <td className="py-4 px-6 text-center flex justify-center items-center gap-2">
                       <button
                         onClick={() => handleStatusUpdate(pet._id, 'verified')}
                         disabled={pet.verificationStatus === 'verified' || pet.isBanned}
-                        className="bg-green-500 text-white px-4 py-2 rounded-lg mr-2 disabled:opacity-50"
+                        className="bg-green-500 text-white px-4 py-2 rounded-lg disabled:opacity-50"
                       >Approve</button>
                       <button
                         onClick={() => handleStatusUpdate(pet._id, 'rejected')}
                         disabled={pet.verificationStatus === 'rejected' || pet.isBanned}
                         className="bg-red-500 text-white px-4 py-2 rounded-lg disabled:opacity-50"
                       >Reject</button>
+                      <button
+                        onClick={() => handleDeletePet(pet._id)}
+                        className="bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-900 transition-colors"
+                      >Delete</button>
                     </td>
                     <td className="py-4 px-6 text-center">
                       <Link href={`/pet/${pet._id}`}>

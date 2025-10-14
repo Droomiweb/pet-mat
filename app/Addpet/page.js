@@ -81,6 +81,7 @@ export default function AddPet() {
         setCertificate(null);
         setPetImages([]);
         setMessage("Pet added successfully!");
+        window.location.replace("/Home");
       } else {
         setMessage(data.error || "Something went wrong");
         // Log the full response for more details

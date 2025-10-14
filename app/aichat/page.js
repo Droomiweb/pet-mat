@@ -29,7 +29,7 @@ export default function AIChat() {
         setMessages([
           {
             sender: "ai",
-            text: `Hello! I'm here to help with your pets. I know you have ${petsData.length} pets. Based on your pet data, you have: ${petsData.map(p => `${p.name} the ${p.breed}`).join(", ")}. What can I help you with today?`
+            text: `Hello! I'm Dr. Paws, here to help with your pets. I know you have ${petsData.length} pets. Based on your pet data, you have: ${petsData.map(p => `${p.name} the ${p.breed}`).join(", ")}. What can I help you with today?`
           },
         ]);
       }
@@ -46,6 +46,9 @@ export default function AIChat() {
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
 
+     const currentUser = auth.currentUser;
+    setUser(currentUser);
+
     setLoading(true);
     const newMessage = { sender: "user", text: input };
     setMessages((prev) => [...prev, newMessage]);
@@ -54,12 +57,16 @@ export default function AIChat() {
     try {
       // The core AI interaction: sending the prompt and getting a response
       // Right before you send user messages, set a system or context prompt:
+      const res = await fetch(`/api/pet/user/${currentUser.uid}`);
+      if (res.ok) {
+        const petsData = await res.json();
 const contextPrompt = `
 You are "Dr. Paws", a friendly virtual veterinarian.
 Speak with confidence and empathy, using clear and practical pet-care advice.
 Avoid disclaimers such as "I am not a doctor" or "I cannot provide medical advice" —
 instead, focus on offering helpful, general pet-care guidance and suggestions.
 If something sounds serious, recommend visiting a vet politely.
+now i have ${petsData.map(p => `${p.name} the ${p.breed} with age ${p.age}`).join(", ")}. these pets , if i didnt mention any pets please ask which one and give me the corresponding response or solution
 `;
 
 const result = await model.generateContent([contextPrompt, newMessage.text]);
@@ -67,6 +74,7 @@ const result = await model.generateContent([contextPrompt, newMessage.text]);
       const text = response.text();
 
       setMessages((prev) => [...prev, { sender: "ai", text }]);
+      }
     } catch (error) {
       console.error("Error generating AI response:", error);
       setMessages((prev) => [...prev, { sender: "ai", text: "Sorry, I am unable to respond right now." }]);
