@@ -1,3 +1,4 @@
+// app/Addpet/page.js
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -14,7 +15,11 @@ export default function AddPet() {
   const router = useRouter();
 
   const handleFileChange = (e) => setCertificate(e.target.files[0]);
-  const handleImagesChange = (e) => setPetImages([...e.target.files]);
+  const handleImagesChange = (e) => {
+    // Log the selected files to the console
+    console.log("Selected image files:", e.target.files);
+    setPetImages([...e.target.files]);
+  };
 
   const petBreeds = {
     Dog: ["Labrador Retriever", "German Shepherd", "Golden Retriever", "Bulldog", "Poodle", "Beagle"],
@@ -45,7 +50,12 @@ export default function AddPet() {
 
     try {
       const certificateBase64 = await fileToBase64(certificate);
+      // Log the base64 conversion result
+      console.log("Certificate Base64:", certificateBase64);
+
       const imagesBase64 = await Promise.all(petImages.map(fileToBase64));
+      // Log the images base64 conversion result
+      console.log("Images Base64:", imagesBase64);
 
       const res = await fetch("/api/pet", {
         method: "POST",
@@ -73,6 +83,8 @@ export default function AddPet() {
         setMessage("Pet added successfully!");
       } else {
         setMessage(data.error || "Something went wrong");
+        // Log the full response for more details
+        console.error("API response error:", data);
       }
     } catch (err) {
       console.error(err);

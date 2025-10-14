@@ -1,3 +1,4 @@
+// app/Home/page.js
 "use client";
 
 import { useEffect, useState } from "react";
@@ -10,58 +11,24 @@ export default function Main() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  // Pet breeds by type
   const breedOptions = {
     Dog: [
-      "Labrador Retriever",
-      "German Shepherd",
-      "Golden Retriever",
-      "Bulldog",
-      "Poodle",
-      "Beagle",
-      "Other",
+      "Labrador Retriever", "German Shepherd", "Golden Retriever", "Bulldog", "Poodle", "Beagle", "Other",
     ],
     Cat: [
-      "Persian",
-      "Maine Coon",
-      "Siamese",
-      "Bengal",
-      "Ragdoll",
-      "British Shorthair",
-      "Other",
+      "Persian", "Maine Coon", "Siamese", "Bengal", "Ragdoll", "British Shorthair", "Other",
     ],
     Rabbit: [
-      "Holland Lop",
-      "Netherland Dwarf",
-      "Lionhead",
-      "Flemish Giant",
-      "Mini Rex",
-      "Other",
+      "Holland Lop", "Netherland Dwarf", "Lionhead", "Flemish Giant", "Mini Rex", "Other",
     ],
     Bird: [
-      "Parrot",
-      "Cockatiel",
-      "Canary",
-      "Lovebird",
-      "Finch",
-      "Macaw",
-      "Other",
+      "Parrot", "Cockatiel", "Canary", "Lovebird", "Finch", "Macaw", "Other",
     ],
     Other: ["Mixed", "Unknown"],
   };
 
-  // City options
   const cityOptions = [
-    "All Cities",
-    "Delhi",
-    "Mumbai",
-    "Bengaluru",
-    "Chennai",
-    "Kolkata",
-    "Hyderabad",
-    "Kochi",
-    "Pune",
-    "Jaipur",
+    "All Cities", "Delhi", "Mumbai", "Bengaluru", "Chennai", "Kolkata", "Hyderabad", "Kochi", "Pune", "Jaipur",
   ];
 
   const fetchPets = async () => {
@@ -85,7 +52,6 @@ export default function Main() {
     }
   };
 
-  // Fetch all pets initially
   useEffect(() => {
     fetchPets();
   }, []);
@@ -98,19 +64,14 @@ export default function Main() {
 
   return (
     <div className="min-h-screen bg-[#F6F1E9] p-4 md:p-10">
-      <h1 className="text-4xl font-bold text-[#4F200D] mb-6 text-center">
-        Our Lovely Pets
-      </h1>
+      <h1 className="text-4xl font-bold text-[#4F200D] mb-6 text-center">Our Lovely Pets</h1>
 
       {/* Filters Section */}
       <div className="flex flex-wrap justify-center gap-4 mb-8 items-center">
-        {/* Pet Type */}
         <select
           className="p-2 rounded-xl border-2 border-[#FF9A00] bg-white"
           value={filters.type}
-          onChange={(e) =>
-            setFilters({ ...filters, type: e.target.value, breed: "" })
-          }
+          onChange={(e) => setFilters({ ...filters, type: e.target.value, breed: "" })}
         >
           <option value="">All Types</option>
           <option value="Dog">Dog</option>
@@ -119,14 +80,10 @@ export default function Main() {
           <option value="Bird">Bird</option>
           <option value="Other">Other</option>
         </select>
-
-        {/* Breed (depends on type) */}
         <select
           className="p-2 rounded-xl border-2 border-[#FF9A00] bg-white"
           value={filters.breed}
-          onChange={(e) =>
-            setFilters({ ...filters, breed: e.target.value })
-          }
+          onChange={(e) => setFilters({ ...filters, breed: e.target.value })}
           disabled={!filters.type}
         >
           <option value="">All Breeds</option>
@@ -137,17 +94,10 @@ export default function Main() {
               </option>
             ))}
         </select>
-
-        {/* City */}
         <select
           className="p-2 rounded-xl border-2 border-[#FF9A00] bg-white"
           value={filters.city}
-          onChange={(e) =>
-            setFilters({
-              ...filters,
-              city: e.target.value === "All Cities" ? "" : e.target.value,
-            })
-          }
+          onChange={(e) => setFilters({ ...filters, city: e.target.value === "All Cities" ? "" : e.target.value })}
         >
           {cityOptions.map((city) => (
             <option key={city} value={city}>
@@ -155,8 +105,6 @@ export default function Main() {
             </option>
           ))}
         </select>
-
-        {/* Search Button */}
         <button
           onClick={fetchPets}
           className="bg-[#FF9A00] hover:bg-[#e68a00] text-white font-semibold px-6 py-2 rounded-xl shadow-lg transition-all duration-200"
@@ -169,9 +117,7 @@ export default function Main() {
       {loading ? (
         <p className="text-center text-[#4F200D] text-lg">Loading pets...</p>
       ) : pets.length === 0 ? (
-        <p className="text-[#4F200D] text-center text-xl">
-          No pets found for your search.
-        </p>
+        <p className="text-[#4F200D] text-center text-xl">No pets found for your search.</p>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
           {pets.map((pet) => (
@@ -187,9 +133,7 @@ export default function Main() {
                   className="w-full h-48 object-cover rounded-xl mb-4 border-2 border-[#FF9A00]"
                 />
               )}
-              <h3 className="font-bold text-xl text-[#4F200D] mb-1">
-                {pet.name}
-              </h3>
+              <h3 className="font-bold text-xl text-[#4F200D] mb-1">{pet.name}</h3>
               <p className="text-[#4F200D] text-sm">Type: {pet.type}</p>
               <p className="text-[#4F200D] text-sm">Breed: {pet.breed}</p>
               <p className="text-[#4F200D] text-sm">Age: {pet.age}</p>

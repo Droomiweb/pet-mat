@@ -1,3 +1,4 @@
+// app/models/PetModel.js
 import mongoose from "mongoose";
 
 const petSchema = new mongoose.Schema({
@@ -8,11 +9,15 @@ const petSchema = new mongoose.Schema({
   certificateUrl: String,
   imageUrls: [String],
   ownerId: String,
+  // New field for certificate verification status
+  verificationStatus: { type: String, enum: ['pending', 'verified', 'rejected'], default: 'pending' },
+  // NEW FIELD for pet banning
+  isBanned: { type: Boolean, default: false },
   matingHistory: [
     {
       requesterId: String,
       requesterName: String,
-      status: { type: String, default: "pending" }, // pending/accepted/rejected
+      status: { type: String, default: "pending" },
       requestedAt: { type: Date, default: Date.now }
     }
   ],

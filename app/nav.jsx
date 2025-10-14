@@ -1,10 +1,13 @@
+// app/nav.jsx
 "use client";
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useAuth } from "./auth-provider"; // Import useAuth hook
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { user, isAdmin } = useAuth(); // Get user and isAdmin status
 
   return (
     <nav className="bg-orange-400 shadow-md">
@@ -16,15 +19,45 @@ export default function Navbar() {
 
         {/* Desktop Links */}
         <div className="hidden sm:flex items-center space-x-3">
-          {["Home", "Social", "Market", "Hhh"].map((item) => (
+          {["Home", "Social"].map((item) => (
             <Link
               key={item}
-              href="/Home"
+              href={`/${item}`}
               className="px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300 shadow-sm hover:shadow-md"
             >
               {item}
             </Link>
           ))}
+          {/* Marketplace Link */}
+          <Link
+            href="/marketplace"
+            className="px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300 shadow-sm hover:shadow-md"
+          >
+            Marketplace
+          </Link>
+          {/* New messages link */}
+          <Link
+            href="/messages"
+            className="px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300 shadow-sm hover:shadow-md"
+          >
+            Messages
+          </Link>
+          {/* New AI Chat link */}
+          <Link
+            href="/aichat"
+            className="px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300 shadow-sm hover:shadow-md"
+          >
+            AI Chat
+          </Link>
+          {/* Admin Panel Link (conditionally rendered) */}
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="px-4 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-500 transition-all duration-300 shadow-sm hover:shadow-md"
+            >
+              Admin Panel
+            </Link>
+          )}
         </div>
 
         {/* Right Actions */}
@@ -66,13 +99,47 @@ export default function Navbar() {
           {["Home", "Social", "Market", "Hhh"].map((item) => (
             <Link
               key={item}
-              href="/Home"
+              href={`/${item}`}
               className="block px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300"
               onClick={() => setMenuOpen(false)}
             >
               {item}
             </Link>
           ))}
+          {/* Marketplace Link */}
+          <Link
+            href="/marketplace"
+            className="block px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300"
+            onClick={() => setMenuOpen(false)}
+          >
+            Marketplace
+          </Link>
+          {/* New messages link in mobile menu */}
+          <Link
+            href="/messages"
+            className="block px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300"
+            onClick={() => setMenuOpen(false)}
+          >
+            Messages
+          </Link>
+          {/* New AI Chat link in mobile menu */}
+          <Link
+            href="/aichat"
+            className="block px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300"
+            onClick={() => setMenuOpen(false)}
+          >
+            AI Chat
+          </Link>
+          {/* Admin Panel Link (conditionally rendered) */}
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="block px-4 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-500 transition-all duration-300"
+              onClick={() => setMenuOpen(false)}
+            >
+              Admin Panel
+            </Link>
+          )}
         </div>
       )}
     </nav>

@@ -48,11 +48,11 @@ export default function Signup() {
     if (!location.lat || !location.lng) return alert("Please share your location before signing up");
 
     try {
-      // Firebase signup
+      // Firebase signup - password is used here and is handled securely by Firebase
       const userCredential = await createUserWithEmailAndPassword(auth, userN + "@example.com", pass);
       const user = userCredential.user;
 
-      // Save extra fields in your database
+      // Save extra fields in your database using the Firebase UID
       await fetch("/api/user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

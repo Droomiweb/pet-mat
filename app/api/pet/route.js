@@ -1,6 +1,7 @@
-import connectDB from "../../lib/mongodb";
-import Pet from "../../models/PetModel";
-import User from "../../models/User";
+// app/api/pet/route.js
+import connectDB from "./../../lib/mongodb";
+import Pet from "./../../models/PetModel";
+import User from "./../../models/User";
 import { v2 as cloudinary } from "cloudinary";
 
 // Configure Cloudinary
@@ -16,8 +17,9 @@ export async function POST(req) {
     await connectDB();
     const { name, type, age, breed, certificateBase64, imagesBase64, ownerId } = await req.json();
 
-    if (!name || !type || !age || !breed || !certificateBase64 || !imagesBase64 || !ownerId) {
-      return new Response(JSON.stringify({ error: "All fields are required" }), { status: 400 });
+    if (!name || !type || !age || !breed || !certificateBase64 || !imagesBase64 || imagesBase64.length === 0 || !ownerId) {
+      console.error("Missing required fields in POST request:", { name, type, age, breed, certificateBase64, imagesBase64, ownerId });
+      return new Response(JSON.stringify({ error: "All fields are required, including at least one image." }), { status: 400 });
     }
 
     // Upload certificate
@@ -28,10 +30,21 @@ export async function POST(req) {
     // Upload pet images
     const imageUrls = [];
     for (const base64 of imagesBase64) {
-      const upload = await cloudinary.uploader.upload(base64, {
-        folder: `pets/${ownerId}`,
-      });
-      imageUrls.push(upload.secure_url);
+      try {
+        const upload = await cloudinary.uploader.upload(base64, {
+          folder: `pets/${ownerId}`,
+        });
+        imageUrls.push(upload.secure_url);
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed for an image:", uploadError);
+        // Continue with other images even if one fails
+      }
+    }
+
+    if (imageUrls.length === 0) {
+      console.error("No images were successfully uploaded to Cloudinary.");
+      // You can decide to fail here or proceed without images
+      return new Response(JSON.stringify({ error: "Failed to upload any images." }), { status: 500 });
     }
 
     const newPet = new Pet({
@@ -42,17 +55,19 @@ export async function POST(req) {
       certificateUrl: certUpload.secure_url,
       imageUrls,
       ownerId,
+      verificationStatus: 'pending'
     });
 
     await newPet.save();
 
-    return new Response(JSON.stringify({ message: "Pet added successfully!" }), { status: 201 });
+    return new Response(JSON.stringify({ message: "Pet added successfully!", pet: newPet }), { status: 201 });
   } catch (err) {
     console.error("Error adding pet:", err);
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 }
 
+// ... the rest of the file (GET function) remains the same
 // Fetch pets with optional filters
 export async function GET(req) {
   try {

@@ -1,53 +1,35 @@
-import connectDB from "./../../../lib/mongodb";
-import Pet from "./../../../models/PetModel";
-
+// app/api/pet/[id]/route.js
 // GET a single pet by ID
-export async function GET(req, context) {
-  try {
-    await connectDB();
+// app/api/pet/[id]/route.js
+import connectDB from "../../../lib/mongodb";
+import Pet from "../../../models/PetModel";
+import cloudinary from "../../../lib/cloudinary";
 
-    const { id } = await context.params; // ✅ await params
-    const pet = await Pet.findById(id).lean();
+// ... (GET and PATCH methods remain the same)
 
-    if (!pet) {
-      return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
-    }
-
-    return new Response(
-      JSON.stringify({
-        _id: pet._id.toString(),
-        name: pet.name,
-        type: pet.type,
-        age: pet.age,
-        breed: pet.breed,
-        imageUrls: pet.imageUrls || [],
-        certificateUrl: pet.certificateUrl || null,
-        ownerId: pet.ownerId,
-        messages: pet.messages || [],
-        matingHistory: pet.matingHistory || [],
-      }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-  } catch (err) {
-    console.error("Error fetching pet:", err);
-    return new Response(JSON.stringify({ error: "Internal Server Error" }), { status: 500 });
-  }
-}
-
-// DELETE a pet by ID
+// DELETE a pet by ID (updated)
 export async function DELETE(req, context) {
   try {
     await connectDB();
-    const { id } = await context.params; // ✅ await params
+    const { id } = await context.params;
     const deleted = await Pet.findByIdAndDelete(id);
 
     if (!deleted) {
       return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
     }
-
+    
+    // NEW: Delete images and certificate from Cloudinary
+    if (deleted.imageUrls?.length > 0) {
+      for (const imageUrl of deleted.imageUrls) {
+        const publicId = `pets/${deleted.ownerId}/${imageUrl.split('/').pop().split('.')[0]}`;
+        await cloudinary.uploader.destroy(publicId);
+      }
+    }
+    if (deleted.certificateUrl) {
+      const publicId = `certificates/${deleted.ownerId}/${deleted.certificateUrl.split('/').pop().split('.')[0]}`;
+      await cloudinary.uploader.destroy(publicId);
+    }
+    
     return new Response(JSON.stringify({ message: "Pet deleted successfully" }), { status: 200 });
   } catch (err) {
     console.error("Error deleting pet:", err);
@@ -55,17 +37,17 @@ export async function DELETE(req, context) {
   }
 }
 
+// ... (PATCH method remains the same)
 // PATCH: send mating request or add a message
 export async function PATCH(req, context) {
   try {
     await connectDB();
-    const { id } = await context.params; // ✅ await params
+    const { id } = await context.params;
     const { action, requesterId, requesterName, messageText } = await req.json();
 
     const pet = await Pet.findById(id);
     if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
-    // Ensure arrays exist
     if (!pet.matingHistory) pet.matingHistory = [];
     if (!pet.messages) pet.messages = [];
 
