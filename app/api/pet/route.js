@@ -68,45 +68,49 @@ export async function POST(req) {
 }
 
 // Fetch pets with optional filters
+// ... (previous code)
+
+// Fetch pets with optional filters
 export async function GET(req) {
-  try {
-    await connectDB();
+  try {
+    await connectDB();
 
-    const { searchParams } = new URL(req.url);
-    const type = searchParams.get("type");
-    const breed = searchParams.get("breed");
-    const city = searchParams.get("city");
+    const { searchParams } = new URL(req.url);
+    const type = searchParams.get("type");
+    const breed = searchParams.get("breed");
+    const city = searchParams.get("city");
 
-    const petQuery = {};
-    if (type) petQuery.type = type;
-    if (breed) petQuery.breed = breed;
+    const petQuery = {};
+    if (type) petQuery.type = type;
+    if (breed) petQuery.breed = breed;
 
-    let pets = await Pet.find(petQuery).lean();
+    let pets = await Pet.find(petQuery).lean();
 
-    // Filter by city if provided
-    if (city) {
-      const usersInCity = await User.find({ "location.city": city }, "_id").lean();
-      const userIds = usersInCity.map(u => u._id.toString());
-      pets = pets.filter(pet => userIds.includes(pet.ownerId));
-    }
+    if (city) {
+      const usersInCity = await User.find({ "location.city": city }, "_id").lean();
+      const userIds = usersInCity.map(u => u._id.toString());
+      pets = pets.filter(pet => userIds.includes(pet.ownerId));
+    }
 
-    const formattedPets = pets.map((pet) => ({
-      _id: pet._id.toString(),
-      name: pet.name,
-      type: pet.type,
-      age: pet.age,
-      breed: pet.breed,
-      imageUrls: pet.imageUrls || [],
-      certificateUrl: pet.certificateUrl || null,
-      ownerId: pet.ownerId,
-    }));
+    const formattedPets = pets.map((pet) => ({
+      _id: pet._id.toString(),
+      name: pet.name,
+      type: pet.type,
+      age: pet.age,
+      breed: pet.breed,
+      imageUrls: pet.imageUrls || [],
+      certificateUrl: pet.certificateUrl || null,
+    }));
 
-    return new Response(JSON.stringify(formattedPets), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch (err) {
-    console.error("Error fetching pets:", err);
-    return new Response(JSON.stringify({ error: "Failed to fetch pets" }), { status: 500 });
-  }
+    return new Response(JSON.stringify(formattedPets), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    // This is the line that is causing the issue
+    console.error("Error fetching pets in API route:", err);
+    return new Response(JSON.stringify({ error: "Failed to fetch pets" }), { status: 500 });
+  }
 }
+
+// ... (remaining code)
