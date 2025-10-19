@@ -49,6 +49,17 @@ export async function PATCH(req, context) {
       await pet.save();
       return new Response(JSON.stringify({ message: "Message added!" }), { status: 200 });
     }
+    // app/api/pet/[id]/route.js (Excerpt from PATCH)
+// ...
+    if (action === "addMessage") {
+      if (!messageText || !requesterId || !requesterName)
+        return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400 });
+
+      pet.messages.push({ senderId: requesterId, senderName: requesterName, text: messageText, sentAt: new Date() });
+      await pet.save();
+      return new Response(JSON.stringify({ message: "Message added!" }), { status: 200 });
+    }
+// ...
 
     return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400 });
   } catch (err) {
