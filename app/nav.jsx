@@ -18,7 +18,7 @@ export default function Navbar() {
 
         {/* Desktop Links */}
         <div className="hidden sm:flex items-center space-x-3">
-          {["Home", "Social", "Market", "Community"].map((item) => (
+          {["Home", "Social", "Market", "Community","AiDoc"].map((item) => (
             <Link
               key={item}
               href={item === "Home" ? "/" : item}
@@ -66,7 +66,7 @@ export default function Navbar() {
       {/* Mobile Menu */}
       {menuOpen && (
         <div className="sm:hidden bg-[#4A90E2] px-4 pb-4 transition-all duration-300">
-          {["Home", "Social", "Market", "Community"].map((item) => (
+          {["Home", "Social", "Market", "Community","AiDoc"].map((item) => (
             <Link
               key={item}
               href={item === "Home" ? "/" : "#"}
