@@ -9,6 +9,7 @@ export async function GET(req, context) {
     const { uid } = await context.params;
 
     // ✅ Match correct field name in DB
+   // app/api/pet/user/[uid]/route.js excerpt (as seen in earlier context)
     const pets = await Pet.find({ ownerId: uid }).lean();
 
     const formattedPets = pets.map((pet) => ({
@@ -18,6 +19,10 @@ export async function GET(req, context) {
       breed: pet.breed,
       imageUrls: pet.imageUrls || [],
       certificateUrl: pet.certificateUrl || null,
+
+      // ADDED: Include messages and matingHistory
+      messages: pet.messages || [],
+      matingHistory: pet.matingHistory || [],
     }));
 
     return new Response(JSON.stringify(formattedPets), {

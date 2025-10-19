@@ -19,7 +19,8 @@ export default function MessagesPage() {
     
     setLoading(true);
     try {
-      const res = await fetch(`/api/pet/user/${user.uid}`);
+      // This API call now returns messages and history due to Step 1 fix.
+      const res = await fetch(`/api/pet/user/${user.uid}`); 
       if (res.ok) {
         const data = await res.json();
         setPets(data);
@@ -38,16 +39,14 @@ export default function MessagesPage() {
   }, []);
   
   if (!user) {
-      return null; // Don't render anything if redirecting
+      return null; 
   }
 
   if (loading) {
-    // Apply new UI loading style
     return <p className="text-[#333333] text-center mt-20 text-xl">Loading your requests and messages...</p>;
   }
 
   return (
-    // Apply new UI BG color
     <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-10">
       <div className="max-w-5xl mx-auto bg-white rounded-3xl shadow-2xl p-6 md:p-10 border-t-8 border-[#4A90E2]">
         <h1 className="text-3xl font-extrabold text-[#333333] mb-8 border-b pb-3 border-gray-100">
@@ -60,7 +59,7 @@ export default function MessagesPage() {
           <div className="space-y-6">
             {pets.map((pet) => {
               
-              // FIX: Safely calculate latest message and determine if the pet has any messages
+              // FIX: Now pet.messages and pet.matingHistory are guaranteed to be arrays (or empty arrays).
               const hasMessages = pet.messages && pet.messages.length > 0;
               
               const latestMessageText = hasMessages 
@@ -98,11 +97,9 @@ export default function MessagesPage() {
                             Chat about {pet.name}
                         </p>
                         <p className="text-sm text-gray-500 mt-1 italic">
-                            {/* Use the safely calculated text */}
                             {latestMessageDisplay}
                         </p>
                         
-                        {/* LINK TO THE NEW CHAT SESSION PAGE */}
                         <Link href={`/messages/${pet._id}`}>
                           <button
                             className="mt-3 bg-[#4A90E2] hover:bg-[#3A75B9] text-white font-bold px-4 py-2 rounded-lg shadow-md transition-colors"
