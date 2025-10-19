@@ -6,6 +6,14 @@ import Image from "next/image";
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
+  
+  // UPDATED: Define the navigation structure with correct paths
+  const navItems = [
+      { name: "Home", href: "/" },
+      { name: "Marketplace", href: "/marketplace" }, // Direct link to marketplace
+      { name: "Messages", href: "/messages" }, // Link to messages page
+      { name: "Dr. Paws AI", href: "/AiDoc" }, // Link to AI Chat page
+  ];
 
   return (
     // Updated background to primary blue
@@ -16,15 +24,15 @@ export default function Navbar() {
           <h1 className="text-white font-extrabold text-2xl tracking-wider">PetLink</h1>
         </div>
 
-        {/* Desktop Links */}
+        {/* Desktop Links - Using updated navItems */}
         <div className="hidden sm:flex items-center space-x-3">
-          {["Home", "Social", "Market", "Community","AiDoc"].map((item) => (
+          {navItems.map((item) => (
             <Link
-              key={item}
-              href={item === "Home" ? "/" : item}
+              key={item.name}
+              href={item.href}
               className="px-4 py-2 rounded-lg text-white font-semibold hover:text-[#4A90E2] hover:bg-white transition-all duration-300 shadow-md hover:shadow-xl"
             >
-              {item}
+              {item.name}
             </Link>
           ))}
         </div>
@@ -63,17 +71,17 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile Menu */}
+      {/* Mobile Menu - Using updated navItems */}
       {menuOpen && (
         <div className="sm:hidden bg-[#4A90E2] px-4 pb-4 transition-all duration-300">
-          {["Home", "Social", "Market", "Community","AiDoc"].map((item) => (
+          {navItems.map((item) => (
             <Link
-              key={item}
-              href={item === "Home" ? "/" : "#"}
+              key={item.name}
+              href={item.href}
               className="block px-4 py-2 mt-1 rounded-lg text-white font-semibold hover:text-[#4A90E2] hover:bg-white transition-all duration-300"
               onClick={() => setMenuOpen(false)}
             >
-              {item}
+              {item.name}
             </Link>
           ))}
         </div>

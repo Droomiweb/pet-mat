@@ -2,7 +2,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { auth } from "../lib/firebase";
-import model from "../lib/gemini"; // Import the Gemini model
+import model from "../lib/gemini"; 
 import { useRouter } from "next/navigation";
 
 export default function AIChat() {
@@ -25,7 +25,6 @@ export default function AIChat() {
       const res = await fetch(`/api/pet/user/${currentUser.uid}`);
       if (res.ok) {
         const petsData = await res.json();
-        // Construct an engaging initial message from the AI with personalized context
         const petContext = petsData.map(p => `${p.name} (${p.breed}, ${p.age} years old)`).join("; ");
         
         setMessages([
@@ -35,7 +34,6 @@ export default function AIChat() {
           },
         ]);
       } else {
-        // Fallback message if pet data fails to load
         setMessages([
           {
             sender: "ai",
@@ -57,7 +55,7 @@ export default function AIChat() {
     if (!input.trim() || loading) return;
 
     const currentUser = auth.currentUser;
-    if (!currentUser) return router.push("/Login"); // Double check login state
+    if (!currentUser) return router.push("/Login");
 
     setLoading(true);
     const newMessage = { sender: "user", text: input };
@@ -70,7 +68,6 @@ export default function AIChat() {
 
       const petContext = petsData.map(p => `${p.name} the ${p.breed} with age ${p.age} and gender ${p.gender}`).join(", ");
       
-      // Use a robust, detailed system instruction/context prompt for accuracy and tone
       const contextPrompt = `
 You are "Dr. Paws", a friendly, experienced, and highly knowledgeable virtual veterinarian.
 Your goal is to provide helpful, general pet-care advice and suggestions.
@@ -95,16 +92,22 @@ Do not use disclaimers about not being a real doctor in your response; instead, 
     }
   };
 
-  // UPDATED UI: Using new colors and styles
   return (
-    <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-10 flex flex-col items-center">
-      <div className="max-w-xl w-full bg-white rounded-3xl shadow-2xl p-6 md:p-10 flex flex-col h-[80vh] border-t-8 border-[#4A90E2]">
-        <h1 className="text-3xl font-extrabold text-[#333333] mb-6 text-center border-b pb-3 border-gray-100">
-          Meet Dr. Paws 🩺
-        </h1>
+    // 1. Main container takes full viewport height and width (h-screen w-screen)
+    // 2. Added pt-20/pb-4 padding to avoid overlap with fixed nav/input in the full screen layout
+    <div className="h-screen w-screen bg-[#F4F7F9] flex justify-center items-stretch p-0"> 
+      {/* 3. The chat box takes max-w-xl on desktop but is full width on mobile/small screens (w-full) */}
+      <div className="w-full max-w-xl bg-white rounded-none sm:rounded-2xl shadow-2xl flex flex-col h-full sm:h-[95vh] border-t-8 border-[#4A90E2] sm:my-4">
         
-        {/* Chat window - Cleaned up styling */}
-        <div className="flex-1 overflow-y-auto space-y-4 mb-6 p-4 rounded-xl border border-gray-200 bg-gray-50/50 shadow-inner">
+        {/* Header - Fixed to top of the chat area */}
+        <div className="sticky top-0 bg-white p-4 border-b border-gray-200">
+            <h1 className="text-3xl font-extrabold text-[#333333] text-center">
+                Dr. Paws Chat 🩺
+            </h1>
+        </div>
+        
+        {/* Chat window - The primary scrolling area */}
+        <div className="flex-1 overflow-y-auto space-y-4 p-4">
           {messages.map((msg, index) => (
             <div
               key={index}
@@ -113,8 +116,8 @@ Do not use disclaimers about not being a real doctor in your response; instead, 
               <div
                 className={`p-3 rounded-2xl max-w-[85%] shadow-md ${
                   msg.sender === "user"
-                    ? "bg-[#50E3C2] text-[#333333] rounded-br-none" // Secondary accent for user
-                    : "bg-[#4A90E2] text-white rounded-tl-none" // Primary accent for AI
+                    ? "bg-[#50E3C2] text-[#333333] rounded-br-none" 
+                    : "bg-[#4A90E2] text-white rounded-tl-none" 
                 }`}
               >
                 {msg.text}
@@ -130,21 +133,19 @@ Do not use disclaimers about not being a real doctor in your response; instead, 
           )}
         </div>
 
-        {/* Input form - Cleaned up styling */}
-        <div className="flex mt-auto">
+        {/* Input form - Fixed to the bottom of the chat area */}
+        <div className="sticky bottom-0 flex p-4 bg-white border-t border-gray-200">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            // Use new input style, rounded on the left
             className="flex-1 p-4 rounded-l-xl border-2 border-gray-300 focus:border-[#4A90E2] focus:ring-0 outline-none transition-colors text-[#333333]"
-            placeholder="Ask Dr. Paws about your pets' health or behavior..."
+            placeholder="Ask Dr. Paws about your pets' health..."
             disabled={loading}
           />
           <button
             onClick={sendMessage}
-            // Use new button style, rounded on the right
             className="bg-[#4A90E2] text-white p-4 rounded-r-xl font-bold hover:bg-[#3A75B9] transition shadow-md"
             disabled={loading || !input.trim()}
           >
