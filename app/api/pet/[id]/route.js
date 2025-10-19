@@ -22,52 +22,75 @@ export async function GET(req, context) {
 export async function PATCH(req, context) {
   try {
     await connectDB();
-    // ✅ Must await context.params in Next.js 15
     const { id } = await context.params;
-    const { action, requesterId, requesterName, messageText } = await req.json();
+    // UPDATED: Destructure new fields
+    const { action, requesterId, requesterName, requesterPetId, requesterPetName, messageText } = await req.json();
 
-    const pet = await Pet.findById(id);
-    if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
+    if (!requesterId || !requesterName) {
+        return new Response(JSON.stringify({ error: "Authentication data missing. Please try logging in again." }), { status: 401 });
+    }
+    
+    const petExists = await Pet.findById(id).select('_id');
+    if (!petExists) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
-    if (!pet.matingHistory) pet.matingHistory = [];
-    if (!pet.messages) pet.messages = [];
+    const newMessage = { senderId: requesterId, senderName: requesterName, text: messageText, sentAt: new Date() };
 
     if (action === "matingRequest") {
-      pet.matingHistory.push({ requesterId, requesterName, status: "pending", requestedAt: new Date() });
-      if (messageText) {
-        pet.messages.push({ senderId: requesterId, senderName: requesterName, text: messageText, sentAt: new Date() });
+      // NEW CHECK: Require the requester pet info
+      if (!requesterPetId || !requesterPetName) {
+         return new Response(JSON.stringify({ error: "Requester pet details are required." }), { status: 400 });
       }
-      await pet.save();
+
+      const updatePayload = {
+        $push: {
+          matingHistory: { 
+            requesterId, 
+            requesterName, 
+            requesterPetId,     // STORE THIS
+            requesterPetName,   // STORE THIS
+            status: "pending", 
+            requestedAt: new Date() 
+          }
+        }
+      };
+      // If a message is included with the request, push it as well
+      if (messageText) {
+        updatePayload.$push.messages = newMessage;
+      }
+
+      const updatedPet = await Pet.findByIdAndUpdate(
+        id, 
+        updatePayload,
+        { new: true, runValidators: false } // Avoid full document validation
+      );
+
+      if (!updatedPet) return new Response(JSON.stringify({ error: "Pet not found during update" }), { status: 404 });
+
       return new Response(JSON.stringify({ message: "Mating request sent!" }), { status: 200 });
     }
 
     if (action === "addMessage") {
-      if (!messageText || !requesterId || !requesterName)
-        return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400 });
+      if (!messageText)
+        return new Response(JSON.stringify({ error: "Message text is required" }), { status: 400 });
 
-      pet.messages.push({ senderId: requesterId, senderName: requesterName, text: messageText, sentAt: new Date() });
-      await pet.save();
+      const updatedPet = await Pet.findByIdAndUpdate(
+        id,
+        { $push: { messages: newMessage } },
+        { new: true, runValidators: false } // Avoid full document validation
+      );
+      
+      if (!updatedPet) return new Response(JSON.stringify({ error: "Pet not found during message add" }), { status: 404 });
+
       return new Response(JSON.stringify({ message: "Message added!" }), { status: 200 });
     }
-    // app/api/pet/[id]/route.js (Excerpt from PATCH)
-// ...
-    if (action === "addMessage") {
-      if (!messageText || !requesterId || !requesterName)
-        return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400 });
-
-      pet.messages.push({ senderId: requesterId, senderName: requesterName, text: messageText, sentAt: new Date() });
-      await pet.save();
-      return new Response(JSON.stringify({ message: "Message added!" }), { status: 200 });
-    }
-// ...
 
     return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400 });
   } catch (err) {
-    console.error(err);
-    return new Response(JSON.stringify({ error: "Internal Server Error" }), { status: 500 });
+    console.error("Error in PATCH /api/pet/[id]:", err);
+    // Return a 500 error response with a generic message
+    return new Response(JSON.stringify({ error: "Internal Server Error during update" }), { status: 500 });
   }
 }
-
 // DELETE a pet by ID
 export async function DELETE(req, context) {
   try {

@@ -16,7 +16,6 @@ export default function ChatSessionPage() {
 
   const petId = params.petId; // The ID of the pet whose messages we are viewing/replying to
 
-  // Helper function to scroll to the bottom of the messages
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -25,21 +24,17 @@ export default function ChatSessionPage() {
     if (!user) return router.push("/Login");
 
     try {
-      // Use the existing GET /api/pet/[id] to fetch all pet details including messages
       const res = await fetch(`/api/pet/${petId}`); 
-      if (!res.ok) {
-        return router.push("/messages"); // Redirect if pet not found
-      }
+      if (!res.ok) return router.push("/messages");
+      
       const data = await res.json();
       
-      // Security check: Only the pet owner can view this page (or the initial requester)
-      // For simplicity, we only allow the pet owner to reply here, 
-      // as the initial requester replies via the /pet/[id] page.
-      if (user.uid !== data.ownerId) {
-          // This path is for the OWNER of the pet to manage their messages.
-          // Implement proper authorization for the requester if needed later.
-          // For now, if you are not the owner, redirect to the pet view.
-          return router.push(`/pet/${petId}`);
+      // Determine the partner ID from the message history for security and display
+      const firstMessageSenderId = data.messages?.find(msg => msg.senderId !== data.ownerId)?.senderId;
+
+      if (user.uid !== data.ownerId && user.uid !== firstMessageSenderId) {
+          // Prevent unauthorized users from viewing the chat
+          return router.push("/messages");
       }
       
       setPet(data);
@@ -58,7 +53,6 @@ export default function ChatSessionPage() {
     setSending(true);
     
     try {
-      // Use the existing PATCH endpoint with action: "addMessage"
       const res = await fetch(`/api/pet/${petId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -72,7 +66,6 @@ export default function ChatSessionPage() {
 
       if (res.ok) {
         setReplyText("");
-        // Re-fetch messages to simulate chat update
         fetchPetMessages(); 
       } else {
         alert("Failed to send reply.");
@@ -83,30 +76,60 @@ export default function ChatSessionPage() {
       setSending(false);
     }
   };
+  
+  // NEW: Function to handle request status change
+  const handleRequestStatus = async (status, requestId) => {
+      if (!requestId) return alert("No request ID provided.");
+      
+      try {
+          const res = await fetch(`/api/pet/${petId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                  action: "updateRequestStatus", // New API action
+                  requestId: requestId,
+                  newStatus: status,
+              }),
+          });
+          
+          if (res.ok) {
+              alert(`Mating request has been ${status}.`);
+              fetchPetMessages(); // Refresh chat
+          } else {
+              alert(`Failed to ${status} request.`);
+          }
+      } catch (err) {
+          console.error(err);
+      }
+  };
 
   useEffect(() => {
     fetchPetMessages();
-    // Set up polling to fetch new messages every 5 seconds (simulates live chat)
     const intervalId = setInterval(fetchPetMessages, 5000); 
-    return () => clearInterval(intervalId); // Cleanup interval on component unmount
+    return () => clearInterval(intervalId);
   }, [user]);
   
   useEffect(() => {
-      scrollToBottom(); // Scroll to bottom whenever messages update
+      scrollToBottom();
   }, [pet?.messages]);
 
   if (loading || !pet) {
-    return <p className="text-[#333333] text-center mt-20 text-xl">Loading chat session for {petId}...</p>;
+    return <p className="text-[#333333] text-center mt-20 text-xl">Loading chat session...</p>;
   }
 
   // --- UI START ---
   
-  // Find the conversation partner ID
-  const conversationPartnerId = pet.messages.find(msg => msg.senderId !== user.uid)?.senderId;
-  const partnerName = pet.messages.find(msg => msg.senderId !== user.uid)?.senderName || "Unknown Partner";
+  const isOwner = user?.uid === pet.ownerId;
+  // Determine the conversation partner and the pending request
+  const conversationPartnerId = pet.messages.find(msg => msg.senderId !== pet.ownerId)?.senderId;
+  const partnerName = pet.messages.find(msg => msg.senderId !== pet.ownerId)?.senderName || "Requester";
+  
+  // Find the latest PENDING request involving this partner (identified by requesterId)
+  const latestPendingRequest = pet.matingHistory?.find(
+      (mh) => mh.requesterId === conversationPartnerId && mh.status === "pending"
+  );
   
   return (
-    // Full screen chat layout
     <div className="h-screen w-screen bg-[#F4F7F9] flex justify-center items-stretch p-0">
       <div className="w-full max-w-xl bg-white rounded-none sm:rounded-2xl shadow-2xl flex flex-col h-full sm:h-[95vh] border-t-8 border-[#4A90E2] sm:my-4">
         
@@ -118,8 +141,31 @@ export default function ChatSessionPage() {
             <h1 className="text-xl font-bold truncate">
                 Chat about {pet.name} with {partnerName}
             </h1>
-            <div className="w-6"></div> {/* Spacer */}
+            <div className="w-6"></div>
         </div>
+        
+        {/* NEW: Request Management Banner (Only for Owner and if a pending request exists) */}
+        {isOwner && latestPendingRequest && (
+            <div className="bg-yellow-50 p-3 border-b border-yellow-200 flex flex-col sm:flex-row justify-between items-center text-sm font-semibold sticky top-14 z-10">
+                <p className="text-[#333333] mb-2 sm:mb-0">
+                    Mating request from **{latestPendingRequest.requesterPetName}** ({latestPendingRequest.requesterName})
+                </p>
+                <div className="flex space-x-3">
+                    <button 
+                        onClick={() => handleRequestStatus('accepted', latestPendingRequest._id)}
+                        className="bg-green-500 text-white px-3 py-1 rounded-full text-xs hover:bg-green-600 transition-colors shadow-sm"
+                    >
+                        Accept Request
+                    </button>
+                    <button 
+                        onClick={() => handleRequestStatus('rejected', latestPendingRequest._id)}
+                        className="bg-red-500 text-white px-3 py-1 rounded-full text-xs hover:bg-red-600 transition-colors shadow-sm"
+                    >
+                        Reject
+                    </button>
+                </div>
+            </div>
+        )}
         
         {/* Messages Area (Scrolling) */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
@@ -152,7 +198,7 @@ export default function ChatSessionPage() {
               );
             })
           )}
-          <div ref={messagesEndRef} /> {/* Invisible element to anchor the scroll */}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Input/Reply Bar (Fixed to Bottom) */}

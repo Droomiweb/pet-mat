@@ -1,25 +1,14 @@
-// app/api/pet/route.js
 import connectDB from "./../../lib/mongodb";
 import Pet from "./../../models/PetModel";
 import User from "./../../models/User";
 import { v2 as cloudinary } from "cloudinary";
 
-// Configure Cloudinary
+// Configure Cloudinary (remains the same)
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
-
-// Add a new pet
-// app/api/pet/route.js
-
-// ... (imports and cloudinary config remain the same)
-
-// Add a new pet
-// app/api/pet/route.js
-
-// ... (imports and cloudinary config remain the same)
 
 // Add a new pet
 export async function POST(req) {
@@ -33,7 +22,19 @@ export async function POST(req) {
       return new Response(JSON.stringify({ error: "All fields are required" }), { status: 400 });
     }
     
-    // ... (Cloudinary upload logic remains the same)
+    // Upload certificate
+    const certUpload = await cloudinary.uploader.upload(certificateBase64, {
+      folder: `certificates/${ownerId}`,
+    });
+
+    // Upload pet images
+    const imageUrls = [];
+    for (const base64 of imagesBase64) {
+      const upload = await cloudinary.uploader.upload(base64, {
+        folder: `pets/${ownerId}`,
+      });
+      imageUrls.push(upload.secure_url);
+    }
 
     const newPet = new Pet({
       name,
@@ -48,29 +49,13 @@ export async function POST(req) {
 
     await newPet.save();
 
-    return new Response(JSON.stringify({ message: "Pet added successfully!" }), { status: 201 });
+    return new Response(JSON.stringify({ message: "Pet added successfully!", petId: newPet._id.toString() }), { status: 201 });
   } catch (err) {
-    // ... (error handling)
+    console.error("Error adding pet:", err);
+    // FIX: Ensure a valid JSON error response is always returned on failure (HTTP 500)
+    return new Response(JSON.stringify({ error: err.message || "Failed to add pet due to server error." }), { status: 500 });
   }
 }
-
-// ... (rest of GET handler remains the same for now)
-
-// ... (rest of GET handler remains the same for now)
-
-// Fetch pets with optional filters
-// ... (previous code)
-
-// Fetch pets with optional filters
-// app/api/pet/route.js
-
-// ... (POST handler and imports remain the same)
-
-// Fetch pets with optional filters
-// app/api/pet/route.js
-
-// ... (POST handler and imports remain the same)
-
 // Fetch pets with optional filters
 export async function GET(req) {
   try {
