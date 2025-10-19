@@ -4,6 +4,7 @@ import { Poppins } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "./auth-provider";
 import MaintenancePage from "./Maintenance";
+import { SpeedInsights } from "@vercel/speed-insights/next"
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -47,6 +48,7 @@ export default async function RootLayout({ children }) {
             <>
               <NavbarrWrapper />
               {children}
+              <SpeedInsights/>
             </>
           )}
         </AuthProvider>
