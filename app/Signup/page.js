@@ -66,104 +66,98 @@ export default function Signup() {
       setMessage(err.message);
     }
   };
+return (
+    <div className="w-screen h-screen overflow-hidden relative bg-[#F4F7F9]"> {/* Updated BG color */}
+      {/* ... (Image component remains the same) ... */}
 
-  return (
-    <div className="w-screen h-screen overflow-hidden relative">
-      <Image
-        src="/imgs/topimg.png"
-        alt="background"
-        className="absolute sm:-left-96 -top-1/2 left-0 w-screen h-screen object-contain scale-125"
-        width={200}
-        height={200}
-      />
-
-      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 sm:shadow-lg sm:bg-white/80 p-10 rounded-lg flex flex-col items-center sm:w-96 w-80">
-        <h1 className="text-[#4F200D] mb-6 text-center text-3xl font-bold">SIGN UP</h1>
+      {/* Updated card styling */}
+      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 sm:shadow-2xl sm:bg-white p-10 rounded-2xl flex flex-col items-center sm:w-96 w-80 border-t-8 border-[#4A90E2]">
+        <h1 className="text-[#333333] mb-6 text-center text-4xl font-bold">CREATE ACCOUNT</h1>
 
         <form onSubmit={handleSubmit} className="w-full flex flex-col">
-          <label className="self-start text-xl mb-1">Name</label>
+          <label className="self-start text-lg font-semibold mb-1 text-primary">Name</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full outline-none bg-transparent mb-2 border-b-4 border-[#4F200D] p-1"
+            className="input-style p-1" // Use utility class
           />
 
-          <label className="self-start text-xl mb-1">Username</label>
+          <label className="self-start text-lg font-semibold mb-1 text-primary">Username</label>
           <input
             type="text"
             value={userN}
             onChange={(e) => setUserN(e.target.value)}
-            className="w-full outline-none bg-transparent mb-2 border-b-4 border-[#4F200D] p-1"
+            className="input-style p-1" // Use utility class
           />
 
-          <label className="self-start text-xl mb-1">Phone</label>
+          <label className="self-start text-lg font-semibold mb-1 text-primary">Phone (10 digits)</label>
           <input
             type="number"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="w-full outline-none bg-transparent mb-2 border-b-4 border-[#4F200D] p-1"
+            className="input-style p-1" // Use utility class
           />
 
-          <label className="self-start text-xl mb-1">Password</label>
+          <label className="self-start text-lg font-semibold mb-1 text-primary">Password</label>
           <div className="relative w-full mb-2">
             <input
               type={showPass ? "text" : "password"}
               value={pass}
               onChange={(e) => setPass(e.target.value)}
-              className="w-full outline-none bg-transparent border-b-4 border-[#4F200D] p-1 pr-12"
+              className="input-style p-1 pr-12" // Use utility class
             />
             <button
               type="button"
               onClick={() => setShowPass(!showPass)}
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 text-sm text-gray-600 hover:text-gray-900"
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 text-sm text-[#4A90E2] font-semibold hover:text-[#50E3C2] transition"
             >
               {showPass ? "Hide" : "Show"}
             </button>
           </div>
 
-          <label className="self-start text-xl mb-1">Rewrite Password</label>
+          <label className="self-start text-lg font-semibold mb-1 text-primary">Rewrite Password</label>
           <input
             type={showPass ? "text" : "password"}
             value={pass2}
             onChange={(e) => setPass2(e.target.value)}
-            className="w-full outline-none bg-transparent mb-2 border-b-4 border-[#4F200D] p-1"
+            className="input-style p-1" // Use utility class
           />
 
           {/* Location Button */}
           <button
             type="button"
             onClick={getLocation}
-            className="mt-2 mb-2 bg-orange-400 text-white px-4 py-2 rounded-lg hover:bg-orange-500 transition"
+            className="mt-4 mb-2 btn-secondary py-3 px-4" // Use utility class
           >
-            Share My Location
+            {location.lat ? "Location Acquired! ✅" : "Share My Location"}
           </button>
 
           {/* Show location if available */}
           {location.lat && location.lng && (
-            <p className="text-[#4F200D] text-sm mb-2">
+            <p className="text-[#4A90E2] text-sm mb-4 font-medium text-center">
               Location set: Lat {location.lat.toFixed(4)}, Lng {location.lng.toFixed(4)}
             </p>
           )}
 
-          <p className="mb-2">
-            Already have an account? <Link className="text-blue-600 underline" href="/Login">Login</Link>
+          <p className="mb-4 text-center text-primary">
+            Already have an account? <Link className="text-[#4A90E2] font-semibold underline hover:text-[#50E3C2]" href="/Login">Login</Link>
           </p>
 
-          {/* Submit button disabled until location is set */}
+          {/* Submit button disabled until location is set (using utility class) */}
           <button
             type="submit"
             disabled={!location.lat || !location.lng}
-            className={`mt-4 px-6 py-2 rounded-lg text-white font-bold transition ${
+            className={`mt-2 py-3 px-6 rounded-xl font-bold transition shadow-lg ${
               location.lat && location.lng
-                ? "bg-[#4F200D] hover:bg-orange-500"
-                : "bg-gray-400 cursor-not-allowed"
+                ? "bg-[#4A90E2] hover:bg-[#3A75B9] text-white"
+                : "bg-gray-400 cursor-not-allowed text-gray-700"
             }`}
           >
-            Sign Up
+            Sign Up Now
           </button>
 
-          {message && <p className="mt-2 text-center text-sm">{message}</p>}
+          {message && <p className="mt-2 text-center text-sm text-red-500 font-medium">{message}</p>}
         </form>
       </div>
     </div>

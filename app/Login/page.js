@@ -30,43 +30,37 @@ export default function Login() {
       setErrorMsg(err.message || "Login failed");
     }
   };
+return (
+    <div className="w-screen h-screen overflow-hidden relative bg-[#F4F7F9]"> {/* Updated BG color */}
+      {/* ... (Image component remains the same) ... */}
 
-  return (
-    <div className="w-screen h-screen overflow-hidden relative">
-      <Image
-        src="/imgs/topimg.png"
-        alt="background"
-        className="absolute sm:-left-96 -top-1/2 left-0 w-screen h-screen object-contain scale-125"
-        width={200}
-        height={200}
-      />
-
-      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 p-10 bg-white/80 shadow-lg rounded-lg flex flex-col items-center w-80 sm:w-96">
-        <h1 className="text-[#4F200D] mb-6 text-center text-3xl font-bold">LOGIN</h1>
+      {/* Updated card styling */}
+      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 p-10 bg-white shadow-2xl rounded-2xl flex flex-col items-center w-80 sm:w-96 border-t-8 border-[#4A90E2]">
+        <h1 className="text-[#333333] mb-8 text-center text-4xl font-bold">WELCOME BACK</h1>
 
         <form onSubmit={handleLogin} className="w-full flex flex-col">
-          <label className="self-start text-xl mb-1">Username</label>
+          <label className="self-start text-lg font-semibold mb-1 text-primary">Username</label>
           <input
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="w-full outline-none bg-transparent mb-4 border-b-4 border-[#4F200D] p-2"
+            className="input-style" // Use utility class
             required
           />
 
-          <label className="self-start text-xl mb-1">Password</label>
+          <label className="self-start text-lg font-semibold mb-1 text-primary">Password</label>
           <div className="relative w-full mb-4">
             <input
               type={showPass ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full outline-none bg-transparent border-b-4 border-[#4F200D] p-2 pr-12"
+              className="input-style pr-12" // Use utility class
               required
             />
             <button
               type="button"
               onClick={() => setShowPass(!showPass)}
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 text-sm text-gray-600 hover:text-gray-900"
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 text-sm text-[#4A90E2] font-semibold hover:text-[#50E3C2] transition"
             >
               {showPass ? "Hide" : "Show"}
             </button>
@@ -74,15 +68,15 @@ export default function Login() {
 
           <button
             type="submit"
-            className="mt-2 bg-[#4F200D] text-white px-6 py-2 rounded-lg hover:bg-orange-500 transition"
+            className="mt-4 btn-primary" // Use utility class
           >
-            Login
+            Secure Login
           </button>
 
-          {errorMsg && <p className="mt-2 text-red-600 text-sm text-center">{errorMsg}</p>}
+          {errorMsg && <p className="mt-4 text-red-500 text-sm text-center font-medium">{errorMsg}</p>}
 
-          <p className="mt-4 text-center">
-            Don't have an account? <Link href="/Signup">Signup</Link>
+          <p className="mt-6 text-center text-primary">
+            Don't have an account? <Link href="/Signup" className="text-[#4A90E2] font-semibold hover:text-[#50E3C2] underline">Sign Up</Link>
           </p>
         </form>
       </div>

@@ -3,71 +3,40 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useAuth } from "./auth-provider"; // Import useAuth hook
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { user, isAdmin } = useAuth(); // Get user and isAdmin status
 
   return (
-    <nav className="bg-orange-400 shadow-md">
+    // Updated background to primary blue
+    <nav className="bg-[#4A90E2] shadow-xl"> 
       <div className="max-w-7xl mx-auto px-4 sm:px-8 flex justify-between items-center py-3">
         {/* Logo / Left Links */}
         <div className="flex items-center space-x-2">
-          <h1 className="text-white font-bold text-xl sm:text-2xl">PetMate</h1>
+          <h1 className="text-white font-extrabold text-2xl tracking-wider">PetLink</h1>
         </div>
 
         {/* Desktop Links */}
         <div className="hidden sm:flex items-center space-x-3">
-          {["Home", "Social"].map((item) => (
+          {["Home", "Social", "Market", "Community"].map((item) => (
             <Link
               key={item}
-              href={`/${item}`}
-              className="px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300 shadow-sm hover:shadow-md"
+              href={item === "Home" ? "/" : item}
+              className="px-4 py-2 rounded-lg text-white font-semibold hover:text-[#4A90E2] hover:bg-white transition-all duration-300 shadow-md hover:shadow-xl"
             >
               {item}
             </Link>
           ))}
-          {/* Marketplace Link */}
-          <Link
-            href="/marketplace"
-            className="px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300 shadow-sm hover:shadow-md"
-          >
-            Marketplace
-          </Link>
-          {/* New messages link */}
-          <Link
-            href="/messages"
-            className="px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300 shadow-sm hover:shadow-md"
-          >
-            Messages
-          </Link>
-          {/* New AI Chat link */}
-          <Link
-            href="/aichat"
-            className="px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300 shadow-sm hover:shadow-md"
-          >
-            AI Chat
-          </Link>
-          {/* Admin Panel Link (conditionally rendered) */}
-          {isAdmin && (
-            <Link
-              href="/admin"
-              className="px-4 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-500 transition-all duration-300 shadow-sm hover:shadow-md"
-            >
-              Admin Panel
-            </Link>
-          )}
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center space-x-3">
-          {/* Add Pet button - hidden on mobile */}
+        <div className="flex items-center space-x-4">
+          {/* Add Pet button - using the secondary accent color */}
           <button
             onClick={() => window.location.replace("/Addpet")}
-            className="hidden sm:inline-block bg-yellow-400 px-4 py-2 rounded-lg font-semibold shadow-md hover:shadow-lg hover:scale-105 transition-all duration-300"
+            className="hidden sm:inline-block bg-[#50E3C2] text-[#333333] px-5 py-2 rounded-full font-bold shadow-md hover:shadow-xl hover:scale-105 transition-all duration-300"
           >
-            + Add Pet
+            + New Pet
           </button>
 
           {/* Profile */}
@@ -77,7 +46,8 @@ export default function Navbar() {
               alt="profile"
               width={40}
               height={40}
-              className="rounded-full border-2 border-yellow-400 shadow-sm hover:shadow-md transition-all duration-300"
+              // Updated border color to secondary accent
+              className="rounded-full border-2 border-[#50E3C2] shadow-lg hover:shadow-xl hover:ring-2 ring-white transition-all duration-300" 
             />
           </Link>
 
@@ -95,51 +65,17 @@ export default function Navbar() {
 
       {/* Mobile Menu */}
       {menuOpen && (
-        <div className="sm:hidden bg-orange-400 px-4 pb-4 transition-all duration-300">
-          {["Home", "Social", "Market", "Hhh"].map((item) => (
+        <div className="sm:hidden bg-[#4A90E2] px-4 pb-4 transition-all duration-300">
+          {["Home", "Social", "Market", "Community"].map((item) => (
             <Link
               key={item}
-              href={`/${item}`}
-              className="block px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300"
+              href={item === "Home" ? "/" : "#"}
+              className="block px-4 py-2 mt-1 rounded-lg text-white font-semibold hover:text-[#4A90E2] hover:bg-white transition-all duration-300"
               onClick={() => setMenuOpen(false)}
             >
               {item}
             </Link>
           ))}
-          {/* Marketplace Link */}
-          <Link
-            href="/marketplace"
-            className="block px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300"
-            onClick={() => setMenuOpen(false)}
-          >
-            Marketplace
-          </Link>
-          {/* New messages link in mobile menu */}
-          <Link
-            href="/messages"
-            className="block px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300"
-            onClick={() => setMenuOpen(false)}
-          >
-            Messages
-          </Link>
-          {/* New AI Chat link in mobile menu */}
-          <Link
-            href="/aichat"
-            className="block px-4 py-2 rounded-lg text-white font-semibold hover:text-orange-400 hover:bg-white transition-all duration-300"
-            onClick={() => setMenuOpen(false)}
-          >
-            AI Chat
-          </Link>
-          {/* Admin Panel Link (conditionally rendered) */}
-          {isAdmin && (
-            <Link
-              href="/admin"
-              className="block px-4 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-500 transition-all duration-300"
-              onClick={() => setMenuOpen(false)}
-            >
-              Admin Panel
-            </Link>
-          )}
         </div>
       )}
     </nav>

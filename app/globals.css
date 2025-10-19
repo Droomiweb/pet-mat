@@ -4,16 +4,27 @@
 @tailwind components;
 @tailwind utilities;
 
-/* You can also add custom styles below */
+/* Custom Color Palette & Modern Font */
 body {
   font-family: 'Poppins', sans-serif;
-  background-color: #F6F1E9;
+  /* New Background Color */
+  background-color: #F4F7F9; 
 }
 .maintopbox {
-  width: 100vw;      /* full viewport width */
-  height: 100vh;     /* full viewport height */
-  overflow-y: hidden; /* disable vertical scroll */
+  width: 100vw;
+  height: 100vh;
+  overflow-y: hidden;
 }
+
+/* Define Custom Utility Classes for New Palette */
+.text-primary { color: #333333; }
+.bg-primary { background-color: #4A90E2; }
+.bg-secondary { background-color: #50E3C2; }
+.border-accent { border-color: #4A90E2; }
+.hover-scale { @apply hover:scale-[1.02] transition-transform duration-300; }
+.input-style { @apply w-full outline-none bg-transparent mb-4 border-b-2 border-gray-300 p-2 focus:border-[#4A90E2] transition-colors; }
+.btn-primary { @apply bg-[#4A90E2] hover:bg-[#3A75B9] text-white font-bold py-3 px-8 rounded-xl shadow-lg transition-all duration-300 hover-scale; }
+.btn-secondary { @apply bg-[#50E3C2] hover:bg-[#3FCCB4] text-[#333333] font-bold py-3 px-8 rounded-xl shadow-lg transition-all duration-300 hover-scale; }
 
 /* 
 | Your Color | Hex       | Tailwind Equivalent (Closest)                                                    |

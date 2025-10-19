@@ -11,7 +11,6 @@ export default function ProfilePage() {
   const [locationName, setLocationName] = useState("");
   const router = useRouter();
 
-  // Function to fetch all necessary user data
   const fetchUserData = async (user) => {
     // Fetch user from MongoDB
     const res = await fetch(`/api/user/${user.uid}`);
@@ -82,35 +81,53 @@ export default function ProfilePage() {
     fetchUserData(user);
   }, []);
 
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'verified':
+        return 'bg-green-100 text-green-700 border-green-400';
+      case 'rejected':
+        return 'bg-red-100 text-red-700 border-red-400';
+      default:
+        return 'bg-yellow-100 text-yellow-700 border-yellow-400';
+    }
+  };
+
   if (!userData) {
-    return <p className="text-[#4F200D] text-center mt-20">Loading profile...</p>;
+    // Updated loading text style
+    return <p className="text-[#333333] text-center mt-20 text-xl">Loading profile...</p>; 
   }
 
-  // ✅ Safely get the user ID here, after `userData` has been loaded
+  // Safely get the user ID
   const userId = userData.username || auth.currentUser.uid;
 
   return (
-    <div className="min-h-screen bg-[#F6F1E9] p-4 md:p-10">
-      <div className="max-w-5xl mx-auto bg-white rounded-3xl shadow-lg p-6 md:p-10">
+    // Updated BG color to new global background
+    <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-10"> 
+      {/* Updated card styling with modern shadow and accent border */}
+      <div className="max-w-5xl mx-auto bg-white rounded-3xl shadow-2xl p-6 md:p-10 border-t-8 border-[#4A90E2]"> 
+        
         {/* Header: User Info + Add Pet Button */}
-        <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-8">
+        <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-10 border-b pb-6 border-gray-100">
           <div>
-            <h1 className="text-3xl font-bold text-[#4F200D]">{userData.name}</h1>
-            <p className="text-[#4F200D] mt-1">UserID: {userId}</p>
-            <p className="text-[#4F200D] mt-1">
+            {/* Updated text color */}
+            <h1 className="text-4xl font-extrabold text-[#333333]">{userData.name}</h1>
+            <p className="text-[#333333] mt-2 text-lg">UserID: {userId}</p>
+            <p className="text-[#333333] mt-1 text-lg">
               Location: {locationName || "Not available"}
             </p>
           </div>
-          <div className="flex gap-3 mt-4 md:mt-0">
+          <div className="flex gap-4 mt-6 md:mt-0">
+            {/* Use utility class for Add Pet button */}
             <button
               onClick={() => router.push("/Addpet")}
-              className="bg-[#FF9A00] hover:bg-[#FFD93D] text-white font-bold py-2 px-6 rounded-full transition shadow-md"
+              className="bg-[#50E3C2] hover:bg-[#3FCCB4] text-[#333333] font-bold py-3 px-6 rounded-xl transition shadow-lg hover:scale-105"
             >
               + Add Pet
             </button>
+            {/* New style for Logout button */}
             <button
               onClick={handleLogout}
-              className="bg-[#4F200D] hover:bg-[#FF9A00] text-white font-bold py-2 px-6 rounded-full transition shadow-md"
+              className="bg-[#333333] hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-xl transition shadow-lg" 
             >
               Logout
             </button>
@@ -118,33 +135,51 @@ export default function ProfilePage() {
         </div>
 
         {/* Pets Section */}
-        <h2 className="text-2xl font-bold text-[#4F200D] mb-6">My Pets</h2>
+        {/* Updated heading style */}
+        <h2 className="text-3xl font-bold text-[#4A90E2] mb-8 border-l-4 border-[#50E3C2] pl-3">My Pets ({pets.length})</h2>
         {pets.length === 0 ? (
-          <p className="text-[#4F200D]">No pets added yet.</p>
+          <p className="text-[#333333] text-lg">No pets added yet. Click 'Add Pet' to get started!</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8">
             {pets.map((pet) => (
               <div
                 key={pet._id}
-                className="bg-[#FFD93D] p-4 rounded-2xl shadow-lg flex flex-col justify-between hover:scale-105 transform transition"
+                // Updated pet card styling with interactive effects
+                className="bg-gray-50 p-5 rounded-2xl shadow-xl flex flex-col justify-between hover:scale-[1.02] transform transition duration-300 border-b-4 border-[#50E3C2] hover:border-[#4A90E2]" 
               >
                 <div>
                   {pet.imageUrls?.[0] && (
                     <img
                       src={pet.imageUrls[0]}
                       alt={pet.name}
-                      className="w-full h-48 object-cover rounded-xl mb-3"
+                      className="w-full h-48 object-cover rounded-xl mb-4 border border-gray-200"
                     />
                   )}
-                  <h3 className="font-bold text-xl">{pet.name}</h3>
-                  <p>Breed: {pet.breed}</p>
-                  <p>Age: {pet.age}</p>
+                  {/* Name and Gender Display */}
+                  <h3 className="font-bold text-2xl text-[#333333] flex justify-between items-center mb-2">
+                    {pet.name}
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${pet.gender === 'Male' ? 'bg-blue-200 text-blue-800' : 'bg-pink-200 text-pink-800'}`}>
+                        {pet.gender}
+                    </span>
+                  </h3>
+                  
+                  {/* Verification Status Badge */}
+                  <div className="mb-2">
+                      <span className={`font-bold px-3 py-1 rounded-full text-xs border ${getStatusBadge(pet.verificationStatus)} uppercase tracking-wider`}>
+                          {pet.verificationStatus}
+                      </span>
+                  </div>
+
+                  <p className="text-[#333333] mt-1">Breed: {pet.breed}</p>
+                  <p className="text-[#333333]">Age: {pet.age}</p>
+                  
                   {pet.certificateUrl && (
                     <a
                       href={pet.certificateUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-700 underline mt-2 block"
+                      // Updated link color
+                      className="text-[#4A90E2] font-medium underline mt-3 block hover:text-[#50E3C2]" 
                     >
                       View Certificate
                     </a>
@@ -152,9 +187,10 @@ export default function ProfilePage() {
                 </div>
                 <button
                   onClick={() => handleDeletePet(pet._id)}
-                  className="mt-4 bg-[#4F200D] hover:bg-[#FF9A00] text-white font-bold py-2 px-4 rounded-full transition"
+                  // Updated delete button style
+                  className="mt-6 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-full transition shadow-md hover:shadow-lg" 
                 >
-                  Delete
+                  Delete Listing
                 </button>
               </div>
             ))}
