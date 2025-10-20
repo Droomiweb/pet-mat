@@ -58,7 +58,7 @@ const breedOptions = {
       setLoading(false);
     }
   };
-  
+  const [unreadCount, setUnreadCount] = useState(3);
   // ADDED: Function to fetch user's pets for suggestions
   const fetchUserPets = async () => {
       const user = auth.currentUser;
@@ -80,6 +80,13 @@ const breedOptions = {
   }
 
   // UPDATED: Logic to fetch all required data
+  useEffect(() => {
+    fetchUserPets();
+    fetchPets();
+    
+    // NOTE FOR FUTURE: Implement logic here to accurately fetch unread message count
+    // and call setUnreadCount(actual_count);
+  }, []);
   useEffect(() => {
     fetchUserPets();
     fetchPets();
@@ -112,7 +119,8 @@ const breedOptions = {
 
   // UPDATED UI: Using new colors and styles
   return (
-    <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-10">
+    <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-10" 
+      data-unread-count={unreadCount}>
       <h1 className="text-4xl font-extrabold text-[#333333] mb-12 text-center border-b-4 border-[#4A90E2] pb-4">
         Discover Your Pet's Mate
       </h1>

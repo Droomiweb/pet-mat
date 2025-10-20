@@ -1,5 +1,7 @@
 /* app/globals.css */
 
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap'); 
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,8 +9,7 @@
 /* Custom Color Palette & Modern Font */
 body {
   font-family: 'Poppins', sans-serif;
-  /* New Background Color */
-  background-color: #F4F7F9; 
+  background-color: #E2F4EF; 
 }
 .maintopbox {
   width: 100vw;
@@ -16,20 +17,77 @@ body {
   overflow-y: hidden;
 }
 
-/* Define Custom Utility Classes for New Palette */
-.text-primary { color: #333333; }
-.bg-primary { background-color: #4A90E2; }
-.bg-secondary { background-color: #50E3C2; }
-.border-accent { border-color: #4A90E2; }
-.hover-scale { @apply hover:scale-[1.02] transition-transform duration-300; }
-.input-style { @apply w-full outline-none bg-transparent mb-4 border-b-2 border-gray-300 p-2 focus:border-[#4A90E2] transition-colors; }
-.btn-primary { @apply bg-[#4A90E2] hover:bg-[#3A75B9] text-white font-bold py-3 px-8 rounded-xl shadow-lg transition-all duration-300 hover-scale; }
-.btn-secondary { @apply bg-[#50E3C2] hover:bg-[#3FCCB4] text-[#333333] font-bold py-3 px-8 rounded-xl shadow-lg transition-all duration-300 hover-scale; }
+/* --- UPDATED CUSTOM UTILITY CLASSES FOR GLASSMORPHISM & THEME --- */
 
-/* 
-| Your Color | Hex       | Tailwind Equivalent (Closest)                                                    |
-| ---------- | --------- | -------------------------------------------------------------------------------- |
-| **Manja**  | `#FFD93D` | closest: `yellow-300` (`#FDE047`) or `amber-400` (`#FACC15`)                     |
-| **Orange** | `#FF9A00` | closest: `orange-500` (`#F97316`)                                                |
-| **BG**     | `#F6F1E9` | closest: `stone-100` (`#F5F5F4`) or `gray-100` (`#F3F4F6`)                       |
-| **Brown**  | `#4F200D` | closest: `brown-900` (if using `tailwindcss/colors`) or `orange-900` (`#7C2D12`) | */
+/* Primary Theme Colors */
+.bg-primary { background-color: #4A90E2; }
+.text-primary { color: #333333; } 
+.text-accent { color: #50E3C2; } 
+
+/* Glassmorphism Effect - Enhanced */
+/* app/globals.css (Relevant Snippet) */
+.glass-container {
+  background: rgba(255, 255, 255, 0.4); 
+  backdrop-filter: blur(20px);         
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3); 
+  border-right-color: rgba(255, 255, 255, 0.2);
+  border-bottom-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1); 
+}
+/* Input Styles */
+.input-style { 
+    @apply w-full outline-none bg-white/70 border border-gray-300 p-3 rounded-lg mb-4 focus:border-[#4A90E2] transition-colors shadow-sm; 
+}
+
+/* Button Styles */
+.btn-primary { 
+    @apply bg-[#4A90E2] hover:bg-[#3A75B9] text-white font-bold py-3 px-8 rounded-xl shadow-lg transition-all duration-300; 
+}
+.btn-secondary { 
+    @apply bg-[#50E3C2] hover:bg-[#3FCCB4] text-[#333333] font-bold py-3 px-8 rounded-xl shadow-lg transition-all duration-300; 
+}
+
+/* Utility to remove all margin/padding from the top of the body for auth screens */
+.auth-page-layout {
+    @apply min-h-screen w-screen p-0;
+}
+
+/* --- NEW: Animated Particle Background CSS --- */
+.animated-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden; 
+  z-index: 0; 
+  pointer-events: none; 
+}
+
+.particle {
+  position: absolute;
+  /* CHANGED: Particle color to a subtle mint green */
+  background: rgba(80, 227, 194, 0.4); /* Using #50E3C2 with 40% opacity */ 
+  border-radius: 50%;
+  opacity: 0; 
+  animation: moveParticles 15s infinite ease-in-out; 
+  animation-fill-mode: forwards; 
+}
+
+/* Different sizes and animation delays for variety */
+.particle:nth-child(1) { width: 40px; height: 40px; left: 10%; top: 20%; animation-delay: 0s; }
+.particle:nth-child(2) { width: 30px; height: 30px; left: 30%; top: 50%; animation-delay: 2s; }
+.particle:nth-child(3) { width: 50px; height: 50px; left: 50%; top: 10%; animation-delay: 4s; }
+.particle:nth-child(4) { width: 35px; height: 35px; left: 70%; top: 80%; animation-delay: 6s; }
+.particle:nth-child(5) { width: 45px; height: 45px; left: 90%; top: 40%; animation-delay: 8s; }
+.particle:nth-child(6) { width: 25px; height: 25px; left: 5%; top: 90%; animation-delay: 10s; }
+.particle:nth-child(7) { width: 55px; height: 55px; left: 40%; top: 70%; animation-delay: 12s; }
+
+@keyframes moveParticles {
+  0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
+  25% { transform: translate(10vw, 20vh) scale(1); opacity: 0.8; }
+  50% { transform: translate(0vw, 40vh) scale(0.7); opacity: 0.6; }
+  75% { transform: translate(-10vw, 20vh) scale(1.2); opacity: 0.9; }
+  100% { transform: translate(0, 0) scale(0.5); opacity: 0; } 
+}
