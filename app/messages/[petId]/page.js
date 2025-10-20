@@ -2,7 +2,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { auth } from "../../../app/lib/firebase"; // Note: Adjusted relative path
+import { auth } from "../../../app/lib/firebase"; 
 
 export default function ChatSessionPage() {
   const [pet, setPet] = useState(null);
@@ -14,7 +14,7 @@ export default function ChatSessionPage() {
   const user = auth.currentUser;
   const messagesEndRef = useRef(null);
 
-  const petId = params.petId; // The ID of the pet whose messages we are viewing/replying to
+  const petId = params.petId; 
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -29,11 +29,12 @@ export default function ChatSessionPage() {
       
       const data = await res.json();
       
-      // Determine the partner ID from the message history for security and display
-      const firstMessageSenderId = data.messages?.find(msg => msg.senderId !== data.ownerId)?.senderId;
+      const isOwner = user.uid === data.ownerId;
+      // Determine the partner by looking for a sender ID that is NOT the pet owner
+      const conversationPartnerId = data.messages?.find(msg => msg.senderId !== data.ownerId)?.senderId;
 
-      if (user.uid !== data.ownerId && user.uid !== firstMessageSenderId) {
-          // Prevent unauthorized users from viewing the chat
+      if (!isOwner && user.uid !== conversationPartnerId) {
+          // If neither the owner nor the conversation partner, redirect.
           return router.push("/messages");
       }
       
@@ -53,6 +54,7 @@ export default function ChatSessionPage() {
     setSending(true);
     
     try {
+      // FIX: The backend requires requesterId/Name to identify the sender.
       const res = await fetch(`/api/pet/${petId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -66,9 +68,12 @@ export default function ChatSessionPage() {
 
       if (res.ok) {
         setReplyText("");
-        fetchPetMessages(); 
+        // FIX: Re-fetch messages and explicitly update local state to avoid flicker
+        const updatedPetRes = await fetch(`/api/pet/${petId}`);
+        const updatedPetData = await updatedPetRes.json();
+        setPet(updatedPetData); 
       } else {
-        alert("Failed to send reply.");
+        alert("Failed to send reply. Check console for details.");
       }
     } catch (err) {
       console.error(err);
@@ -77,26 +82,28 @@ export default function ChatSessionPage() {
     }
   };
   
-  // NEW: Function to handle request status change
   const handleRequestStatus = async (status, requestId) => {
       if (!requestId) return alert("No request ID provided.");
       
       try {
+          // Pass user info for authorization on backend (Owner check)
           const res = await fetch(`/api/pet/${petId}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                  action: "updateRequestStatus", // New API action
+                  action: "updateRequestStatus", 
                   requestId: requestId,
                   newStatus: status,
+                  requesterId: user.uid, 
+                  requesterName: user.email.split("@")[0], 
               }),
           });
           
           if (res.ok) {
               alert(`Mating request has been ${status}.`);
-              fetchPetMessages(); // Refresh chat
+              fetchPetMessages();
           } else {
-              alert(`Failed to ${status} request.`);
+              alert(`Failed to ${status} request. Check console for details.`);
           }
       } catch (err) {
           console.error(err);
@@ -116,22 +123,34 @@ export default function ChatSessionPage() {
   if (loading || !pet) {
     return <p className="text-[#333333] text-center mt-20 text-xl">Loading chat session...</p>;
   }
-
+  
   // --- UI START ---
   
   const isOwner = user?.uid === pet.ownerId;
-  // Determine the conversation partner and the pending request
-  const conversationPartnerId = pet.messages.find(msg => msg.senderId !== pet.ownerId)?.senderId;
-  const partnerName = pet.messages.find(msg => msg.senderId !== pet.ownerId)?.senderName || "Requester";
   
-  // Find the latest PENDING request involving this partner (identified by requesterId)
-  const latestPendingRequest = pet.matingHistory?.find(
-      (mh) => mh.requesterId === conversationPartnerId && mh.status === "pending"
-  );
+  // Determine conversation partner by finding the first sender ID that is NOT the pet owner
+  const conversationPartner = pet.messages.find(msg => msg.senderId !== pet.ownerId)
+                              || (isOwner && pet.matingHistory?.find(mh => mh.status === "pending"));
+  
+  const partnerName = conversationPartner?.senderName 
+                        || conversationPartner?.requesterName 
+                        || "Requester";
+  
+  const partnerId = conversationPartner?.senderId
+                        || conversationPartner?.requesterId;
+
+
+  const latestPendingRequest = isOwner ? pet.matingHistory?.find(
+      (mh) => mh.requesterId === partnerId && mh.status === "pending"
+  ) : null;
+  
+  const isRequesterOfPending = !isOwner ? pet.matingHistory?.find(
+      (mh) => mh.targetPetId === petId && mh.status === "pending"
+  ) : null;
   
   return (
-    <div className="h-screen w-screen bg-[#F4F7F9] flex justify-center items-stretch p-0">
-      <div className="w-full max-w-xl bg-white rounded-none sm:rounded-2xl shadow-2xl flex flex-col h-full sm:h-[95vh] border-t-8 border-[#4A90E2] sm:my-4">
+    <div className="h-screen w-screen bg-[#E2F4EF] flex justify-center items-stretch p-0">
+      <div className="w-full max-w-xl glass-container rounded-none sm:rounded-2xl shadow-2xl flex flex-col h-full sm:h-[95vh] border-t-8 border-[#4A90E2] sm:my-4 p-0">
         
         {/* Header (Fixed) */}
         <div className="sticky top-0 bg-[#4A90E2] p-4 text-white shadow-md flex items-center justify-between">
@@ -144,11 +163,11 @@ export default function ChatSessionPage() {
             <div className="w-6"></div>
         </div>
         
-        {/* NEW: Request Management Banner (Only for Owner and if a pending request exists) */}
+        {/* Request Management Banner */}
         {isOwner && latestPendingRequest && (
             <div className="bg-yellow-50 p-3 border-b border-yellow-200 flex flex-col sm:flex-row justify-between items-center text-sm font-semibold sticky top-14 z-10">
                 <p className="text-[#333333] mb-2 sm:mb-0">
-                    Mating request from **{latestPendingRequest.requesterPetName}** ({latestPendingRequest.requesterName})
+                    Mating request from **{latestPendingRequest.requesterPetName || latestPendingRequest.requesterName}**
                 </p>
                 <div className="flex space-x-3">
                     <button 
@@ -164,6 +183,15 @@ export default function ChatSessionPage() {
                         Reject
                     </button>
                 </div>
+            </div>
+        )}
+        
+        {/* Requester Pending Banner */}
+        {isRequesterOfPending && (
+             <div className="bg-blue-50 p-3 border-b border-blue-200 text-sm font-semibold text-center sticky top-14 z-10">
+                <p className="text-[#333333]">
+                    Your mating request for **{pet.name}** is currently **PENDING**.
+                </p>
             </div>
         )}
         

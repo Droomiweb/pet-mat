@@ -8,16 +8,12 @@ import { auth } from "./lib/firebase";
 import { useRouter } from "next/navigation";
 
 // --- START: Self-Contained SVG Icon Components ---
-
-// User Profile Icon (for the left side)
 const ProfileIcon = (props) => (
   <svg {...props} xmlns="http://www.w3.org/2000/svg" width={props.size || "24"} height={props.size || "24"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
     <circle cx="12" cy="7" r="4"/>
   </svg>
 );
-
-// List/Menu Icon (for the mobile hamburger menu)
 const ListIcon = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width={props.size || "24"} height={props.size || "24"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <line x1="3" x2="21" y1="12" y2="12"/>
@@ -25,14 +21,11 @@ const ListIcon = (props) => (
         <line x1="3" x2="21" y1="18" y2="18"/>
     </svg>
 );
-
-// Message Icon (for the message count on the right)
 const MessageIcon = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width={props.size || "24"} height={props.size || "24"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
     </svg>
 );
-
 // --- END: Self-Contained SVG Icon Components ---
 
 export default function Navbar({ unreadMessageCount = 0 }) {
@@ -49,8 +42,8 @@ export default function Navbar({ unreadMessageCount = 0 }) {
       { name: "Home", href: "/" },
       { name: "Marketplace", href: "/marketplace" },
       { name: "Dr. Paws AI", href: "/AiDoc" },
-      { name: "Add New Pet", href: "/Addpet", isButton: true }, // Added as a Nav item for mobile
-      { name: "Logout", onClick: handleLogout, isButton: true }, // Added Logout
+      { name: "Add New Pet", href: "/Addpet", isButton: true },
+      { name: "Logout", onClick: handleLogout, isButton: true },
   ];
   
   // Exclude Add Pet and Logout from desktop links
@@ -91,8 +84,7 @@ export default function Navbar({ unreadMessageCount = 0 }) {
             <Link
               key={item.name}
               href={item.href}
-              // FIXED: Ensuring all related transition properties are applied for a smooth "transfer" effect.
-              // We keep the background/text change, but rely on Tailwind's utility class for the animation timing.
+              // FIXED: This combination creates the smooth background transfer effect (Magic Hover)
               className="px-4 py-2 rounded-lg font-semibold 
                          text-white transition-all duration-300 ease-in-out shadow-md
                          hover:text-primary hover:bg-white hover:shadow-xl"
@@ -103,7 +95,6 @@ export default function Navbar({ unreadMessageCount = 0 }) {
           {/* Desktop Add Pet Button */}
           <button
             onClick={() => router.push("/Addpet")}
-            // Added transition to the buttons for consistency
             className="bg-secondary text-primary px-5 py-2 rounded-full font-bold shadow-md 
                        hover:shadow-xl hover:scale-105 transition-all duration-300 ml-4"
           >
@@ -113,7 +104,6 @@ export default function Navbar({ unreadMessageCount = 0 }) {
           {/* Desktop Logout Button */}
           <button
             onClick={handleLogout}
-            // Added transition to the buttons for consistency
             className="bg-red-500 text-white px-5 py-2 rounded-full font-bold shadow-md 
                        hover:shadow-xl hover:scale-105 transition-all duration-300"
           >
@@ -155,7 +145,6 @@ export default function Navbar({ unreadMessageCount = 0 }) {
                     {item.href ? (
                         <Link
                             href={item.href}
-                            // Ensuring smooth hover transition on mobile menu items too
                             className={`block px-4 py-2 rounded-lg text-primary font-semibold hover:bg-gray-100 transition-colors duration-300 ${item.isButton ? 'mt-4 border-t pt-4 text-accent' : ''}`}
                             onClick={() => setMenuOpen(false)}
                         >

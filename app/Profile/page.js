@@ -93,23 +93,21 @@ export default function ProfilePage() {
   };
 
   if (!userData) {
-    // Updated loading text style
     return <p className="text-[#333333] text-center mt-20 text-xl">Loading profile...</p>; 
   }
 
-  // Safely get the user ID
   const userId = userData.username || auth.currentUser.uid;
 
   return (
     // Updated BG color to new global background
-    <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-10"> 
-      {/* Updated card styling with modern shadow and accent border */}
-      <div className="max-w-5xl mx-auto bg-white rounded-3xl shadow-2xl p-6 md:p-10 border-t-8 border-[#4A90E2]"> 
+    <div className="min-h-screen bg-[#E2F4EF] p-4 md:p-10"> 
+      
+      {/* Main Profile Card - APPLY GLASS */}
+      <div className="max-w-5xl mx-auto glass-container shadow-2xl border-t-8 border-[#4A90E2]"> 
         
         {/* Header: User Info + Add Pet Button */}
         <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-10 border-b pb-6 border-gray-100">
           <div>
-            {/* Updated text color */}
             <h1 className="text-4xl font-extrabold text-[#333333]">{userData.name}</h1>
             <p className="text-[#333333] mt-2 text-lg">UserID: {userId}</p>
             <p className="text-[#333333] mt-1 text-lg">
@@ -117,14 +115,12 @@ export default function ProfilePage() {
             </p>
           </div>
           <div className="flex gap-4 mt-6 md:mt-0">
-            {/* Use utility class for Add Pet button */}
             <button
               onClick={() => router.push("/Addpet")}
               className="bg-[#50E3C2] hover:bg-[#3FCCB4] text-[#333333] font-bold py-3 px-6 rounded-xl transition shadow-lg hover:scale-105"
             >
               + Add Pet
             </button>
-            {/* New style for Logout button */}
             <button
               onClick={handleLogout}
               className="bg-[#333333] hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-xl transition shadow-lg" 
@@ -135,7 +131,6 @@ export default function ProfilePage() {
         </div>
 
         {/* Pets Section */}
-        {/* Updated heading style */}
         <h2 className="text-3xl font-bold text-[#4A90E2] mb-8 border-l-4 border-[#50E3C2] pl-3">My Pets ({pets.length})</h2>
         {pets.length === 0 ? (
           <p className="text-[#333333] text-lg">No pets added yet. Click 'Add Pet' to get started!</p>
@@ -144,8 +139,8 @@ export default function ProfilePage() {
             {pets.map((pet) => (
               <div
                 key={pet._id}
-                // Updated pet card styling with interactive effects
-                className="bg-gray-50 p-5 rounded-2xl shadow-xl flex flex-col justify-between hover:scale-[1.02] transform transition duration-300 border-b-4 border-[#50E3C2] hover:border-[#4A90E2]" 
+                // Pet card styling - APPLY subtle glass background
+                className="bg-white/50 p-5 rounded-2xl shadow-xl flex flex-col justify-between hover:scale-[1.02] transform transition duration-300 border-b-4 border-[#50E3C2] hover:border-[#4A90E2]" 
               >
                 <div>
                   {pet.imageUrls?.[0] && (

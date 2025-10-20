@@ -130,7 +130,7 @@ export default function Signup() {
                 value={name} 
                 onChange={(e) => setName(e.target.value)} 
                 className="input-style" 
-                placeholder="Full Name" // ADDED: Placeholder
+                placeholder="Full Name" 
                 required 
             />
 
@@ -140,7 +140,7 @@ export default function Signup() {
                 value={userN} 
                 onChange={(e) => setUserN(e.target.value)} 
                 className="input-style" 
-                placeholder="Username" // ADDED: Placeholder
+                placeholder="Username" 
                 required 
             />
 
@@ -150,7 +150,7 @@ export default function Signup() {
                 value={phone} 
                 onChange={(e) => setPhone(e.target.value)} 
                 className="input-style" 
-                placeholder="Phone (10 digits)" // ADDED: Placeholder
+                placeholder="Phone (10 digits)" 
                 required 
             />
 
@@ -161,7 +161,7 @@ export default function Signup() {
                 value={pass} 
                 onChange={(e) => setPass(e.target.value)} 
                 className="input-style pr-12" 
-                placeholder="Password" // ADDED: Placeholder
+                placeholder="Password" 
                 required 
               />
               <button
@@ -179,7 +179,7 @@ export default function Signup() {
                 value={pass2} 
                 onChange={(e) => setPass2(e.target.value)} 
                 className="input-style" 
-                placeholder="Rewrite Password" // ADDED: Placeholder
+                placeholder="Rewrite Password" 
                 required 
             />
 

@@ -24,7 +24,7 @@ export default function Login() {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       console.log("Logged in user UID:", userCredential.user.uid);
 
-      router.push("/Home"); // redirect to Home page
+      router.push("/Home"); 
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || "Login failed");
@@ -51,7 +51,7 @@ export default function Login() {
         <div className="hidden md:flex flex-col justify-center items-center p-10 bg-[#50E3C2]/50">
           <h2 className="text-4xl font-extrabold text-white mb-6">PetLink</h2>
           <Image 
-            src="/imgs/topimg.png" // <-- Using the correct file extension (.png)
+            src="/imgs/topimg.png" 
             alt="Welcome Illustration" 
             width={250} 
             height={250} 
@@ -75,7 +75,7 @@ export default function Login() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="input-style" 
-              placeholder="Username" // ADDED: Placeholder
+              placeholder="Username" 
               required
             />
 
@@ -86,7 +86,7 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="input-style pr-12"
-                placeholder="Password" // ADDED: Placeholder
+                placeholder="Password"
                 required
               />
               <button

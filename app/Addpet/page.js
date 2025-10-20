@@ -105,7 +105,7 @@ export default function AddPet() {
             <div className="particle"></div>
         </div>
 
-        <div className="w-full max-w-md my-8 glass-container p-6 sm:p-10 rounded-2xl flex flex-col items-center shadow-2xl z-10 overflow-y-auto max-h-[90vh]">
+        <div className="w-full max-w-md my-8 glass-container shadow-2xl z-10 overflow-y-auto max-h-[90vh]">
           <h1 className="text-primary mb-8 text-center text-3xl font-bold">REGISTER NEW PET</h1>
 
           <form onSubmit={handleSubmit} className="w-full flex flex-col">
@@ -116,7 +116,7 @@ export default function AddPet() {
               value={petName}
               onChange={(e) => setPetName(e.target.value)}
               className="input-style" 
-              placeholder="Pet Name" // ADDED: Placeholder
+              placeholder="Pet Name" 
               required
             />
 
@@ -126,12 +126,12 @@ export default function AddPet() {
               value={petAge}
               onChange={(e) => setPetAge(e.target.value)}
               className="input-style" 
-              placeholder="Age (Years)" // ADDED: Placeholder
+              placeholder="Age (Years)" 
               required
             />
 
             {/* Pet Type Select */}
-            <div className="input-style p-0 mb-4"> {/* Use input-style wrapper */}
+            <div className="input-style p-0 mb-4">
               <select
                 value={petType}
                 onChange={(e) => {
@@ -151,7 +151,7 @@ export default function AddPet() {
             </div>
 
             {/* Pet Breed Select */}
-            <div className="input-style p-0 mb-4"> {/* Use input-style wrapper */}
+            <div className="input-style p-0 mb-4">
               <select
                 value={petBreed}
                 onChange={(e) => setPetBreed(e.target.value)}
@@ -172,7 +172,7 @@ export default function AddPet() {
             </div>
             
             {/* Pet Gender Select */}
-            <div className="input-style p-0 mb-4"> {/* Use input-style wrapper */}
+            <div className="input-style p-0 mb-4">
               <select
                 value={petGender}
                 onChange={(e) => setPetGender(e.target.value)}

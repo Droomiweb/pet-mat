@@ -9,7 +9,7 @@
 /* Custom Color Palette & Modern Font */
 body {
   font-family: 'Poppins', sans-serif;
-  background-color: #E2F4EF; 
+  background-color: #E2F4EF; /* Soft Mint/Teal Background */
 }
 .maintopbox {
   width: 100vw;
@@ -24,19 +24,25 @@ body {
 .text-primary { color: #333333; } 
 .text-accent { color: #50E3C2; } 
 
-/* Glassmorphism Effect - Enhanced */
-/* app/globals.css (Relevant Snippet) */
+/* Glassmorphism Effect - ENHANCED */
 .glass-container {
+  /* Translucent white background */
   background: rgba(255, 255, 255, 0.4); 
+  /* Strong blur effect */
   backdrop-filter: blur(20px);         
   -webkit-backdrop-filter: blur(20px);
+  /* Light border for depth */
   border: 1px solid rgba(255, 255, 255, 0.3); 
   border-right-color: rgba(255, 255, 255, 0.2);
   border-bottom-color: rgba(255, 255, 255, 0.2);
+  /* Stronger shadow for floating effect */
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1); 
+  @apply rounded-3xl p-6 md:p-10; /* Apply consistent padding and border radius */
 }
+
 /* Input Styles */
 .input-style { 
+    /* Semi-transparent white background for inputs */
     @apply w-full outline-none bg-white/70 border border-gray-300 p-3 rounded-lg mb-4 focus:border-[#4A90E2] transition-colors shadow-sm; 
 }
 
@@ -67,8 +73,8 @@ body {
 
 .particle {
   position: absolute;
-  /* CHANGED: Particle color to a subtle mint green */
-  background: rgba(80, 227, 194, 0.4); /* Using #50E3C2 with 40% opacity */ 
+  /* Particle color set to transparent mint green */
+  background: rgba(80, 227, 194, 0.4); 
   border-radius: 50%;
   opacity: 0; 
   animation: moveParticles 15s infinite ease-in-out; 
