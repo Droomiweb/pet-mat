@@ -3,7 +3,7 @@ import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
 import cloudinary from "../../../lib/cloudinary";
 
-// GET a single pet by ID
+// GET a single pet by ID (remains the same)
 export async function GET(req, context) {
   try {
     await connectDB();
@@ -18,81 +18,108 @@ export async function GET(req, context) {
   }
 }
 
-// PATCH: send mating request or add a message
+// PATCH: send mating request, add a message, OR UPDATE REQUEST STATUS
 export async function PATCH(req, context) {
   try {
     await connectDB();
     const { id } = await context.params;
-    // UPDATED: Destructure new fields
-    const { action, requesterId, requesterName, requesterPetId, requesterPetName, messageText } = await req.json();
+    // UPDATED: Destructure new fields for status update
+    const { 
+      action, 
+      requesterId, 
+      requesterName, 
+      requesterPetId, 
+      requesterPetName, 
+      messageText,
+      // --- NEW FIELDS FOR STATUS UPDATE ---
+      requestId, 
+      newStatus 
+      // --- END NEW FIELDS ---
+    } = await req.json();
 
     if (!requesterId || !requesterName) {
         return new Response(JSON.stringify({ error: "Authentication data missing. Please try logging in again." }), { status: 401 });
     }
     
-    const petExists = await Pet.findById(id).select('_id');
-    if (!petExists) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
+    const pet = await Pet.findById(id);
+    if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
-    const newMessage = { senderId: requesterId, senderName: requesterName, text: messageText, sentAt: new Date() };
-
+    // --- MATING REQUEST ACTION ---
     if (action === "matingRequest") {
-      // NEW CHECK: Require the requester pet info
       if (!requesterPetId || !requesterPetName) {
          return new Response(JSON.stringify({ error: "Requester pet details are required." }), { status: 400 });
       }
 
-      const updatePayload = {
-        $push: {
-          matingHistory: { 
-            requesterId, 
-            requesterName, 
-            requesterPetId,     // STORE THIS
-            requesterPetName,   // STORE THIS
-            status: "pending", 
-            requestedAt: new Date() 
-          }
-        }
+      const newMatingRequest = { 
+        requesterId, 
+        requesterName, 
+        requesterPetId,
+        requesterPetName,
+        status: "pending", 
+        requestedAt: new Date() 
       };
-      // If a message is included with the request, push it as well
+      
+      pet.matingHistory.push(newMatingRequest);
+
       if (messageText) {
-        updatePayload.$push.messages = newMessage;
+        pet.messages.push({ senderId: requesterId, senderName: requesterName, text: messageText, sentAt: new Date() });
       }
-
-      const updatedPet = await Pet.findByIdAndUpdate(
-        id, 
-        updatePayload,
-        { new: true, runValidators: false } // Avoid full document validation
-      );
-
-      if (!updatedPet) return new Response(JSON.stringify({ error: "Pet not found during update" }), { status: 404 });
-
+      
+      await pet.save();
       return new Response(JSON.stringify({ message: "Mating request sent!" }), { status: 200 });
     }
 
+    // --- ADD MESSAGE ACTION ---
     if (action === "addMessage") {
       if (!messageText)
         return new Response(JSON.stringify({ error: "Message text is required" }), { status: 400 });
 
-      const updatedPet = await Pet.findByIdAndUpdate(
-        id,
-        { $push: { messages: newMessage } },
-        { new: true, runValidators: false } // Avoid full document validation
-      );
-      
-      if (!updatedPet) return new Response(JSON.stringify({ error: "Pet not found during message add" }), { status: 404 });
-
+      pet.messages.push({ senderId: requesterId, senderName: requesterName, text: messageText, sentAt: new Date() });
+      await pet.save();
       return new Response(JSON.stringify({ message: "Message added!" }), { status: 200 });
     }
+    
+    // --- *** NEW: UPDATE REQUEST STATUS ACTION *** ---
+    if (action === "updateRequestStatus") {
+        if (!requestId || !newStatus || !['accepted', 'rejected'].includes(newStatus)) {
+            return new Response(JSON.stringify({ error: "Invalid request ID or status" }), { status: 400 });
+        }
+        
+        // Check if current user is the pet owner
+        if (pet.ownerId !== requesterId) {
+            return new Response(JSON.stringify({ error: "Only the pet owner can update requests." }), { status: 403 });
+        }
+
+        const request = pet.matingHistory.id(requestId);
+        if (!request) {
+            return new Response(JSON.stringify({ error: "Mating request not found" }), { status: 404 });
+        }
+        
+        request.status = newStatus;
+        
+        // Add a system message to the chat
+        pet.messages.push({
+            senderId: "system", // Or use pet.ownerId
+            senderName: "System",
+            text: `Mating request from ${request.requesterName} for ${request.requesterPetName} has been ${newStatus}.`,
+            sentAt: new Date()
+        });
+
+        await pet.save();
+        return new Response(JSON.stringify({ message: `Request ${newStatus}` }), { status: 200 });
+    }
+    // --- *** END NEW ACTION *** ---
 
     return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400 });
   } catch (err) {
     console.error("Error in PATCH /api/pet/[id]:", err);
-    // Return a 500 error response with a generic message
     return new Response(JSON.stringify({ error: "Internal Server Error during update" }), { status: 500 });
   }
 }
-// DELETE a pet by ID
+
+// DELETE a pet by ID (remains the same)
 export async function DELETE(req, context) {
+  // ... (delete logic remains the same) ...
   try {
     await connectDB();
     const { id } = await context.params;

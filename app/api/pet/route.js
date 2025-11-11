@@ -1,9 +1,10 @@
+// app/api/pet/route.js
 import connectDB from "./../../lib/mongodb";
 import Pet from "./../../models/PetModel";
 import User from "./../../models/User";
 import { v2 as cloudinary } from "cloudinary";
 
-// Configure Cloudinary (remains the same)
+// Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -14,20 +15,18 @@ cloudinary.config({
 export async function POST(req) {
   try {
     await connectDB();
-    // UPDATED: Destructure gender
-    const { name, type, age, breed, gender, certificateBase64, imagesBase64, ownerId } = await req.json();
+    // --- UPDATED: Destructure listingType ---
+    const { name, type, age, breed, gender, temperament, energyLevel, listingType, certificateBase64, imagesBase64, ownerId } = await req.json();
 
-    // UPDATED: Check for gender
-    if (!name || !type || !age || !breed || !gender || !certificateBase64 || !imagesBase64 || !ownerId) {
+    // --- UPDATED: Check for listingType ---
+    if (!name || !type || !age || !breed || !gender || !temperament || !energyLevel || !listingType || !certificateBase64 || !imagesBase64 || !ownerId) {
       return new Response(JSON.stringify({ error: "All fields are required" }), { status: 400 });
     }
     
-    // Upload certificate
+    // ... (cloudinary uploads remain the same) ...
     const certUpload = await cloudinary.uploader.upload(certificateBase64, {
       folder: `certificates/${ownerId}`,
     });
-
-    // Upload pet images
     const imageUrls = [];
     for (const base64 of imagesBase64) {
       const upload = await cloudinary.uploader.upload(base64, {
@@ -41,7 +40,10 @@ export async function POST(req) {
       type,
       age,
       breed,
-      gender, // ADDED: Save gender
+      gender,
+      temperament,
+      energyLevel,
+      listingType, // --- ADDED: Save listingType ---
       certificateUrl: certUpload.secure_url,
       imageUrls,
       ownerId,
@@ -52,10 +54,10 @@ export async function POST(req) {
     return new Response(JSON.stringify({ message: "Pet added successfully!", petId: newPet._id.toString() }), { status: 201 });
   } catch (err) {
     console.error("Error adding pet:", err);
-    // FIX: Ensure a valid JSON error response is always returned on failure (HTTP 500)
     return new Response(JSON.stringify({ error: err.message || "Failed to add pet due to server error." }), { status: 500 });
   }
 }
+
 // Fetch pets with optional filters
 export async function GET(req) {
   try {
@@ -65,26 +67,30 @@ export async function GET(req) {
     const type = searchParams.get("type");
     const breed = searchParams.get("breed");
     const city = searchParams.get("city");
-    // ADDED: Parameter to exclude user's own pets
-    const excludeOwnerId = searchParams.get("excludeOwnerId"); 
+    const excludeOwnerId = searchParams.get("excludeOwnerId");
+    
+    // --- NEW: Filter for listingType ---
+    const listingType = searchParams.get("listingType");
 
     const petQuery = {};
     if (type) petQuery.type = type;
     if (breed) petQuery.breed = breed;
-    // ADDED: Exclusion query
-    if (excludeOwnerId) petQuery.ownerId = { $ne: excludeOwnerId }; 
+    if (excludeOwnerId) petQuery.ownerId = { $ne: excludeOwnerId };
+    
+    // --- ADDED: Add listingType to the query if provided ---
+    if (listingType) {
+      petQuery.listingType = listingType;
+    }
 
     let pets = await Pet.find(petQuery).lean();
 
     // Filter by city if provided
     if (city) {
-      // ... (city filtering logic remains the same)
-      const usersInCity = await User.find({ "location.city": city }, "firebaseUid").lean(); // Changed _id to firebaseUid for consistency
-      const userUids = usersInCity.map(u => u.firebaseUid); // Use firebaseUid to match PetModel ownerId
+      const usersInCity = await User.find({ "location.city": city }, "firebaseUid").lean();
+      const userUids = usersInCity.map(u => u.firebaseUid);
       pets = pets.filter(pet => userUids.includes(pet.ownerId));
     }
     
-    // FETCH LOCATION FOR EACH PET (required for suggestions in Home/page.js)
     const petsWithLocation = await Promise.all(pets.map(async (pet) => {
         const owner = await User.findOne({ firebaseUid: pet.ownerId }, 'location').lean();
         return {
@@ -93,16 +99,19 @@ export async function GET(req) {
             type: pet.type,
             age: pet.age,
             breed: pet.breed,
-            gender: pet.gender, // ADDED: Include gender
+            gender: pet.gender,
+            temperament: pet.temperament,
+            energyLevel: pet.energyLevel,
+            listingType: pet.listingType, // --- ADDED: Return listingType ---
             imageUrls: pet.imageUrls || [],
             certificateUrl: pet.certificateUrl || null,
             ownerId: pet.ownerId,
-            location: owner?.location || null, // Include owner's location
+            location: owner?.location || null, 
         };
     }));
 
 
-    return new Response(JSON.stringify(petsWithLocation), { // Return updated list
+    return new Response(JSON.stringify(petsWithLocation), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -111,5 +120,3 @@ export async function GET(req) {
     return new Response(JSON.stringify({ error: "Failed to fetch pets" }), { status: 500 });
   }
 }
-
-// ... (remaining code)
