@@ -1,6 +1,6 @@
 // app/api/admin/confirm-litter/route.js
-import connectDB from "../../lib/mongodb";
-import Pet from "../../models/PetModel";
+import connectDB from "../../../lib/mongodb"; // <-- FIXED
+import Pet from "../../../models/PetModel"; // <-- FIXED
 
 export async function POST(req) {
   try {
