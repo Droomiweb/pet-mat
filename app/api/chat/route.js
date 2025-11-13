@@ -7,24 +7,27 @@ import Pet from "../../models/PetModel";
 // This function creates a new message in a Firestore conversation
 export async function POST(req) {
   try {
-    const { petId, senderId, senderName, text } = await req.json();
+    // --- V V V THIS IS THE FIX V V V ---
+    // We now read `conversationId` from the body
+    const { petId, senderId, senderName, text, conversationId } = await req.json();
 
-    if (!petId || !senderId || !senderName || !text) {
+    if (!petId || !senderId || !senderName || !text || !conversationId) {
+    // --- ^ ^ ^ END OF FIX ^ ^ ^ ---
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
     }
 
-    // Connect to MongoDB to get pet owner
+    // Connect to MongoDB to get pet owner (still useful for the convo doc)
     await connectDB();
     const pet = await Pet.findById(petId).lean();
     if (!pet) {
       return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
     }
-
     const petOwnerId = pet.ownerId;
     
-    // A conversation ID is a combination of the pet ID and the requester ID
-    // This ensures the chat is unique for this specific interaction.
-    const conversationId = `${petId}_${senderId === petOwnerId ? 'owner' : senderId}`;
+    // --- V V V THIS IS THE FIX V V V ---
+    // We NO LONGER calculate the conversationId. We use the one from the client.
+    // const conversationId = `${petId}_${senderId === petOwnerId ? 'owner' : senderId}`; // <-- DELETED
+    // --- ^ ^ ^ END OF FIX ^ ^ ^ ---
 
     // Create a reference to the 'messages' subcollection
     const messagesColRef = collection(db, "conversations", conversationId, "messages");
@@ -39,12 +42,16 @@ export async function POST(req) {
 
     // Also create/update the parent conversation doc for easy querying
     const convoDocRef = doc(db, "conversations", conversationId);
+    
+    // Find the 'requesterId' (the person who is NOT the owner)
+    const requesterId = conversationId.replace(petId, "").replace("_", "");
+    
     await setDoc(convoDocRef, {
         petId: petId,
         petName: pet.name,
         petOwnerId: petOwnerId,
-        requesterId: senderId === petOwnerId ? 'unknown' : senderId, // This logic could be improved
-        participants: [petOwnerId, senderId],
+        requesterId: requesterId, // Set the correct requesterId
+        participants: [petOwnerId, requesterId],
         lastMessage: text,
         updatedAt: serverTimestamp()
     }, { merge: true }); // Merge to avoid overwriting
