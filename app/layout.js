@@ -2,6 +2,7 @@
 import NavbarrWrapper from "./navbarrWraper";
 import { Poppins } from "next/font/google";
 import "./globals.css";
+// import "leaflet/dist/leaflet.css"; // <-- REMOVED THIS LINE
 import { AuthProvider } from "./auth-provider";
 import MaintenancePage from "./Maintenance";
 import { SpeedInsights } from "@vercel/speed-insights/next"

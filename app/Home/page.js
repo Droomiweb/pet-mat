@@ -5,24 +5,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "./../lib/firebase";
 
-// --- NEW MAP IMPORTS ---
-import dynamic from 'next/dynamic';
-import 'leaflet/dist/leaflet.css';
-// --- END NEW IMPORTS ---
-
-// --- NEW: Dynamically import the map to prevent SSR issues ---
-const MapDisplay = dynamic(
-  () => import('../components/MapDisplay'), // We will create this component
-  { ssr: false }
-);
-// --- END NEW ---
+// --- MAP IMPORTS REMOVED ---
 
 export default function Main() {
   const [pets, setPets] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [userPets, setUserPets] = useState([]);
   
-  // UPDATED: Changed 'city' to 'radius'
+  // Filters still include 'radius'
   const [filters, setFilters] = useState({ type: "", breed: "", radius: "50" }); // Default 50km
   
   const [loading, setLoading] = useState(true);
@@ -30,7 +20,6 @@ export default function Main() {
   const router = useRouter();
   
   const breedOptions = {
-      // ... (your breedOptions remain the same)
       Dog: ["Labrador Retriever", "German Shepherd", "Golden Retriever", "Bulldog", "Poodle", "Beagle", "Other"],
       Cat: ["Persian", "Maine Coon", "Siamese", "Bengal", "Ragdoll", "British Shorthair", "Other"],
       Rabbit: ["Holland Lop", "Netherland Dwarf", "Lionhead", "Flemish Giant", "Mini Rex", "Other"],
@@ -38,7 +27,7 @@ export default function Main() {
       Other: ["Mixed", "Unknown"],
   };
 
-  // UPDATED: Fetches pets listed ONLY for Mating
+  // This function still sends the 'radius' filter to the API
   const fetchPets = async () => {
     setLoading(true);
     try {
@@ -68,10 +57,52 @@ export default function Main() {
   };
   
   // ... (fetchUserPets and fetchSuggestions remain the same) ...
-  //
+  const fetchUserPets = async () => {
+      const user = auth.currentUser;
+      if (!user) {
+        setSuggestionsLoading(false);
+        return;
+      }
+      try {
+          const res = await fetch(`/api/pet/user/${user.uid}`);
+          if (res.ok) {
+              let data = await res.json();
+              const matingPets = data.filter(p => p.listingType === 'Mating');
+              setUserPets(matingPets);
+              
+              if (matingPets.length > 0) {
+                fetchSuggestions(matingPets[0]._id);
+              } else {
+                setSuggestionsLoading(false);
+              }
+          }
+      } catch (err) {
+          console.error("Error fetching user pets:", err);
+          setSuggestionsLoading(false);
+      }
+  }
+
+  const fetchSuggestions = async (userPetId) => {
+    setSuggestionsLoading(true);
+    try {
+      const res = await fetch(`/api/match/${userPetId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSuggestions(data);
+      } else {
+        setSuggestions([]);
+      }
+    } catch (err) {
+      console.error("Error fetching suggestions:", err);
+      setSuggestions([]);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  };
+  // ---
 
   useEffect(() => {
-    // fetchUserPets(); // Let's simplify and only call fetchPets
+    fetchUserPets();
     fetchPets();
   }, []); 
 
@@ -92,13 +123,52 @@ export default function Main() {
         Discover Your Pet's Mate
       </h1>
 
-      {/* ... (Suggestions Section remains the same) ... */}
+      {/* Suggestions Section (Unchanged) */}
+      {suggestionsLoading ? (
+        <p className="text-center text-[#333333] text-lg mb-8">Loading compatible matches...</p>
+      ) : suggestions.length > 0 && userPets.length > 0 ? (
+          <div className="mb-12">
+            <h2 className="text-3xl font-bold text-[#4A90E2] mb-6 border-l-4 border-[#50E3C2] pl-3">
+              Top Matches for {userPets[0]?.name}
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
+              {suggestions.map((pet) => (
+                <div
+                  key={pet._id}
+                  onClick={() => handlePetClick(pet._id)}
+                  className="cursor-pointer bg-white rounded-xl shadow-lg p-3 hover:scale-105 hover:shadow-2xl transition-transform duration-300 border-2 border-[#50E3C2] relative"
+                >
+                  <div className="absolute top-2 right-2 bg-[#FF9A00] text-white text-xs font-bold px-2 py-1 rounded-full shadow-md">
+                    {pet.compatibilityScore}% Match
+                  </div>
+                  
+                  {pet.imageUrls?.[0] && (
+                    <img
+                      src={pet.imageUrls[0]}
+                      alt={pet.name}
+                      className="w-full h-32 object-cover rounded-lg mb-3"
+                    />
+                  )}
+                  <h3 className="font-bold text-lg text-[#333333] mb-1">{pet.name} ({pet.gender.charAt(0)})</h3>
+                  <p className="text-[#333333] text-sm truncate">Breed: {pet.breed}</p>
+                  <p className="text-[#333333] text-sm">Age: {pet.age}</p>
+                  <p className="text-[#333333] text-sm capitalize">Energy: {pet.energyLevel.toLowerCase()}</p>
+                </div>
+              ))}
+            </div>
+            <div className="border-b border-gray-300 mt-12"></div>
+          </div>
+      ) : userPets.length > 0 ? (
+        <p className="text-center text-gray-500 text-lg mb-8">No compatible "Mating" matches found for {userPets[0].name} right now.</p>
+      ) : (
+        <p className="text-center text-gray-500 text-lg mb-8">Add a pet (for mating) to start seeing compatible matches!</p>
+      )}
 
       <h2 className="text-3xl font-bold text-[#333333] mb-6 border-l-4 border-[#4A90E2] pl-3">
               Pet Matrimony Listings
       </h2>
       
-      {/* --- UPDATED: Filters Section --- */}
+      {/* --- Filters Section (Radius Slider is kept) --- */}
       <div className="flex flex-wrap justify-center gap-4 mb-10 p-5 rounded-xl bg-white shadow-inner items-center">
         {/* Pet Type */}
         <select
@@ -109,9 +179,11 @@ export default function Main() {
           }
         >
           <option value="">All Types</option>
-          {Object.keys(breedOptions).map((type) => (
-            <option key={type} value={type}>{type}</option>
-          ))}
+          <option value="Dog">Dog</option>
+          <option value="Cat">Cat</option>
+          <option value="Rabbit">Rabbit</option>
+          <option value="Bird">Bird</option>
+          <option value="Other">Other</option>
         </select>
 
         {/* Breed (depends on type) */}
@@ -132,7 +204,7 @@ export default function Main() {
             ))}
         </select>
 
-        {/* NEW: Radius Slider */}
+        {/* Radius Slider */}
         <div className="flex items-center gap-2 p-3 rounded-lg border-2 border-gray-300 bg-white">
             <label htmlFor="radius" className="font-medium text-gray-700">Radius:</label>
             <input
@@ -149,17 +221,11 @@ export default function Main() {
                 {filters.radius} km
             </span>
         </div>
-        {/* END NEW */}
       </div>
 
-      {/* --- NEW: Map View --- */}
-      <div className="h-[400px] w-full rounded-xl shadow-lg mb-10 overflow-hidden border-4 border-white">
-        <MapDisplay pets={pets} />
-      </div>
-      {/* --- END NEW --- */}
+      {/* --- MAP VIEW REMOVED --- */}
 
-
-      {/* Pet Grid */}
+      {/* Pet Grid (Unchanged) */}
       {loading ? (
         <p className="text-center text-[#333333] text-xl py-10">Loading wonderful pets...</p>
       ) : pets.length === 0 ? (
@@ -174,7 +240,7 @@ export default function Main() {
               onClick={() => handlePetClick(pet._id)}
               className="cursor-pointer bg-white rounded-xl shadow-lg p-4 hover:scale-[1.03] hover:shadow-2xl transition-transform duration-300 border-b-4 border-[#4A90E2] hover:border-[#50E3C2] relative"
             >
-              {/* Distance Badge */}
+              {/* Distance Badge (This still works!) */}
               {pet.distance !== undefined && (
                   <span className="absolute top-2 left-2 text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
                     {pet.distance.toFixed(1)} km away
@@ -194,10 +260,9 @@ export default function Main() {
                   {pet.gender}
                 </span>
               </h3>
+              <p className="text-[#333333] text-sm">Type: {pet.type}</p>
               <p className="text-[#333333] text-sm">Breed: {pet.breed}</p>
               <p className="text-[#333333] text-sm">Age: {pet.age}</p>
-              
-              {/* Use pet.location.city (from the owner) */}
               {pet.location?.city && (
                 <p className="text-[#333333] text-sm mt-1">📍 {pet.location.city}</p>
               )}
