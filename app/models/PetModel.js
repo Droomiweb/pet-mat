@@ -26,46 +26,58 @@ const petSchema = new mongoose.Schema({
   },
   
   // --- Pedigree Fields ---
-  damId: { // Mother's MONGO ID
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Pet',
-    default: null
-  },
-  sireId: { // Father's MONGO ID
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Pet',
-    default: null
-  },
+  damId: { type: mongoose.Schema.Types.ObjectId, ref: 'Pet', default: null },
+  sireId: { type: mongoose.Schema.Types.ObjectId, ref: 'Pet', default: null },
   
   // --- Blockchain Fields ---
-  nftTokenId: { 
-    type: Number,
-    default: null,
-    index: true 
-  },
-  nftContractAddress: { 
-    type: String,
-    default: null
-  },
-  // --- End Blockchain Fields ---
+  nftTokenId: { type: Number, default: null, index: true },
+  nftContractAddress: { type: String, default: null },
 
   certificateUrl: String,
   imageUrls: [String],
   ownerId: String,
   
-  verificationStatus: { type: String, enum: ['pending', 'verified', 'rejected'], default: 'pending' },
+  // --- NEW: Pregnancy Status ---
+  isPregnant: { type: Boolean, default: false },
+
+  // --- UPDATED: Verification Status ---
+  verificationStatus: { 
+    type: String, 
+    enum: ['pending', 'verified', 'rejected', 'needs-review'], // 'needs-review' for AI uncertainty
+    default: 'pending' 
+  },
+  
+  // --- NEW: Auto-Verification Details ---
+  // Stores the results from the automated process
+  verificationAnalysis: {
+    ocrText: { type: String, default: null },
+    aiResponse: { type: String, default: null },
+    // 'pending', 'auto-verified', 'auto-rejected', 'needs-review'
+    aiStatus: { type: String, default: 'pending' }, 
+  },
+  
   isBanned: { type: Boolean, default: false },
 
+  // --- UPDATED: Mating History ---
   matingHistory: [
     {
       requesterId: String,
       requesterName: String,
       requesterPetId: String,
       requesterPetName: String,
-      status: { type: String, default: "pending" }, 
-      requestedAt: { type: Date, default: Date.now }
+      // 'accepted' now means chat is open, 'mated' is the new goal
+      status: { 
+        type: String, 
+        enum: ['pending', 'accepted', 'rejected', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated', 'completed'], 
+        default: "pending" 
+      }, 
+      requestedAt: { type: Date, default: Date.now },
+      // --- NEW: Fields for mutual 'mated' confirmation ---
+      ownerMatedConfirmation: { type: Boolean, default: false },
+      requesterMatedConfirmation: { type: Boolean, default: false }
     }
   ],
+  
   messages: [
     {
       senderId: String,
@@ -75,7 +87,8 @@ const petSchema = new mongoose.Schema({
     }
   ],
   
-  // --- NEW FIELD FOR ADOPTION ---
+  // --- UPDATED: Adoption Requests ---
+  // Schema is unchanged, but API logic will be
   adoptionRequests: [
     {
       requesterId: String,
@@ -85,7 +98,6 @@ const petSchema = new mongoose.Schema({
       requestedAt: { type: Date, default: Date.now }
     }
   ]
-  // --- END NEW FIELD ---
 });
 
 // This line adds the geospatial index

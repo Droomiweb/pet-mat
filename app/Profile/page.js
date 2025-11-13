@@ -1,196 +1,178 @@
 // app/Profile/page.js
 "use client";
-
-import { useEffect, useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useAuth } from "../auth-provider";
 import { useRouter } from "next/navigation";
-import { auth } from "../lib/firebase";
+import Image from "next/image";
 
-export default function ProfilePage() {
-  const [userData, setUserData] = useState(null);
+// --- NEW IMPORTS ---
+import PetStatusBadge from "../components/PetStatusBadge";
+import RequestManager from "../components/RequestManager";
+import MatingConfirmation from "../components/MatingConfirmation";
+// --- END NEW IMPORTS ---
+
+export default function Profile() {
+  const { user, loading: authLoading, userData, signOut } = useAuth();
   const [pets, setPets] = useState([]);
-  const [locationName, setLocationName] = useState("");
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  const fetchUserData = async (user) => {
-    // Fetch user from MongoDB
-    const res = await fetch(`/api/user/${user.uid}`);
-    if (!res.ok) {
-      console.error("Failed to fetch user:", await res.text());
-      return;
-    }
-    const data = await res.json();
-    setUserData(data);
-
-    // Reverse geocode location if available
-    if (data.location?.lat && data.location?.lng) {
-      const geoRes = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${data.location.lat}&lon=${data.location.lng}`
-      );
-      if (geoRes.ok) {
-        const geoData = await geoRes.json();
-        setLocationName(geoData.display_name);
+  // --- UPDATED to useCallback ---
+  // We make this a useCallback so we can pass it as a prop ('onUpdate')
+  // to our new components without causing infinite re-renders.
+  const fetchUserPets = useCallback(async () => {
+    if (user) {
+      try {
+        setLoading(true);
+        const res = await fetch(`/api/pet/user/${user.uid}`);
+        if (res.ok) {
+          const data = await res.json();
+          setPets(data);
+        } else {
+          console.error("Failed to fetch pets");
+        }
+      } catch (error) {
+        console.error("Error fetching pets:", error);
+      } finally {
+        setLoading(false);
       }
     }
-
-    // Fetch user's pets
-    await fetchPets(user.uid);
-  };
-
-  const fetchPets = async (uid) => {
-    try {
-      const petsRes = await fetch(`/api/pet/user/${uid}`);
-      if (petsRes.ok) {
-        const petsData = await petsRes.json();
-        setPets(petsData);
-      } else {
-        console.error("Failed to fetch pets:", await petsRes.text());
-      }
-    } catch (err) {
-      console.error("Error fetching pets:", err);
-    }
-  };
-
-  const handleDeletePet = async (petId) => {
-    const confirmDelete = window.confirm("Are you sure you want to delete this pet?");
-    if (!confirmDelete) return;
-
-    try {
-      const res = await fetch(`/api/pet/${petId}`, { method: "DELETE" });
-      if (res.ok) {
-        setPets((prev) => prev.filter((pet) => pet._id !== petId));
-      } else {
-        console.error("Failed to delete pet:", await res.text());
-        alert("Failed to delete pet. Try again later.");
-      }
-    } catch (err) {
-      console.error("Error deleting pet:", err);
-      alert("Error deleting pet. Check console for details.");
-    }
-  };
-
-  const handleLogout = async () => {
-    await auth.signOut();
-    router.push("/Login");
-  };
+  }, [user]); // Dependency array includes 'user'
+  // --- END UPDATED ---
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) {
-      return router.push("/Login");
+    if (!authLoading && !user) {
+      router.push("/Login");
+    } else if (user) {
+      fetchUserPets(); // Call the function
     }
-    fetchUserData(user);
-  }, []);
+  }, [authLoading, user, router, fetchUserPets]); // Added fetchUserPets
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'verified':
-        return 'bg-green-100 text-green-700 border-green-400';
-      case 'rejected':
-        return 'bg-red-100 text-red-700 border-red-400';
-      default:
-        return 'bg-yellow-100 text-yellow-700 border-yellow-400';
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.push("/Login");
+    } catch (error) {
+      console.error("Sign out error", error);
     }
   };
 
-  if (!userData) {
-    return <p className="text-[#333333] text-center mt-20 text-xl">Loading profile...</p>; 
+  if (authLoading || loading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="loader">Loading...</div>
+      </div>
+    );
   }
 
-  const userId = userData.username || auth.currentUser.uid;
+  if (!user || !userData) {
+    return null; // Redirect is happening
+  }
 
   return (
-    // Updated BG color to new global background
-    <div className="min-h-screen bg-[#E2F4EF] p-4 md:p-10"> 
-      
-      {/* Main Profile Card - APPLY GLASS */}
-      <div className="max-w-5xl mx-auto glass-container shadow-2xl border-t-8 border-[#4A90E2]"> 
-        
-        {/* Header: User Info + Add Pet Button */}
-        <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-10 border-b pb-6 border-gray-100">
-          <div>
-            <h1 className="text-4xl font-extrabold text-[#333333]">{userData.name}</h1>
-            <p className="text-[#333333] mt-2 text-lg">UserID: {userId}</p>
-            <p className="text-[#333333] mt-1 text-lg">
-              Location: {locationName || "Not available"}
-            </p>
+    <div className="container mx-auto p-4 pt-20">
+      <div className="bg-white shadow-xl rounded-lg overflow-hidden md:max-w-4xl md:mx-auto">
+        <div className="md:flex">
+          <div className="md:w-1/3 p-6 bg-gray-50">
+            <div className="flex flex-col items-center">
+              <Image
+                src={user.photoURL || "/imgs/profile.jpg"}
+                alt="Profile"
+                width={150}
+                height={150}
+                className="rounded-full border-4 border-gray-300"
+              />
+              <h2 className="text-2xl font-bold mt-4 text-gray-800">
+                {userData.name}
+              </h2>
+              <p className="text-gray-600">@{userData.username}</p>
+              <p className="text-gray-600 mt-2">{userData.phone}</p>
+              <p className="text-gray-600 mt-1">{userData.location?.city || "Location not set"}</p>
+              <button
+                onClick={handleSignOut}
+                className="mt-6 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-full"
+              >
+                Sign Out
+              </button>
+              <button
+                onClick={() => router.push("/Addpet")}
+                className="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-full"
+              >
+                Add New Pet
+              </button>
+            </div>
           </div>
-          <div className="flex gap-4 mt-6 md:mt-0">
-            <button
-              onClick={() => router.push("/Addpet")}
-              className="bg-[#50E3C2] hover:bg-[#3FCCB4] text-[#333333] font-bold py-3 px-6 rounded-xl transition shadow-lg hover:scale-105"
-            >
-              + Add Pet
-            </button>
-            <button
-              onClick={handleLogout}
-              className="bg-[#333333] hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-xl transition shadow-lg" 
-            >
-              Logout
-            </button>
+
+          <div className="md:w-2/3 p-6">
+            <h3 className="text-3xl font-bold text-gray-800 mb-6">My Pets</h3>
+            {pets.length > 0 ? (
+              <div className="space-y-6">
+                {pets.map((pet) => (
+                  <div
+                    key={pet._id}
+                    className="p-4 bg-gray-50 rounded-lg shadow-md border border-gray-200"
+                  >
+                    <div className="flex items-center mb-4">
+                      <Image
+                        src={pet.imageUrls[0] || "/imgs/dog.jpg"}
+                        alt={pet.name}
+                        width={100}
+                        height={100}
+                        className="rounded-lg object-cover"
+                      />
+                      <div className="ml-4">
+                        <h4 className="text-2xl font-semibold text-gray-900 flex items-center">
+                          {pet.name}
+                          {/* --- FEATURE 1: PET STATUS BADGE --- */}
+                          <PetStatusBadge status={pet.verificationStatus} />
+                        </h4>
+                        <p className="text-gray-600">
+                          {pet.type} | {pet.breed} | {pet.age} years old
+                        </p>
+                        <p className="text-sm text-gray-500 capitalize">
+                          Listing: {pet.listingType}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* --- NEW: Show verification details if pending/rejected --- */}
+                    {['pending', 'needs-review', 'rejected'].includes(pet.verificationStatus) && (
+                      <div className="p-3 my-2 text-sm bg-yellow-100 border border-yellow-300 rounded-md">
+                        <strong>Verification Status: </strong>
+                        {pet.verificationStatus === 'pending' && "Your pet's certificate is being reviewed by our AI."}
+                        {pet.verificationStatus === 'needs-review' && "Our AI couldn't verify all details. An admin will review your pet's certificate soon."}
+                        {pet.verificationStatus === 'rejected' && "This pet's verification was rejected. Please check your certificate and try re-uploading."}
+                      </div>
+                    )}
+
+                    {/* --- FEATURE 2: REQUEST MANAGER --- */}
+                    {/* This component will only show pending requests */}
+                    <RequestManager pet={pet} onUpdate={fetchUserPets} />
+
+                    {/* --- FEATURE 3: MATING CONFIRMATION --- */}
+                    {/* This component will only show for accepted requests */}
+                    {pet.matingHistory && pet.matingHistory.map((request) => {
+                      if (['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'].includes(request.status)) {
+                        return (
+                          <MatingConfirmation
+                            key={request._id}
+                            pet={pet}
+                            request={request}
+                            onUpdate={fetchUserPets}
+                          />
+                        );
+                      }
+                      return null;
+                    })}
+                    
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-600">You haven't added any pets yet.</p>
+            )}
           </div>
         </div>
-
-        {/* Pets Section */}
-        <h2 className="text-3xl font-bold text-[#4A90E2] mb-8 border-l-4 border-[#50E3C2] pl-3">My Pets ({pets.length})</h2>
-        {pets.length === 0 ? (
-          <p className="text-[#333333] text-lg">No pets added yet. Click 'Add Pet' to get started!</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8">
-            {pets.map((pet) => (
-              <div
-                key={pet._id}
-                // Pet card styling - APPLY subtle glass background
-                className="bg-white/50 p-5 rounded-2xl shadow-xl flex flex-col justify-between hover:scale-[1.02] transform transition duration-300 border-b-4 border-[#50E3C2] hover:border-[#4A90E2]" 
-              >
-                <div>
-                  {pet.imageUrls?.[0] && (
-                    <img
-                      src={pet.imageUrls[0]}
-                      alt={pet.name}
-                      className="w-full h-48 object-cover rounded-xl mb-4 border border-gray-200"
-                    />
-                  )}
-                  {/* Name and Gender Display */}
-                  <h3 className="font-bold text-2xl text-[#333333] flex justify-between items-center mb-2">
-                    {pet.name}
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${pet.gender === 'Male' ? 'bg-blue-200 text-blue-800' : 'bg-pink-200 text-pink-800'}`}>
-                        {pet.gender}
-                    </span>
-                  </h3>
-                  
-                  {/* Verification Status Badge */}
-                  <div className="mb-2">
-                      <span className={`font-bold px-3 py-1 rounded-full text-xs border ${getStatusBadge(pet.verificationStatus)} uppercase tracking-wider`}>
-                          {pet.verificationStatus}
-                      </span>
-                  </div>
-
-                  <p className="text-[#333333] mt-1">Breed: {pet.breed}</p>
-                  <p className="text-[#333333]">Age: {pet.age}</p>
-                  
-                  {pet.certificateUrl && (
-                    <a
-                      href={pet.certificateUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      // Updated link color
-                      className="text-[#4A90E2] font-medium underline mt-3 block hover:text-[#50E3C2]" 
-                    >
-                      View Certificate
-                    </a>
-                  )}
-                </div>
-                <button
-                  onClick={() => handleDeletePet(pet._id)}
-                  // Updated delete button style
-                  className="mt-6 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-full transition shadow-md hover:shadow-lg" 
-                >
-                  Delete Listing
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

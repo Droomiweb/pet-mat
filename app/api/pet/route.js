@@ -11,9 +11,103 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-//
-// V COPY AND PASTE THIS ENTIRE FUNCTION V
-//
+// --- THIS IS THE NEW VERIFICATION LOGIC ---
+// We run this in the background and don't make the user wait
+const runAutoVerification = async (petId, petData) => {
+  try {
+    const { certificateUrl, name, age, breed } = petData;
+    const pet = await Pet.findById(petId);
+    if (!pet) throw new Error("Pet not found for verification");
+
+    // 1. Get Base URL (for calling internal APIs)
+    //    On Vercel, use process.env.NEXT_PUBLIC_APP_URL
+    //    For local, use 'http://localhost:3000'
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+    // 2. Call OCR Tesseract API
+    let ocrText = '';
+    try {
+      const ocrResponse = await fetch(`${baseUrl}/api/ocr-tesseract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ certificateUrl }),
+      });
+      if (ocrResponse.ok) {
+        const ocrData = await ocrResponse.json();
+        ocrText = ocrData.ocrText || '';
+        pet.verificationAnalysis.ocrText = ocrText;
+      }
+    } catch (ocrError) {
+      console.warn("OCR step failed:", ocrError.message);
+      // Continue anyway, AI can still analyze the image
+    }
+
+    // 3. Call AI Verify API
+    let aiStatus = 'needs-review'; // Default
+    let newVerificationStatus = 'pending'; // Default
+    
+    try {
+      const aiResponse = await fetch(`${baseUrl}/api/verify-certificate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ certificateUrl, petName: name, petAge: age, petBreed: breed, ocrText }),
+      });
+
+      if (!aiResponse.ok) {
+         throw new Error(`AI API responded with status ${aiResponse.status}`);
+      }
+      
+      const aiData = await aiResponse.json();
+      const analysis = aiData.aiAnalysis;
+      
+      pet.verificationAnalysis.aiResponse = JSON.stringify(analysis);
+
+      // 4. Decide on verification status
+      if (analysis.isCertificateValid) {
+        if (analysis.nameMatch && analysis.breedMatch) {
+          aiStatus = 'auto-verified';
+          newVerificationStatus = 'verified'; // SUCCESS!
+        } else {
+          // Valid cert, but data doesn't match. Flag for review.
+          aiStatus = 'needs-review';
+          newVerificationStatus = 'pending'; // Keep pending for admin
+        }
+      } else {
+        // AI thinks it's a fake.
+        aiStatus = 'auto-rejected';
+        newVerificationStatus = 'rejected'; // REJECT!
+      }
+    } catch (aiError) {
+      console.error("AI verification step failed:", aiError.message);
+      pet.verificationAnalysis.aiResponse = JSON.stringify({ error: aiError.message });
+      aiStatus = 'needs-review';
+      newVerificationStatus = 'pending'; // Failed, so admin must check
+    }
+
+    // 5. Save all results to the Pet document
+    pet.verificationAnalysis.aiStatus = aiStatus;
+    pet.verificationStatus = newVerificationStatus;
+    await pet.save();
+    
+    console.log(`Auto-verification complete for Pet ${petId}. Status: ${newVerificationStatus}`);
+
+  } catch (err) {
+    console.error(`Background verification failed for Pet ${petId}:`, err);
+    // Try to update the pet to 'needs-review' if it fails
+    try {
+        await Pet.findByIdAndUpdate(petId, { 
+          'verificationStatus': 'pending', 
+          'verificationAnalysis.aiStatus': 'needs-review',
+          'verificationAnalysis.aiResponse': JSON.stringify({ error: `Verification process failed: ${err.message}` })
+        });
+    } catch (updateError) {
+        console.error("Failed to even update pet status after error:", updateError);
+    }
+  }
+};
+// --- END OF NEW VERIFICATION LOGIC ---
+
+
 // Add a new pet
 export async function POST(req) {
   try {
@@ -21,10 +115,10 @@ export async function POST(req) {
     const { name, type, age, breed, gender, temperament, energyLevel, listingType, certificateBase64, imagesBase64, ownerId } = await req.json();
 
     if (!name || !type || !age || !breed || !gender || !temperament || !energyLevel || !listingType || !certificateBase64 || !imagesBase64 || !ownerId) {
-      // This path has a return, which is good.
       return new Response(JSON.stringify({ error: "All fields are required" }), { status: 400 });
     }
     
+    // --- Cloudinary Uploads ---
     const certUpload = await cloudinary.uploader.upload(certificateBase64, {
       folder: `certificates/${ownerId}`,
     });
@@ -36,7 +130,7 @@ export async function POST(req) {
       imageUrls.push(upload.secure_url);
     }
 
-    const newPet = new Pet({
+    const petData = {
       name,
       type,
       age,
@@ -48,27 +142,27 @@ export async function POST(req) {
       certificateUrl: certUpload.secure_url,
       imageUrls,
       ownerId,
-    });
+      verificationStatus: 'pending', // Always start as pending
+    };
 
+    const newPet = new Pet(petData);
     await newPet.save();
 
-    // This is the successful return
-    return new Response(JSON.stringify({ message: "Pet added successfully!", petId: newPet._id.toString() }), { status: 201 });
+    // --- TRIGGER AUTO-VERIFICATION ---
+    // We do this *after* saving so the user gets a fast response.
+    // We don't 'await' this, it runs in the background.
+    runAutoVerification(newPet._id, petData).catch(err => {
+        console.error("Failed to start auto-verification:", err.message);
+    });
+    // --- END TRIGGER ---
+
+    return new Response(JSON.stringify({ message: "Pet added successfully! Verification is in progress.", petId: newPet._id.toString() }), { status: 201 });
   
   } catch (err) {
     console.error("Error adding pet:", err);
-    
-    //
-    // V THIS IS THE FIX V
-    //
-    // This `catch` block MUST return a Response. 
-    // Your error message implies this line is missing in your local file.
     return new Response(JSON.stringify({ error: err.message || "Failed to add pet due to server error." }), { status: 500 });
   }
 }
-//
-// ^ COPY AND PASTE THIS ENTIRE FUNCTION ^
-//
 
 
 // Fetch pets with optional filters
@@ -81,19 +175,21 @@ export async function GET(req) {
     const breed = searchParams.get("breed");
     const city = searchParams.get("city");
     const excludeOwnerId = searchParams.get("excludeOwnerId");
-    
-    // --- NEW: Filter for listingType ---
     const listingType = searchParams.get("listingType");
 
     const petQuery = {};
     if (type) petQuery.type = type;
     if (breed) petQuery.breed = breed;
     if (excludeOwnerId) petQuery.ownerId = { $ne: excludeOwnerId };
+    if (listingType) petQuery.listingType = listingType;
     
-    // --- ADDED: Add listingType to the query if provided ---
-    if (listingType) {
-      petQuery.listingType = listingType;
-    }
+    // --- NEW: Hide pregnant pets from listings ---
+    petQuery.isPregnant = { $ne: true };
+    // --- END NEW ---
+    
+    // --- NEW: Only show verified pets ---
+    petQuery.verificationStatus = 'verified';
+    // --- END NEW ---
 
     let pets = await Pet.find(petQuery).lean();
 
@@ -115,14 +211,13 @@ export async function GET(req) {
             gender: pet.gender,
             temperament: pet.temperament,
             energyLevel: pet.energyLevel,
-            listingType: pet.listingType, // --- ADDED: Return listingType ---
+            listingType: pet.listingType,
             imageUrls: pet.imageUrls || [],
             certificateUrl: pet.certificateUrl || null,
             ownerId: pet.ownerId,
             location: owner?.location || null, 
         };
     }));
-
 
     return new Response(JSON.stringify(petsWithLocation), {
       status: 200,

@@ -1,10 +1,12 @@
 // app/Addpet/page.js
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { auth } from "../lib/firebase";
+import { useAuth } from "../auth-provider"; // <-- FIXED: Correct import and path
+import Image from "next/image"; // <-- NEW: To show image previews
 
 export default function AddPet() {
+  // --- All your original states ---
   const [petName, setPetName] = useState("");
   const [petAge, setPetAge] = useState("");
   const [petType, setPetType] = useState("");
@@ -12,19 +14,29 @@ export default function AddPet() {
   const [petGender, setPetGender] = useState("");
   const [petTemperament, setPetTemperament] = useState("Friendly");
   const [petEnergyLevel, setPetEnergyLevel] = useState("Medium");
-
-  // --- NEW STATE FOR ADOPTION ---
   const [listingType, setListingType] = useState("Mating");
-  // --- END NEW STATE ---
-
   const [certificate, setCertificate] = useState(null);
   const [petImages, setPetImages] = useState([]);
-  const [message, setMessage] = useState("");
+  
+  // --- UPDATED: Replaced 'message' with 'error' and 'successMessage' for better UI ---
+  const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
+  
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleFileChange = (e) => setCertificate(e.target.files[0]);
+  // --- NEW: Get auth state from the provider ---
+  const { user, loading: authLoading } = useAuth();
 
+  // --- NEW: Auth redirect effect ---
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/Login");
+    }
+  }, [user, authLoading, router]);
+
+  // --- Your original handlers (unchanged) ---
+  const handleFileChange = (e) => setCertificate(e.target.files[0]);
   const handleImagesChange = (e) => {
     const files = Array.from(e.target.files || []);
     const next = [...petImages, ...files].slice(0, 5); // cap at 5
@@ -50,10 +62,12 @@ export default function AddPet() {
       reader.onerror = (err) => reject(err);
     });
 
+  // --- UPDATED: handleSubmit with new logic ---
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setMessage("");
+    setError(null);
+    setSuccessMessage(null);
 
     if (
       !petName.trim() ||
@@ -65,17 +79,18 @@ export default function AddPet() {
       petImages.length === 0
     ) {
       setLoading(false);
-      return setMessage("Please fill all fields properly and upload files.");
+      return setError("Please fill all fields properly and upload files."); // Use new error state
     }
 
     if (petImages.length > 5) {
       setLoading(false);
-      return setMessage("Please upload a maximum of 5 images.");
+      return setError("Please upload a maximum of 5 images."); // Use new error state
     }
 
-    const user = auth.currentUser;
+    // --- UPDATED: Use auth hook user ---
     if (!user) {
       setLoading(false);
+      setError("You must be logged in to add a pet.");
       return router.push("/Login");
     }
 
@@ -94,9 +109,7 @@ export default function AddPet() {
           gender: petGender,
           temperament: petTemperament,
           energyLevel: petEnergyLevel,
-          // --- SEND NEW DATA ---
           listingType: listingType,
-          // --- END SEND NEW DATA ---
           certificateBase64,
           imagesBase64,
           ownerId: user.uid,
@@ -105,7 +118,8 @@ export default function AddPet() {
 
       const data = await res.json();
       if (res.status === 201) {
-        alert("Pet added successfully!");
+        // --- NEW: Show success message, clear form, and DO NOT redirect ---
+        setSuccessMessage(data.message); // This message comes from the backend
         setPetName("");
         setPetAge("");
         setPetType("");
@@ -116,21 +130,30 @@ export default function AddPet() {
         setListingType("Mating");
         setCertificate(null);
         setPetImages([]);
-        setMessage("Pet registered successfully!");
-        router.push("/Profile");
+        e.target.reset(); // Resets file inputs
+        // router.push("/Profile"); // We no longer redirect
       } else {
-        setMessage(data.error || "Something went wrong");
+        setError(data.error || "Something went wrong"); // Use new error state
       }
     } catch (err) {
       console.error(err);
-      setMessage("Server error: " + err.message);
+      setError("Server error: " + err.message); // Use new error state
     } finally {
       setLoading(false);
     }
   };
 
+  // --- NEW: Show loading if auth is happening ---
+  if (authLoading || !user) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="loader">Loading...</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#E2F4EF] p-4 flex justify-center items-center relative">
+    <div className="min-h-screen bg-[#E2F4EF] p-4 flex justify-center items-center relative pt-20"> {/* Added pt-20 for navbar */}
       <div className="animated-background">
         {[...Array(7)].map((_, i) => (
           <div key={i} className="particle"></div>
@@ -140,8 +163,29 @@ export default function AddPet() {
       <div className="w-full max-w-md my-8 glass-container shadow-2xl z-10 overflow-y-auto max-h-[90vh]">
         <h1 className="text-primary mb-8 text-center text-3xl font-bold">REGISTER NEW PET</h1>
 
+        {/* --- NEW: Success and Error Message Display --- */}
+        {successMessage && (
+          <div className="bg-green-100 border border-green-300 text-green-700 px-4 py-3 rounded-lg relative mb-4" role="alert">
+            <strong className="font-bold">Success! </strong>
+            <span className="block sm:inline">{successMessage}</span>
+            <button 
+              onClick={() => router.push('/Profile')} 
+              className="mt-2 bg-green-200 text-green-800 font-semibold py-1 px-3 rounded-lg hover:bg-green-300"
+            >
+              Go to Profile
+            </button>
+          </div>
+        )}
+        {error && (
+          <div className="bg-red-100 border border-red-300 text-red-700 px-4 py-3 rounded-lg relative mb-4" role="alert">
+            <strong className="font-bold">Error: </strong>
+            <span className="block sm:inline">{error}</span>
+          </div>
+        )}
+        {/* --- END NEW --- */}
+
         <form onSubmit={handleSubmit} className="w-full flex flex-col">
-          {/* --- NEW DROPDOWN: Listing Type --- */}
+          {/* Listing Type Dropdown */}
           <div className="input-style p-0 mb-4 bg-white/90">
             <select
               value={listingType}
@@ -153,7 +197,6 @@ export default function AddPet() {
               <option value="Adoption">List for Adoption</option>
             </select>
           </div>
-          {/* --- END NEW DROPDOWN --- */}
 
           {/* Pet Name */}
           <input
@@ -312,7 +355,7 @@ export default function AddPet() {
             </label>
           </div>
 
-          {/* Image names preview */}
+          {/* --- UPDATED: Image names preview --- */}
           {petImages.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-100/50 rounded-lg max-h-24 overflow-y-auto border border-gray-200">
               {petImages.map((img, idx) => (
@@ -328,15 +371,8 @@ export default function AddPet() {
             {loading ? "Registering..." : "Register Pet"}
           </button>
 
-          {message && (
-            <p
-              className={`mt-2 text-center text-sm font-semibold ${
-                message.toLowerCase().includes("success") ? "text-green-600" : "text-red-500"
-              }`}
-            >
-              {message}
-            </p>
-          )}
+          {/* --- REMOVED: Old {message} display --- */}
+
         </form>
       </div>
     </div>

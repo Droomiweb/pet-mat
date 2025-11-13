@@ -1,58 +1,92 @@
 // app/api/verify-certificate/route.js
-import model from "../../lib/gemini"; // This import is not used here, which is fine
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// --- V V V THIS IS THE FIX V V V ---
-// The old model "gemini-pro-vision" is deprecated.
-// Use a model name that is available for generateContent.
-const geminiProVision = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY).getGenerativeModel({ model: "gemini-2.0-flash" });
-// --- ^ ^ ^ END OF FIX ^ ^ ^ ---
+// Use a model that supports JSON mode or is good with structured responses
+const geminiProVision = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY).getGenerativeModel({ model: "gemini-1.5-flash" });
 
 // Function to convert a remote image URL to a format the Gemini model can read
 async function fetchAndEncodeImage(url) {
   const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image: ${response.statusText}`);
+  }
   const buffer = await response.arrayBuffer();
+  const contentType = response.headers.get("Content-Type") || "image/jpeg";
   return {
     inlineData: {
-      data: Buffer.from(buffer).toString("base64"),
-      mimeType: response.headers.get("Content-Type") || "image/jpeg",
+      data: Buffer.from(buffer).toString("base6S4"),
+      mimeType: contentType,
     },
   };
 }
 
 export async function POST(req) {
   try {
-    const { certificateUrl, petName, petAge, petBreed } = await req.json();
+    const { certificateUrl, petName, petAge, petBreed, ocrText } = await req.json();
 
-    if (!certificateUrl) {
-      return new Response(JSON.stringify({ error: "Certificate URL is required" }), { status: 400 });
+    if (!certificateUrl || !petName || !petAge || !petBreed) {
+      return new Response(JSON.stringify({ error: "Certificate URL, pet name, age, and breed are required" }), { status: 400 });
     }
 
-    // Fetch and encode the image from Cloudinary
     const imagePart = await fetchAndEncodeImage(certificateUrl);
     
-    // Create the prompt for the AI
+    // --- UPDATED PROMPT ---
+    // This new prompt forces the AI to return only JSON.
     const prompt = `
-    Analyze this pet certificate image. 
-    1. Does this document look like a valid pet certificate or a fake?
-    2. Try to find and extract the pet's name, age, and breed from the document.
-    3. Compare the extracted information with the provided details: Pet Name: ${petName}, Age: ${petAge}, Breed: ${petBreed}. State if they match or if there are any discrepancies.
+    Analyze this pet certificate.
+    User-provided data:
+    - Name: ${petName}
+    - Age: ${petAge}
+    - Breed: ${petBreed}
     
-    Provide your analysis and extracted information in a clear, structured JSON format.
-    `;
+    Extracted OCR Text (if any):
+    "${ocrText || 'No OCR text provided'}"
 
-    // Send the prompt and image to the Gemini Pro Vision model
+    Your task is to:
+    1.  Determine if the image is a legitimate-looking pet certificate or a clear fake (e.g., a random photo, a drawing, a blank page).
+    2.  Compare the user-provided data (Name, Age, Breed) with any visible information on the certificate image.
+    3.  If OCR text is provided, use it to help find matches.
+    4.  Report your findings in a structured JSON format.
+
+    Respond with ONLY the following JSON structure. Do not add any text or markdown before or after the JSON block.
+
+    {
+      "isCertificateValid": boolean,
+      "validityReason": "Briefly explain your reasoning for the 'isCertificateValid' flag.",
+      "nameMatch": boolean,
+      "ageMatch": boolean,
+      "breedMatch": boolean,
+      "matchDiscrepancy": "If any match is false, explain the discrepancy. e.g., 'Certificate shows 'Fido' but user entered 'Buddy'.",
+      "extractedName": "The name you found on the certificate, or null.",
+      "extractedAge": "The age (or DOB) you found, or null.",
+      "extractedBreed": "The breed you found, or null."
+    }
+    `;
+    // --- END UPDATED PROMPT ---
+
     const result = await geminiProVision.generateContent([prompt, imagePart]);
     const response = await result.response;
-    const text = response.text();
+    let text = response.text();
 
-    return new Response(JSON.stringify({ aiAnalysis: text }), {
+    // Clean the response to ensure it's valid JSON
+    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+
+    // Try parsing the JSON
+    let aiJson;
+    try {
+      aiJson = JSON.parse(text);
+    } catch (e) {
+      console.error("Failed to parse AI JSON response:", text);
+      throw new Error("AI returned invalid JSON.");
+    }
+
+    return new Response(JSON.stringify({ aiAnalysis: aiJson }), { // Return the parsed JSON
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
 
   } catch (error) {
     console.error("Error with AI verification:", error);
-    return new Response(JSON.stringify({ error: "AI verification failed" }), { status: 500 });
+    return new Response(JSON.stringify({ error: "AI verification failed", details: error.message }), { status: 500 });
   }
 }
