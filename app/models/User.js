@@ -6,15 +6,35 @@ const UserSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   phone: { type: String, required: true },
   firebaseUid: { type: String, required: true, unique: true },
+  
+  // UPDATED: Add a 'type' field and a '2dsphere' index
+  // The 'type' must be "Point" for geospatial queries.
   location: {
-    lat: Number,
-    lng: Number,
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point'
+    },
+    coordinates: {
+      type: [Number], // [longitude, latitude] format
+      default: [0, 0]
+    },
+    city: { // We can keep the city name for display
+      type: String,
+      default: ""
+    }
   },
-  // New field to check if the user is an admin
+  // --- END UPDATE ---
+
   isAdmin: { type: Boolean, default: false },
-  // NEW FIELD for user banning
   isBanned: { type: Boolean, default: false }
 }, { timestamps: true });
+
+// --- ADD THIS INDEX ---
+// This tells MongoDB to create a 2dsphere index on the 'location'
+// field, which is necessary for $geoNear queries.
+UserSchema.index({ location: '2dsphere' });
+// --- END ADD ---
 
 const User = mongoose.models.User || mongoose.model("User", UserSchema);
 export default User;

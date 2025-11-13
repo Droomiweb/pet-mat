@@ -25,18 +25,29 @@ const petSchema = new mongoose.Schema({
     required: true
   },
   
-  // --- NEW FIELDS FOR PEDIGREE ---
-  damId: { // Mother's ID
+  // --- Pedigree Fields ---
+  damId: { // Mother's MONGO ID
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Pet',
     default: null
   },
-  sireId: { // Father's ID
+  sireId: { // Father's MONGO ID
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Pet',
     default: null
   },
-  // --- END NEW FIELDS ---
+  
+  // --- Blockchain Fields ---
+  nftTokenId: { 
+    type: Number,
+    default: null,
+    index: true 
+  },
+  nftContractAddress: { 
+    type: String,
+    default: null
+  },
+  // --- End Blockchain Fields ---
 
   certificateUrl: String,
   imageUrls: [String],
@@ -62,8 +73,23 @@ const petSchema = new mongoose.Schema({
       text: String,
       sentAt: { type: Date, default: Date.now }
     }
+  ],
+  
+  // --- NEW FIELD FOR ADOPTION ---
+  adoptionRequests: [
+    {
+      requesterId: String,
+      requesterName: String,
+      message: String,
+      status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+      requestedAt: { type: Date, default: Date.now }
+    }
   ]
+  // --- END NEW FIELD ---
 });
+
+// This line adds the geospatial index
+petSchema.index({ location: '2dsphere' });
 
 const Pet = mongoose.models.Pet || mongoose.model("Pet", petSchema);
 export default Pet;

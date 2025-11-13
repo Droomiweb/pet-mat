@@ -79,7 +79,7 @@ export async function PATCH(req, context) {
       return new Response(JSON.stringify({ message: "Message added!" }), { status: 200 });
     }
     
-    // --- *** NEW: UPDATE REQUEST STATUS ACTION *** ---
+    // --- UPDATE REQUEST STATUS ACTION ---
     if (action === "updateRequestStatus") {
         if (!requestId || !newStatus || !['accepted', 'rejected'].includes(newStatus)) {
             return new Response(JSON.stringify({ error: "Invalid request ID or status" }), { status: 400 });
@@ -108,6 +108,41 @@ export async function PATCH(req, context) {
         await pet.save();
         return new Response(JSON.stringify({ message: `Request ${newStatus}` }), { status: 200 });
     }
+    
+    // --- *** NEW: ADOPTION REQUEST ACTION *** ---
+    if (action === "adoptionRequest") {
+      if (!messageText) {
+        return new Response(JSON.stringify({ error: "An inquiry message is required." }), { status: 400 });
+      }
+
+      // Check if this user already has a pending request
+      const existingRequest = pet.adoptionRequests.find(
+        (req) => req.requesterId === requesterId && req.status === "pending"
+      );
+      if (existingRequest) {
+        return new Response(JSON.stringify({ error: "You already have a pending adoption request for this pet." }), { status: 400 });
+      }
+
+      // Add the new adoption request
+      pet.adoptionRequests.push({
+        requesterId: requesterId,
+        requesterName: requesterName,
+        message: messageText,
+        status: "pending",
+        requestedAt: new Date()
+      });
+
+      // Also add a system message to the main chat for the owner to see
+      pet.messages.push({
+        senderId: "system",
+        senderName: "System",
+        text: `New adoption request received from ${requesterName}. Message: "${messageText}"`,
+        sentAt: new Date()
+      });
+
+      await pet.save();
+      return new Response(JSON.stringify({ message: "Adoption request sent successfully!" }), { status: 200 });
+    }
     // --- *** END NEW ACTION *** ---
 
     return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400 });
@@ -119,7 +154,6 @@ export async function PATCH(req, context) {
 
 // DELETE a pet by ID (remains the same)
 export async function DELETE(req, context) {
-  // ... (delete logic remains the same) ...
   try {
     await connectDB();
     const { id } = await context.params;

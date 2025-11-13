@@ -7,8 +7,7 @@ import { useAuth } from "../auth-provider";
 import Link from "next/link";
 import Image from "next/image";
 
-// --- NEW: Litter Confirmation Modal Component ---
-// We define this component inside the page for simplicity
+// --- Litter Confirmation Modal Component ---
 const LitterConfirmationModal = ({ data, onClose, onSubmit }) => {
   const { damPet, sirePet, matingRequest } = data;
   const [litter, setLitter] = useState([{ name: '', gender: 'Male' }]);
@@ -140,10 +139,13 @@ export default function AdminPanel(){
   const [pets, setPets] = useState([]);
   const [users, setUsers] = useState([]);
   const [products, setProducts] = useState([]);
-  // --- NEW STATES ---
   const [acceptedRequests, setAcceptedRequests] = useState([]);
-  const [modalData, setModalData] = useState(null); // Controls the modal
-  // --- END NEW STATES ---
+  const [pendingAdoptionRequests, setPendingAdoptionRequests] = useState([]);
+  
+  // --- NEW STATE FOR TESSERACT LOADING ---
+  const [ocrLoading, setOcrLoading] = useState(null); // Will store petId
+  
+  const [modalData, setModalData] = useState(null); 
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
   const [panelLoading, setPanelLoading] = useState(true);
   const router = useRouter();
@@ -168,21 +170,26 @@ export default function AdminPanel(){
       setPets(data.pets || []);
       setUsers(data.users || []);
       setProducts(data.products || []);
-      setAcceptedRequests(data.acceptedMatingRequests || []); // Set new state
+      setAcceptedRequests(data.acceptedMatingRequests || []); 
+      setPendingAdoptionRequests(data.pendingAdoptionRequests || []);
       setIsMaintenanceMode(maintenanceData.isMaintenanceMode);
     } catch (err) {
       console.error("Error fetching admin data:", err);
+      // Reset all states on error
       setPets([]);
       setUsers([]);
       setProducts([]);
       setAcceptedRequests([]);
+      setPendingAdoptionRequests([]);
       setIsMaintenanceMode(false);
     } finally {
       setPanelLoading(false);
     }
   };
 
-  // ... (handleStatusUpdate, handleDeletePet, handleUserBan, etc. remain the same) ...
+  // ... (handleStatusUpdate, handleDeletePet, handleUserBan, handleToggleAdminStatus, handleProductDelete, handleMaintenanceToggle) ...
+  // [These functions remain exactly the same as in the previous step]
+  
   const handleStatusUpdate = async (petId, status) => {
     try {
       const res = await fetch("/api/admin", {
@@ -190,36 +197,24 @@ export default function AdminPanel(){
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "updatePetStatus", petId, status }),
       });
-
       if (res.ok) {
         setPets(prevPets => prevPets.map(pet =>
           pet._id === petId ? { ...pet, verificationStatus: status, isBanned: status === 'rejected' } : pet
         ));
         alert(`Pet status set to ${status}.`);
-      } else {
-        alert("Failed to update status.");
-      }
-    } catch (err) {
-      console.error("Error updating status:", err);
-    }
+      } else { alert("Failed to update status."); }
+    } catch (err) { console.error("Error updating status:", err); }
   };
   
   const handleDeletePet = async (petId) => {
     if (window.confirm("Are you sure you want to delete this pet? This action cannot be undone.")) {
       try {
-        const res = await fetch(`/api/pet/${petId}`, { 
-          method: "DELETE",
-        });
-
+        const res = await fetch(`/api/pet/${petId}`, { method: "DELETE" });
         if (res.ok) {
           setPets(prevPets => prevPets.filter(pet => pet._id !== petId));
           alert("Pet deleted successfully!");
-        } else {
-          alert("Failed to delete pet.");
-        }
-      } catch (err) {
-        console.error("Error deleting pet:", err);
-      }
+        } else { alert("Failed to delete pet."); }
+      } catch (err) { console.error("Error deleting pet:", err); }
     }
   };
 
@@ -231,18 +226,13 @@ export default function AdminPanel(){
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "banUser", userId }),
         });
-
         if (res.ok) {
           setUsers(prevUsers => prevUsers.map(user =>
             user._id === userId ? { ...user, isBanned: true } : user
           ));
           fetchAllData();
-        } else {
-          alert("Failed to ban user.");
-        }
-      } catch (err) {
-        console.error("Error banning user:", err);
-      }
+        } else { alert("Failed to ban user."); }
+      } catch (err) { console.error("Error banning user:", err); }
     }
   };
   
@@ -254,18 +244,13 @@ export default function AdminPanel(){
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "toggleAdminStatus", userId, makeAdmin }),
         });
-
         if (res.ok) {
           setUsers(prevUsers => prevUsers.map(user =>
             user._id === userId ? { ...user, isAdmin: makeAdmin } : user
           ));
           alert(`Admin status for user updated successfully.`);
-        } else {
-          alert("Failed to update admin status.");
-        }
-      } catch (err) {
-        console.error("Error toggling admin status:", err);
-      }
+        } else { alert("Failed to update admin status."); }
+      } catch (err) { console.error("Error toggling admin status:", err); }
     }
   };
 
@@ -277,16 +262,11 @@ export default function AdminPanel(){
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ productId }),
         });
-
         if (res.ok) {
           setProducts(prevProducts => prevProducts.filter(p => p._id !== productId));
           alert("Product deleted successfully!");
-        } else {
-          alert("Failed to delete product.");
-        }
-      } catch (err) {
-        console.error("Error deleting product:", err);
-      }
+        } else { alert("Failed to delete product."); }
+      } catch (err) { console.error("Error deleting product:", err); }
     }
   };
 
@@ -298,18 +278,14 @@ export default function AdminPanel(){
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isMaintenanceMode: newStatus }),
       });
-
       if (res.ok) {
         setIsMaintenanceMode(newStatus);
         alert(`Maintenance mode turned ${newStatus ? 'ON' : 'OFF'}`);
-      } else {
-        alert("Failed to change maintenance status.");
-      }
-    } catch (err) {
-      console.error("Error toggling maintenance mode:", err);
-    }
+      } else { alert("Failed to change maintenance status."); }
+    } catch (err) { console.error("Error toggling maintenance mode:", err); }
   };
   
+  // This is your existing Gemini AI check
   const fetchAIAnalysis = async (pet) => {
       if (!pet.certificateUrl) return alert("Pet has no certificate to analyze.");
       
@@ -334,7 +310,36 @@ export default function AdminPanel(){
       }
   }
 
-  // --- NEW: Function to handle submitting the litter ---
+  // --- *** NEW: Tesseract OCR Handler *** ---
+  const fetchTesseractOcr = async (pet) => {
+      if (!pet.certificateUrl) return alert("Pet has no certificate to scan.");
+      
+      setOcrLoading(pet._id); // Set loading for this specific pet
+      try {
+          const res = await fetch("/api/ocr-tesseract", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ certificateUrl: pet.certificateUrl }),
+          });
+
+          const data = await res.json();
+          if (res.ok) {
+              // Show the raw text in an alert box
+              alert(`--- Tesseract OCR Result ---\n\n${data.ocrText}`);
+          } else {
+              alert(`Tesseract OCR Failed: ${data.error}`);
+          }
+      } catch (err) {
+          console.error("Error calling Tesseract API:", err);
+          alert("A client-side error occurred during OCR.");
+      } finally {
+          setOcrLoading(null); // Remove loading state
+      }
+  }
+  // --- *** END NEW *** ---
+
+
+  // --- Function to handle submitting the litter ---
   const handleLitterSubmit = async (formData) => {
     try {
       const res = await fetch("/api/admin/confirm-litter", {
@@ -342,7 +347,6 @@ export default function AdminPanel(){
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-
       const data = await res.json();
       if (res.ok) {
         alert("Success! Litter has been confirmed and new pets created.");
@@ -356,7 +360,38 @@ export default function AdminPanel(){
       alert("A client-side error occurred.");
     }
   };
-  // --- END NEW ---
+  
+  // --- Function to handle Adoption Request status ---
+  const handleAdoptionUpdate = async (petId, requestId, newStatus) => {
+      if (!petId || !requestId || !newStatus) return;
+      
+      if (window.confirm(`Are you sure you want to ${newStatus} this adoption request?`)) {
+          try {
+              const res = await fetch("/api/admin", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                      action: "updateAdoptionStatus",
+                      petId: petId,
+                      requestId: requestId,
+                      newStatus: newStatus
+                  }),
+              });
+              
+              if (res.ok) {
+                  alert(`Request ${newStatus}!`);
+                  // Refresh all data to update lists
+                  fetchAllData();
+              } else {
+                  const data = await res.json();
+                  alert(`Failed to update: ${data.error}`);
+              }
+          } catch (err) {
+              console.error("Error updating adoption status:", err);
+              alert("A client-side error occurred.");
+          }
+      }
+  };
 
 
   useEffect(() => {
@@ -370,8 +405,8 @@ export default function AdminPanel(){
   }
 
   return (
-    <> {/* Added fragment to wrap modal and page */}
-      {/* --- NEW: Render Modal --- */}
+    <> 
+      {/* --- Render Modal --- */}
       {modalData && (
         <LitterConfirmationModal
           data={modalData}
@@ -379,7 +414,7 @@ export default function AdminPanel(){
           onSubmit={handleLitterSubmit}
         />
       )}
-      {/* --- END NEW --- */}
+      {/* --- END MODAL --- */}
 
       <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-10">
         <div className="max-w-7xl mx-auto bg-white rounded-3xl shadow-2xl p-6 md:p-10 border-t-8 border-[#4A90E2]">
@@ -389,7 +424,6 @@ export default function AdminPanel(){
 
           {/* Maintenance Switch */}
           <div className="mb-10 p-5 bg-gray-50 rounded-xl shadow-inner border-l-4 border-[#50E3C2]">
-            {/* ... (maintenance UI remains the same) ... */}
             <h2 className="text-2xl font-bold text-[#4A90E2] mb-3">Website Maintenance</h2>
             <div className="flex items-center space-x-6">
               <span className="font-bold text-lg text-[#333333]">
@@ -409,7 +443,7 @@ export default function AdminPanel(){
             </div>
           </div>
 
-          {/* --- NEW: Pending Breeding Confirmation Section --- */}
+          {/* --- Pending Breeding Confirmation Section --- */}
           <h2 className="text-3xl font-bold text-[#333333] mb-6 border-l-4 border-[#4A90E2] pl-3">Pending Breeding Confirmation ({acceptedRequests.length})</h2>
           {acceptedRequests.length === 0 ? (
             <p className="text-[#333333] text-center p-4 bg-gray-50 rounded-lg">No accepted mating requests awaiting confirmation.</p>
@@ -441,7 +475,7 @@ export default function AdminPanel(){
                       </td>
                       <td className="py-4 px-6 text-center">
                         <button
-                          onClick={() => setModalData(req)} // Open modal with request data
+                          onClick={() => setModalData(req)} 
                           className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-600 transition-colors"
                         >
                           Confirm Litter
@@ -453,7 +487,60 @@ export default function AdminPanel(){
               </table>
             </div>
           )}
-          {/* --- END NEW SECTION --- */}
+          {/* --- END BREEDING SECTION --- */}
+
+
+          {/* --- Pending Adoption Requests Section --- */}
+          <h2 className="text-3xl font-bold text-[#333333] mb-6 border-l-4 border-[#4A90E2] pl-3">Pending Adoption Requests ({pendingAdoptionRequests.length})</h2>
+          {pendingAdoptionRequests.length === 0 ? (
+            <p className="text-[#333333] text-center p-4 bg-gray-50 rounded-lg">No pending adoption requests.</p>
+          ) : (
+            <div className="overflow-x-auto mb-10 shadow-lg rounded-xl">
+              <table className="min-w-full bg-white">
+                <thead className="bg-[#4A90E2] text-white">
+                  <tr>
+                    <th className="py-3 px-6 text-left">Pet for Adoption</th>
+                    <th className="py-3 px-6 text-left">Requester</th>
+                    <th className="py-3 px-6 text-left">Message</th>
+                    <th className="py-3 px-6 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingAdoptionRequests.map((req, index) => (
+                    <tr 
+                      key={index} 
+                      className="border-b last:border-b-0 hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="py-4 px-6 text-[#333333] font-semibold">
+                        <Link href={`/pet/${req.pet._id}`} className="hover:underline">{req.pet.name}</Link>
+                      </td>
+                      <td className="py-4 px-6 text-[#333333] font-semibold">
+                        {req.request.requesterName}
+                      </td>
+                      <td className="py-4 px-6 text-[#333333] text-sm italic">
+                        "{req.request.message}"
+                      </td>
+                      <td className="py-4 px-6 text-center flex justify-center items-center gap-3">
+                        <button
+                          onClick={() => handleAdoptionUpdate(req.pet._id, req.request._id, 'approved')}
+                          className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-600 transition-colors"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleAdoptionUpdate(req.pet._id, req.request._id, 'rejected')}
+                          className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition-colors"
+                        >
+                          Reject
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {/* --- END ADOPTION SECTION --- */}
 
 
           {/* Pet Management Section */}
@@ -462,7 +549,6 @@ export default function AdminPanel(){
             <p className="text-[#333333] text-center p-4 bg-gray-50 rounded-lg">No pets found requiring attention.</p>
           ) : (
             <div className="overflow-x-auto mb-10 shadow-lg rounded-xl">
-              {/* ... (Pet verification table remains the same) ... */}
               <table className="min-w-full bg-white">
                 <thead className="bg-[#4A90E2] text-white">
                   <tr>
@@ -499,15 +585,24 @@ export default function AdminPanel(){
                             <a href={pet.certificateUrl} target="_blank" rel="noopener noreferrer" className="text-[#4A90E2] underline hover:text-[#50E3C2] font-medium">
                               View Doc
                             </a>
-                            <button
-                              onClick={() => fetchAIAnalysis(pet)}
-                              className="text-xs text-gray-500 hover:text-[#4A90E2] underline mt-1"
-                            >
-                              Run AI Check
-                            </button>
                             <Link href={`/pet/${pet._id}`} className="text-xs text-gray-500 hover:text-[#50E3C2] underline">
                                 View Details
                             </Link>
+                            {/* --- BUTTONS UPDATED --- */}
+                            <button
+                              onClick={() => fetchAIAnalysis(pet)}
+                              className="text-xs text-blue-600 hover:text-blue-800 underline mt-1"
+                            >
+                              Run Gemini AI Check
+                            </button>
+                            <button
+                              onClick={() => fetchTesseractOcr(pet)}
+                              className="text-xs text-gray-600 hover:text-black underline mt-1"
+                              disabled={ocrLoading === pet._id}
+                            >
+                              {ocrLoading === pet._id ? "Scanning..." : "Run Tesseract OCR"}
+                            </button>
+                            {/* --- END BUTTONS --- */}
                           </div>
                         ) : (
                           <span className="text-gray-400">N/A</span>
@@ -542,7 +637,6 @@ export default function AdminPanel(){
             <p className="text-[#333333] text-center p-4 bg-gray-50 rounded-lg">No users found.</p>
           ) : (
             <div className="overflow-x-auto shadow-lg rounded-xl mb-10">
-              {/* ... (User management table remains the same) ... */}
               <table className="min-w-full bg-white">
                 <thead className="bg-[#4A90E2] text-white">
                   <tr>
@@ -612,7 +706,6 @@ export default function AdminPanel(){
             <p className="text-[#333333] text-center p-4 bg-gray-50 rounded-lg">No products found.</p>
           ) : (
             <div className="overflow-x-auto shadow-lg rounded-xl">
-              {/* ... (Product management table remains the same) ... */}
               <table className="min-w-full bg-white">
                 <thead className="bg-[#4A90E2] text-white">
                   <tr>

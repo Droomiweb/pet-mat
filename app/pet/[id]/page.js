@@ -130,35 +130,39 @@ export default function PetDetailPage() {
     }
   };
 
-  // --- sendAdoptionInquiry Function (Unchanged) ---
-  const sendAdoptionInquiry = async () => {
+  // --- UPDATED: sendAdoptionInquiry to sendAdoptionRequest ---
+  const sendAdoptionRequest = async () => {
     if (!user) return alert("Login first");
     if (user.uid === pet.ownerId) return alert("This is your pet.");
-    if (!newMessage.trim()) return alert("Please write a message to the owner.");
+    if (!newMessage.trim()) return alert("Please write a message with your inquiry.");
 
     try {
       const res = await fetch(`/api/pet/${params.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "addMessage",
+          action: "adoptionRequest", // <-- CHANGED
           requesterId: user.uid,
           requesterName: user.email.split("@")[0],
-          messageText: `ADOPTION INQUIRY: ${newMessage}`,
+          messageText: newMessage, // <-- Use messageText to send the message
         }),
       });
+      
+      const data = await res.json(); // Get JSON response
 
       if (res.ok) {
-        alert("Your adoption inquiry has been sent to the owner!");
+        alert("Your adoption request has been sent to the owner!");
         setNewMessage("");
-        fetchPet();
+        fetchPet(); // Refresh pet data to show the request
       } else {
-        alert("Failed to send inquiry. Check console for details.");
+        // Show specific error from the API
+        alert(`Failed to send request: ${data.error || 'Check console for details.'}`);
       }
     } catch (err) {
       console.error(err);
     }
   };
+  // --- END UPDATE ---
 
   useEffect(() => {
     fetchPet();
@@ -172,6 +176,12 @@ export default function PetDetailPage() {
 
   const isAdoptionListing = pet.listingType === "Adoption";
   const canSendRequest = pet.verificationStatus === "verified" && requesterPets.length > 0 && !!requesterPetId;
+
+  // --- NEW: Check if *this* user has a pending request ---
+  const hasPendingAdoptionRequest = pet.adoptionRequests?.some(
+      (req) => req.requesterId === user?.uid && req.status === "pending"
+  );
+  // --- END NEW ---
 
   return (
     <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-10">
@@ -262,7 +272,7 @@ export default function PetDetailPage() {
               This pet listing is currently banned and cannot receive requests.
             </p>
           ) : isAdoptionListing ? (
-            // --- ADOPTION UI ---
+            // --- UPDATED: ADOPTION UI ---
             <>
               <textarea
                 placeholder="Write an inquiry message to the owner..."
@@ -270,13 +280,18 @@ export default function PetDetailPage() {
                 onChange={(e) => setNewMessage(e.target.value)}
                 className="w-full border-2 border-gray-300 p-3 rounded-lg mb-4 focus:border-[#4A90E2] transition-colors"
                 rows="3"
+                disabled={hasPendingAdoptionRequest}
               />
               <button
-                onClick={sendAdoptionInquiry}
-                className="py-3 px-6 rounded-xl font-bold transition shadow-md bg-[#4A90E2] hover:bg-[#3A75B9] text-white"
-                disabled={!newMessage.trim()}
+                onClick={sendAdoptionRequest} // <-- RENAMED function
+                className={`py-3 px-6 rounded-xl font-bold transition shadow-md ${
+                  hasPendingAdoptionRequest 
+                    ? "bg-gray-400 text-gray-700 cursor-not-allowed"
+                    : "bg-[#4A90E2] hover:bg-[#3A75B9] text-white"
+                }`}
+                disabled={!newMessage.trim() || hasPendingAdoptionRequest}
               >
-                Send Adoption Inquiry
+                {hasPendingAdoptionRequest ? "Request Pending" : "Send Adoption Request"}
               </button>
             </>
             // --- END ADOPTION UI ---
@@ -391,6 +406,37 @@ export default function PetDetailPage() {
             )}
           </div>
         )}
+
+        {/* --- NEW: Show Adoption Requests List --- */}
+        {isAdoptionListing && (
+          <div className="mt-8 pt-6 border-t border-gray-200">
+            <h2 className="text-2xl font-bold text-[#333333] mb-3">Adoption Requests</h2>
+            {pet.adoptionRequests?.length === 0 ? (
+              <p className="text-[#333333]">No adoption requests yet.</p>
+            ) : (
+              <ul className="list-disc list-inside space-y-2">
+                {pet.adoptionRequests.map((req, idx) => (
+                  <li
+                    key={idx}
+                    className={`text-[#333333] ${
+                      req.status === "approved" ? "text-green-600 font-medium" : 
+                      req.status === "rejected" ? "text-red-600" : "text-gray-600"
+                    }`}
+                  >
+                    {/* Only show requester name if user is owner */}
+                    {isOwner ? `${req.requesterName}` : `Request ${idx + 1}`} 
+                    - <span className="uppercase">{req.status}</span>
+                    {/* Show message only to owner or the user who sent it */}
+                    {(isOwner || req.requesterId === user?.uid) && (
+                        <p className="text-sm italic pl-4 text-gray-500">"{req.message}"</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        {/* --- END NEW SECTION --- */}
       </div>
     </div>
   );
