@@ -1,8 +1,12 @@
 // app/api/verify-certificate/route.js
-import model from "../../lib/gemini"; // Assuming gemini.js exports a model compatible with vision
+import model from "../../lib/gemini"; // This import is not used here, which is fine
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const geminiProVision = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY).getGenerativeModel({ model: "gemini-pro-vision" });
+// --- V V V THIS IS THE FIX V V V ---
+// The old model "gemini-pro-vision" is deprecated.
+// Use a model name that is available for generateContent.
+const geminiProVision = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY).getGenerativeModel({ model: "gemini-2.0-flash" });
+// --- ^ ^ ^ END OF FIX ^ ^ ^ ---
 
 // Function to convert a remote image URL to a format the Gemini model can read
 async function fetchAndEncodeImage(url) {
@@ -42,10 +46,6 @@ export async function POST(req) {
     const response = await result.response;
     const text = response.text();
 
-    // You can parse the text to use the information, but for a simple verification,
-    // a manual review by an admin is more reliable. This AI response serves as a
-    // strong recommendation for the admin.
-    
     return new Response(JSON.stringify({ aiAnalysis: text }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
