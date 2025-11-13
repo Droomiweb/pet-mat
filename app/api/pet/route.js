@@ -4,17 +4,74 @@ import Pet from "./../../models/PetModel";
 import User from "./../../models/User";
 import { v2 as cloudinary } from "cloudinary";
 
-// ... (cloudinary.config and POST function remain the same) ...
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 //
-// Add a new pet (No changes needed)
+// V COPY AND PASTE THIS ENTIRE FUNCTION V
+//
+// Add a new pet
 export async function POST(req) {
-  // ... (your existing POST logic)
+  try {
+    await connectDB();
+    const { name, type, age, breed, gender, temperament, energyLevel, listingType, certificateBase64, imagesBase64, ownerId } = await req.json();
+
+    if (!name || !type || !age || !breed || !gender || !temperament || !energyLevel || !listingType || !certificateBase64 || !imagesBase64 || !ownerId) {
+      // This path has a return, which is good.
+      return new Response(JSON.stringify({ error: "All fields are required" }), { status: 400 });
+    }
+    
+    const certUpload = await cloudinary.uploader.upload(certificateBase64, {
+      folder: `certificates/${ownerId}`,
+    });
+    const imageUrls = [];
+    for (const base64 of imagesBase64) {
+      const upload = await cloudinary.uploader.upload(base64, {
+        folder: `pets/${ownerId}`,
+      });
+      imageUrls.push(upload.secure_url);
+    }
+
+    const newPet = new Pet({
+      name,
+      type,
+      age,
+      breed,
+      gender,
+      temperament,
+      energyLevel,
+      listingType, 
+      certificateUrl: certUpload.secure_url,
+      imageUrls,
+      ownerId,
+    });
+
+    await newPet.save();
+
+    // This is the successful return
+    return new Response(JSON.stringify({ message: "Pet added successfully!", petId: newPet._id.toString() }), { status: 201 });
+  
+  } catch (err) {
+    console.error("Error adding pet:", err);
+    
+    //
+    // V THIS IS THE FIX V
+    //
+    // This `catch` block MUST return a Response. 
+    // Your error message implies this line is missing in your local file.
+    return new Response(JSON.stringify({ error: err.message || "Failed to add pet due to server error." }), { status: 500 });
+  }
 }
+//
+// ^ COPY AND PASTE THIS ENTIRE FUNCTION ^
+//
 
 
-// --- 
-// V MAJOR UPDATE: GET pets with geospatial filtering V
-// ---
+// Fetch pets with optional filters
 export async function GET(req) {
   try {
     await connectDB();
@@ -22,110 +79,55 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
     const breed = searchParams.get("breed");
-    const listingType = searchParams.get("listingType");
-    const excludeOwnerId = searchParams.get("excludeOwnerId"); // Firebase UID
-
-    // NEW: Get radius filter. Default to 50km
-    // Radius is expected in kilometers, so we convert to meters for MongoDB
-    const radiusInKm = parseFloat(searchParams.get("radius")) || 50;
-    const radiusInMeters = radiusInKm * 1000;
-
-    // 1. Find the current user to get their location
-    // We *need* an authenticated user to search "near"
-    if (!excludeOwnerId) {
-      // Fallback for unauthenticated users: just filter, no geo-search
-      const petQuery = {};
-      if (type) petQuery.type = type;
-      if (breed) petQuery.breed = breed;
-      if (listingType) petQuery.listingType = listingType;
-      
-      const pets = await Pet.find(petQuery).limit(20).lean();
-      return new Response(JSON.stringify(pets), { status: 200 });
-    }
-
-    const currentUser = await User.findOne({ firebaseUid: excludeOwnerId }).lean();
-    if (!currentUser || !currentUser.location) {
-      return new Response(JSON.stringify({ error: "Current user location not found." }), { status: 404 });
-    }
-
-    const userCoordinates = currentUser.location.coordinates; // [lng, lat]
-
-    // 2. Build the aggregation pipeline
-    let pipeline = [];
-
-    // Stage 1: Find all USERS near the current user
-    pipeline.push({
-      $geoNear: {
-        near: {
-          type: "Point",
-          coordinates: userCoordinates
-        },
-        distanceField: "distance", // Adds a 'distance' field to each doc
-        maxDistance: radiusInMeters,
-        query: {
-          firebaseUid: { $ne: excludeOwnerId } // Exclude the user themselves
-        },
-        spherical: true
-      }
-    });
-
-    // Stage 2: Join with the 'pets' collection
-    pipeline.push({
-      $lookup: {
-        from: "pets", // The name of the Pet collection in MongoDB
-        localField: "firebaseUid", // Field from User
-        foreignField: "ownerId",   // Field from Pet
-        as: "pets"
-      }
-    });
-
-    // Stage 3: Deconstruct the 'pets' array
-    pipeline.push({ $unwind: "$pets" });
-
-    // Stage 4: Replace the root with the pet document
-    // and add the user's location and distance
-    pipeline.push({
-      $replaceRoot: {
-        newRoot: {
-          $mergeObjects: [
-            "$pets",
-            {
-              location: "$location", // Add the owner's location to the pet
-              distance: { $divide: ["$distance", 1000] } // Convert meters to km
-            }
-          ]
-        }
-      }
-    });
-
-    // Stage 5: Match the pet filters
-    const matchFilters = {
-      isBanned: false, // Don't show banned pets
-      verificationStatus: 'verified' // Only show verified pets
-    };
-    if (listingType) matchFilters.listingType = listingType;
-    if (type) matchFilters.type = type;
-    if (breed) matchFilters.breed = breed;
-
-    pipeline.push({ $match: matchFilters });
-
-    // Stage 6: Sort by distance (closest first)
-    pipeline.push({ $sort: { distance: 1 } });
-
-    // 3. Run the aggregation
-    const petsWithLocation = await User.aggregate(pipeline);
+    const city = searchParams.get("city");
+    const excludeOwnerId = searchParams.get("excludeOwnerId");
     
-    // We must manually convert _id as aggregation doesn't do it
-    const finalPets = petsWithLocation.map(pet => ({
-        ...pet,
-        _id: pet._id.toString(),
+    // --- NEW: Filter for listingType ---
+    const listingType = searchParams.get("listingType");
+
+    const petQuery = {};
+    if (type) petQuery.type = type;
+    if (breed) petQuery.breed = breed;
+    if (excludeOwnerId) petQuery.ownerId = { $ne: excludeOwnerId };
+    
+    // --- ADDED: Add listingType to the query if provided ---
+    if (listingType) {
+      petQuery.listingType = listingType;
+    }
+
+    let pets = await Pet.find(petQuery).lean();
+
+    // Filter by city if provided
+    if (city) {
+      const usersInCity = await User.find({ "location.city": city }, "firebaseUid").lean();
+      const userUids = usersInCity.map(u => u.firebaseUid);
+      pets = pets.filter(pet => userUids.includes(pet.ownerId));
+    }
+    
+    const petsWithLocation = await Promise.all(pets.map(async (pet) => {
+        const owner = await User.findOne({ firebaseUid: pet.ownerId }, 'location').lean();
+        return {
+            _id: pet._id.toString(),
+            name: pet.name,
+            type: pet.type,
+            age: pet.age,
+            breed: pet.breed,
+            gender: pet.gender,
+            temperament: pet.temperament,
+            energyLevel: pet.energyLevel,
+            listingType: pet.listingType, // --- ADDED: Return listingType ---
+            imageUrls: pet.imageUrls || [],
+            certificateUrl: pet.certificateUrl || null,
+            ownerId: pet.ownerId,
+            location: owner?.location || null, 
+        };
     }));
 
-    return new Response(JSON.stringify(finalPets), {
+
+    return new Response(JSON.stringify(petsWithLocation), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
-
   } catch (err) {
     console.error("Error fetching pets:", err);
     return new Response(JSON.stringify({ error: "Failed to fetch pets" }), { status: 500 });
