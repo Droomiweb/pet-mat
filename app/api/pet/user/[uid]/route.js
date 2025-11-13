@@ -1,3 +1,4 @@
+// app/api/pet/user/[uid]/route.js
 import connectDB from "./../../../../lib/mongodb";
 import Pet from "./../../../../models/PetModel";
 
@@ -5,22 +6,28 @@ export async function GET(req, context) {
   try {
     await connectDB();
 
-    // ✅ Must await context.params in Next.js 15+
     const { uid } = await context.params;
 
-    // ✅ Match correct field name in DB
-   // app/api/pet/user/[uid]/route.js excerpt (as seen in earlier context)
     const pets = await Pet.find({ ownerId: uid }).lean();
 
+    // We must map all fields, not just a few
     const formattedPets = pets.map((pet) => ({
       _id: pet._id.toString(),
       name: pet.name,
       age: pet.age,
       breed: pet.breed,
+      
+      // --- V V V THIS IS THE FIX V V V ---
+      // Add all the missing fields so the filter can work
+      type: pet.type,
+      gender: pet.gender,
+      listingType: pet.listingType,
+      temperament: pet.temperament,
+      energyLevel: pet.energyLevel,
+      // --- ^ ^ ^ END OF FIX ^ ^ ^ ---
+
       imageUrls: pet.imageUrls || [],
       certificateUrl: pet.certificateUrl || null,
-
-      // ADDED: Include messages and matingHistory
       messages: pet.messages || [],
       matingHistory: pet.matingHistory || [],
     }));

@@ -19,7 +19,10 @@ const getPetStub = async (petId) => {
 export async function GET(req, context) {
   try {
     await connectDB();
-    const { petId } = context.params;
+    
+    // --- THIS IS THE FIX ---
+    const { petId } = await context.params;
+    // --- END OF FIX ---
 
     // 1. Fetch the base pet
     const basePet = await getPetStub(petId);
