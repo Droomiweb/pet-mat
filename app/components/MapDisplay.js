@@ -10,32 +10,35 @@ import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
 import iconUrl from 'leaflet/dist/images/marker-icon.png';
 import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
 
-const DefaultIcon = L.icon({
-    iconRetinaUrl: iconRetinaUrl.src,
-    iconUrl: iconUrl.src,
-    shadowUrl: shadowUrl.src,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
-});
-
-L.Marker.prototype.options.icon = DefaultIcon;
-// End of icon fix
+// 
+// V CHANGE #1: We REMOVED the icon creation from here. V
+//
 
 export default function MapDisplay({ pets }) {
     const router = useRouter();
 
+    // 
+    // V CHANGE #1 (CONTINUED): We MOVED the icon creation INSIDE the component. V
+    // This ensures that 'L' and the image imports are fully loaded.
+    //
+    const DefaultIcon = L.icon({
+        iconRetinaUrl: iconRetinaUrl.src,
+        iconUrl: iconUrl.src,
+        shadowUrl: shadowUrl.src,
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41],
+    });
+    // --- END OF CHANGE #1 ---
+
     // Default center (e.g., center of India)
-    // In a real app, you'd get the *current user's* location
     const defaultCenter = [20.5937, 78.9629]; 
 
-    // Filter pets that have valid coordinates
     const petsWithCoords = pets.filter(
         pet => pet.location?.coordinates && pet.location.coordinates.length === 2
     );
 
-    // Use the first pet's location as the center, or default
     const mapCenter = petsWithCoords.length > 0 
         ? [petsWithCoords[0].location.coordinates[1], petsWithCoords[0].location.coordinates[0]] // [lat, lng]
         : defaultCenter;
@@ -52,6 +55,12 @@ export default function MapDisplay({ pets }) {
                     key={pet._id}
                     // IMPORTANT: Leaflet uses [lat, lng], but we store as [lng, lat]
                     position={[pet.location.coordinates[1], pet.location.coordinates[0]]}
+                    
+                    //
+                    // V CHANGE #2: We explicitly pass the icon to the Marker. V
+                    //
+                    icon={DefaultIcon}
+                    // --- END OF CHANGE #2 ---
                 >
                     <Popup>
                         <div className="w-40">
