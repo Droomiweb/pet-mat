@@ -39,11 +39,11 @@ const getAgeScore = (age1, age2) => {
 // --- End of Scoring Logic ---
 
 
-export async function GET(req, context) {
+export async function GET(req, { params }) { // <--- FIX 1: Changed signature
   try {
     await connectDB();
 
-    const { petId } = context.params;
+    const { petId } = params; // <--- FIX 2: Changed access
     if (!petId) {
       return new Response(JSON.stringify({ error: "Pet ID is required" }), { status: 400 });
     }

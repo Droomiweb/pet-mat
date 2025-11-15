@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
+    "dev": "next dev",
+    "build": "next build",
     "start": "next start"
   },
   "dependencies": {
@@ -12,23 +12,21 @@
     "@headlessui/react": "^2.2.9",
     "@vercel/speed-insights": "^1.2.0",
     "axios": "^1.12.2",
-    "bcryptjs": "^3.0.2",
+    "bcryptjs": "^2.4.3",
     "cloudinary": "^2.7.0",
     "ethers": "^6.15.0",
     "firebase": "^12.4.0",
-    "formidable": "^1.2.6",
-    "git": "^0.1.5",
+    "formidable": "^3.5.1",
     "leaflet": "^1.9.4",
-    "mongoose": "^8.19.1",
-    "next": "15.5.4",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "mongoose": "^8.5.1",
+    "next": "^14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "react-firebase-hooks": "^5.1.1",
     "react-leaflet": "^5.0.0",
     "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.18"
