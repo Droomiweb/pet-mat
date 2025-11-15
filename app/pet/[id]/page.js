@@ -4,6 +4,22 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { auth } from "../../lib/firebase";
 import Link from "next/link";
+import { createConversationId } from '../lib/chatUtils'; // 👈 IMPORT
+
+// ... inside your component
+const router = useRouter();
+const user = auth.currentUser;
+const pet = `${params.id}`;
+
+const handleStartChat = () => {
+  if (!user) return router.push("/Login");
+
+  // Use the helper to create the STABLE ID
+  const conversationId = createConversationId(pet._id, user.uid, pet.ownerId);
+
+  // Redirect to the chat page with the *correct, shared* ID
+  router.push(`/messages/${conversationId}`);
+};
 
 export default function PetDetailPage() {
   const [pet, setPet] = useState(null);

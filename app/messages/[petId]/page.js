@@ -3,8 +3,8 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { auth, db } from "../../../app/lib/firebase"; // 👈 IMPORT DB
-import { collection, query, orderBy, where, doc } from "firebase/firestore"; // 👈 IMPORT FIRESTORE
-import { useCollection, useDocument } from "react-firebase-hooks/firestore"; // 👈 IMPORT HOOKS
+import { collection, query, orderBy, serverTimestamp } from "firebase/firestore"; // 👈 IMPORT FIRESTORE & serverTimestamp
+import { useCollection } from "react-firebase-hooks/firestore"; // 👈 IMPORT HOOKS
 
 export default function ChatSessionPage() {
   const [pet, setPet] = useState(null); // Keep pet data for context
@@ -16,111 +16,13 @@ export default function ChatSessionPage() {
   const user = auth.currentUser;
   const messagesEndRef = useRef(null);
 
-  const petId = params.petId;
+  // We assume the URL param [petId] IS the stable Conversation ID
+  // e.g., "PET_ID_SORTED_UID_1_SORTED_UID_2"
+  const conversationId = params.petId;
 
   // --- NEW REAL-TIME MESSAGE LISTENER ---
-  // This hook listens to Firestore in real-time.
-  // We need to determine the conversation ID.
-  // For this example, we'll assume the NON-owner's ID is the requesterId.
-  // This logic MUST be improved to handle chats started by the owner.
-  // For now, let's fetch the pet data first to find the owner.
-
-  const [petDoc, petLoading, petError] = useDocument(
-    doc(db, "pets", petId) // ASSUMING you have a 'pets' collection
-    // If not, we must fetch from MongoDB first.
-    // Let's stick to your original fetch for pet data.
-  );
-
-  // --- (Keeping your original pet fetch for simplicity) ---
-  const fetchPetData = async () => {
-    if (!user) return router.push("/Login");
-    try {
-      const res = await fetch(`/api/pet/${petId}`);
-      if (!res.ok) return router.push("/messages");
-      const data = await res.json();
-      setPet(data);
-    } catch (err) {
-      console.error("Error fetching pet data:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (user) {
-        fetchPetData();
-    }
-  }, [user]);
-
-  // --- END (Original Fetch) ---
-  
-  // Helper to determine the conversation ID
-  // This is a simplification. A real app would pass the 'requesterId'
-  const getConversationId = () => {
-      if (!pet || !user) return null;
-      // This is a potential bug. How do we identify the *other* user?
-      // Let's assume the chat is between owner and ONE requester.
-      // We need a better way to find the `requesterId`.
-      
-      // ---
-      // PAUSE: Your original code has a logic flaw. The chat `petId`
-      // isn't enough to know *who* the conversation is with.
-      // The API call in Step 3 is better.
-      // Let's rewrite this page assuming the `petId` *is* the conversationId
-      // e.g., "PET_ID_REQUESTER_ID"
-      // ---
-
-      // ---
-      // RESTARTING Step 4 (The *Right* Way)
-      // The `petId` from the URL is NOT the conversation ID.
-      // We need to fetch the *conversation ID* first.
-      // Let's assume the [petId] param is *actually* the conversationId.
-      // This means we need to refactor `app/messages/page.js` first.
-      //
-      // This is getting complex. Let's do a simpler implementation
-      // that just migrates your *existing* page.
-      // ---
-
-      // --- RESTARTING Step 4 (Simpler Migration) ---
-      // We will assume the `petId` in the URL *is* the `petId`
-      // and the chat is with the *owner*.
-      // We need to find the *other user's ID* to form the conversation ID.
-      
-      const petOwnerId = pet?.ownerId;
-      if (!petOwnerId) return null;
-      
-      const otherUserId = pet.matingHistory?.find(req => req.requesterId !== petOwnerId)?.requesterId || 
-                          pet.messages?.find(msg => msg.senderId !== petOwnerId)?.senderId;
-
-      // This is still too complex.
-
-      // ---
-      // FINAL ATTEMPT: Let's modify your *existing* code.
-      // We will replace your `setInterval` with a Firestore listener.
-      // This requires knowing the `conversationId`.
-      // Let's assume the conversation ID is passed in the URL, not the petId.
-      // This means `app/messages/page.js` needs to be changed to pass `conversationId`
-      //
-      // This is too much refactoring for one step.
-      //
-      // Let's go with the *simplest possible upgrade*:
-      // 1. Keep your MongoDB pet fetch.
-      // 2. We will use a *NEW* Firestore collection for messages.
-      // 3. We *must* determine the Conversation ID.
-      //
-      // In `app/pet/[id]/page.js`, when sending a request, you must
-      // redirect to `app/messages/CONVO_ID`
-      // where `CONVO_ID = {pet._id}_{user.uid}`
-      //
-      // Let's assume `params.petId` is this new `CONVO_ID`.
-      // ---
-  };
-  
-  const conversationId = params.petId; // Now assumed to be the Conversation ID
-
-  // REAL-TIME HOOK
   const [messagesSnapshot, messagesLoading, messagesError] = useCollection(
-    conversationId ? 
+    conversationId && user ? // Only query if we have a convo ID and user
     query(
       collection(db, "conversations", conversationId, "messages"),
       orderBy("createdAt", "asc")
@@ -129,16 +31,26 @@ export default function ChatSessionPage() {
 
   const messages = messagesSnapshot?.docs.map(doc => ({ ...doc.data(), id: doc.id })) || [];
 
-  // We still need the Pet and Request data
+  // --- Fetch Pet Data (for context) ---
   useEffect(() => {
-    if (!conversationId) return;
-    const petId = conversationId.split("_")[0]; // Extract petId from convo ID
+    if (!conversationId || !user) return;
+
+    // Extract petId from the conversation ID (it's the first part)
+    const petId = conversationId.split("_")[0];
     
-    const fetchPetAndRequestData = async () => {
-        if (!user) return router.push("/Login");
+    if (!petId) {
+        console.error("Invalid conversation ID, no petId found.");
+        router.push("/messages");
+        return;
+    }
+
+    const fetchPetData = async () => {
         try {
           const res = await fetch(`/api/pet/${petId}`); 
-          if (!res.ok) return router.push("/messages");
+          if (!res.ok) {
+            console.error("Failed to fetch pet data, redirecting.");
+            return router.push("/messages");
+          }
           const data = await res.json();
           setPet(data);
         } catch (err) {
@@ -148,9 +60,8 @@ export default function ChatSessionPage() {
         }
     };
     
-    fetchPetAndRequestData();
-  }, [conversationId, user]);
-  // --- END NEW REAL-TIME LOGIC ---
+    fetchPetData();
+  }, [conversationId, user, router]); // Add router to dependency array
 
 
   const scrollToBottom = () => {
@@ -159,14 +70,16 @@ export default function ChatSessionPage() {
 
   const sendReply = async (e) => {
     e.preventDefault();
-    if (!replyText.trim() || sending || !user) return;
+    if (!replyText.trim() || sending || !user || !conversationId) return;
     
     setSending(true);
     
+    // Extract petId from the conversation ID
     const petId = conversationId.split("_")[0];
 
     try {
-      // Use the NEW API route
+      // Use the NEW API route that writes to Firestore
+      // This API route will use `addDoc` and `serverTimestamp()`
       const res = await fetch(`/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -174,8 +87,9 @@ export default function ChatSessionPage() {
           petId: petId,
           conversationId: conversationId, // Pass this to the new API
           senderId: user.uid,
-          senderName: user.email.split("@")[0],
+          senderName: user.displayName || user.email.split("@")[0], // Use displayName if available
           text: replyText,
+          // 'createdAt' will be set by the API using serverTimestamp()
         }),
       });
 
@@ -192,10 +106,26 @@ export default function ChatSessionPage() {
     }
   };
   
-  // This function stays the same as it modifies MongoDB
+  // NOTE: This function was incomplete in your original file.
+  // You must copy the logic from your other files here.
   const handleRequestStatus = async (status, requestId) => {
-      // ... (your existing handleRequestStatus logic) ...
-      ///page.js]
+      console.log(`Handling request ${requestId} with status ${status}`);
+      // ... (your existing handleRequestStatus logic from your project) ...
+      // Example:
+      // try {
+      //   const res = await fetch('/api/pet/requests', {
+      //     method: 'PUT',
+      //     headers: { 'Content-Type': 'application/json' },
+      //     body: JSON.stringify({ requestId, status, petId: pet._id }),
+      //   });
+      //   if (res.ok) {
+      //     alert(`Request ${status}!`);
+      //     // You might need to refetch pet data or optimistically update UI
+      //     fetchPetData(); // Assuming you extract this to a reusable function
+      //   }
+      // } catch (err) {
+      //   console.error(err);
+      // }
   };
 
   useEffect(() => {
@@ -206,13 +136,16 @@ export default function ChatSessionPage() {
     return <p className="text-[#333333] text-center mt-20 text-xl">Loading chat session...</p>;
   }
   
-  // --- UI START (Mostly the same) ---
+  // --- UI ---
   
   const isOwner = user?.uid === pet.ownerId;
+  
+  // Try to find the partner's name from matingHistory
+  // This logic is from your original file.
   const partnerName = pet.matingHistory?.find(mh => mh.requesterId !== user.uid)?.requesterName || "Requester";
   
   const latestPendingRequest = isOwner ? pet.matingHistory?.find(
-      (mh) => mh.status === "pending" // Simpler logic
+      (mh) => mh.status === "pending"
   ) : null;
 
   return (
@@ -220,7 +153,7 @@ export default function ChatSessionPage() {
       <div className="w-full max-w-xl glass-container rounded-none sm:rounded-2xl shadow-2xl flex flex-col h-full sm:h-[95vh] border-t-8 border-[#4A90E2] sm:my-4 p-0">
         
         {/* Header (Fixed) */}
-        <div className="sticky top-0 bg-[#4A90E2] p-4 text-white shadow-md flex items-center justify-between">
+        <div className="sticky top-0 bg-[#4A90E2] p-4 text-white shadow-md flex items-center justify-between z-20">
             <button onClick={() => router.push("/messages")} className="text-xl hover:text-gray-200">
                 &larr;
             </button>
@@ -230,7 +163,7 @@ export default function ChatSessionPage() {
             <div className="w-6"></div>
         </div>
         
-        {/* Request Management Banner (Same as your code) */}
+        {/* Request Management Banner */}
         {isOwner && latestPendingRequest && (
              <div className="bg-yellow-50 p-3 border-b border-yellow-200 flex flex-col sm:flex-row justify-between items-center text-sm font-semibold sticky top-14 z-10">
                 <p className="text-[#333333] mb-2 sm:mb-0">
@@ -253,14 +186,14 @@ export default function ChatSessionPage() {
             </div>
         )}
         
-        {/* Messages Area (Scrolling) - NOW USES `messages` from hook */}
+        {/* Messages Area (Scrolling) */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
           {messagesLoading && <p className="text-center text-gray-500">Loading messages...</p>}
           
           {!messagesLoading && messages.length === 0 ? (
             <p className="text-center text-gray-500 mt-4">Start the conversation!</p>
           ) : (
-            messages.map((msg) => { // Use new `messages` state
+            messages.map((msg) => {
               const isSender = msg.senderId === user.uid;
               return (
                 <div
@@ -275,7 +208,7 @@ export default function ChatSessionPage() {
                     }`}
                   >
                     <p className="font-semibold text-xs mb-1">
-                      {isSender ? "You" : msg.senderName}
+                      {isSender ? "You" : (msg.senderName || "Friend")}
                     </p>
                     <p>{msg.text}</p>
                     <span className="block text-right text-xs text-gray-500 mt-1">
@@ -289,7 +222,7 @@ export default function ChatSessionPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input/Reply Bar (Fixed to Bottom) - (Same as your code) */}
+        {/* Input/Reply Bar (Fixed to Bottom) */}
         <form onSubmit={sendReply} className="sticky bottom-0 flex p-4 bg-white border-t border-gray-200 shadow-lg">
           <input
             type="text"
