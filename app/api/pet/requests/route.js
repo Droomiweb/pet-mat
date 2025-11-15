@@ -1,7 +1,6 @@
 // app/api/pet/requests/route.js
-import connectDB from "../../lib/mongodb";
-import Pet from "../../models/PetModel";
-
+import connectDB from "../../../lib/mongodb";
+import Pet from "../../../models/PetModel";
 // This single PATCH route will handle accepting/rejecting
 // both Mating and Adoption requests by the PET OWNER.
 

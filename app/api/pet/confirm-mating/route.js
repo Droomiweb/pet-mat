@@ -1,7 +1,6 @@
 // app/api/pet/confirm-mating/route.js
-import connectDB from "../../lib/mongodb";
-import Pet from "../../models/PetModel";
-
+import connectDB from "../../../lib/mongodb";
+import Pet from "../../../models/PetModel";
 // This route is for BOTH users to confirm mating has occurred *after* // a request has been 'accepted'.
 
 export async function PATCH(req) {
