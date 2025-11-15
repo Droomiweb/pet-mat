@@ -164,6 +164,26 @@ export default function PetDetailPage() {
   };
   // --- END UPDATE ---
 
+  // --- 1. NEW: Add this function to handle the button click ---
+  const handleViewLocation = () => {
+    // Check if the location data we fetched from the API exists
+    // The 'coordinates' field is what we need from the User model
+    if (!pet.ownerLocation || !pet.ownerLocation.coordinates || pet.ownerLocation.coordinates.length < 2) {
+      return alert("Owner's location is not available.");
+    }
+    
+    // Coordinates are stored as [longitude, latitude]
+    const lng = pet.ownerLocation.coordinates[0];
+    const lat = pet.ownerLocation.coordinates[1];
+    
+    // Create a Google Maps URL with the coordinates
+    const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    
+    // Open the URL in a new tab
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+  // --- END NEW FUNCTION ---
+
   useEffect(() => {
     fetchPet();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -227,16 +247,35 @@ export default function PetDetailPage() {
         </div>
         <p className="text-lg text-[#333333]">Breed: {pet.breed}</p>
         <p className="text-lg text-[#333333] mb-4">Age: {pet.age}</p>
-        {pet.certificateUrl && (
-          <a
-            href={pet.certificateUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#4A90E2] font-medium underline mt-2 block hover:text-[#50E3C2] transition"
-          >
-            View Certificate
-          </a>
-        )}
+        
+        {/* --- 2. UPDATED: Add the new button here --- */}
+        <div className="flex flex-wrap gap-4 items-center mb-6">
+          {pet.certificateUrl && (
+            <a
+              href={pet.certificateUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#4A90E2] font-medium underline hover:text-[#50E3C2] transition"
+            >
+              View Certificate
+            </a>
+          )}
+
+          {/* This is the new button */}
+          {pet.ownerLocation?.coordinates && pet.ownerLocation.coordinates.length > 0 && !isOwner && (
+            <button
+              onClick={handleViewLocation}
+              className="flex items-center gap-2 text-white bg-[#4A90E2] hover:bg-[#3A75B9] font-medium rounded-lg px-4 py-2 transition shadow-md"
+            >
+              <svg /* Simple map pin icon */ xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                <path fillRule="evenodd" d="M9.69 18.933l.003.001C9.89 19.02 10 19 10 19s.11.02.308-.066l.002-.001.006-.003.018-.008a5.741 5.741 0 00.281-.14c.186-.096.446-.24.757-.433.62-.384 1.445-.966 2.274-1.765C15.302 14.988 17 12.493 17 10A7 7 0 103 10c0 2.493 1.698 4.988 3.355 6.584a13.733 13.733 0 002.273 1.765 11.842 11.842 0 00.757.433.62.62 0 00.28.14l.018.008.006.003zM10 11.25a1.25 1.25 0 100-2.5 1.25 1.25 0 000 2.5z" clipRule="evenodd" />
+              </svg>
+              View Owner's Location
+            </button>
+          )}
+        </div>
+        {/* --- END UPDATE --- */}
+
 
         {/* Pedigree Section */}
         {pedigree && (pedigree.dam || pedigree.sire) && (
@@ -409,7 +448,8 @@ export default function PetDetailPage() {
 
         {/* --- NEW: Show Adoption Requests List --- */}
         {isAdoptionListing && (
-          <div className="mt-8 pt-6 border-t border-gray-200">
+          <div className="mt-8 pt-6 border-t border-gray-20g
+-200">
             <h2 className="text-2xl font-bold text-[#333333] mb-3">Adoption Requests</h2>
             {pet.adoptionRequests?.length === 0 ? (
               <p className="text-[#333333]">No adoption requests yet.</p>

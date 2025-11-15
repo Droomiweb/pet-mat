@@ -1,9 +1,10 @@
 // app/api/pet/[id]/route.js
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
+import User from "../../../models/User"; // <-- 1. IMPORT THE USER MODEL
 import cloudinary from "../../../lib/cloudinary";
 
-// GET a single pet by ID (remains the same)
+// GET a single pet by ID
 export async function GET(req, context) {
   try {
     await connectDB();
@@ -11,7 +12,28 @@ export async function GET(req, context) {
     const pet = await Pet.findById(id).lean();
     if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
-    return new Response(JSON.stringify(pet), { status: 200, headers: { "Content-Type": "application/json" } });
+    // --- 2. NEW: Fetch owner's location ---
+    // We find the user by their firebaseUid (which is stored as ownerId on the pet)
+    // and select *only* their location field for privacy.
+    const owner = await User.findOne({ firebaseUid: pet.ownerId })
+      .select("location")
+      .lean();
+    // --- END NEW ---
+
+    // --- 3. UPDATED: Combine pet data with owner's location ---
+    const responseData = {
+      ...pet,
+      // Add ownerLocation to the response
+      // Use pet.location as a fallback if you stored it there
+      ownerLocation: owner ? owner.location : pet.location || null, 
+    };
+
+    return new Response(JSON.stringify(responseData), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+    // --- END UPDATE ---
+
   } catch (err) {
     console.error("Error fetching pet:", err);
     return new Response(JSON.stringify({ error: "Internal Server Error" }), { status: 500 });
@@ -176,7 +198,8 @@ export async function DELETE(req, context) {
     }
 
     return new Response(JSON.stringify({ message: "Pet deleted successfully" }), { status: 200 });
-  } catch (err) {
+  } catch (err)
+ {
     console.error("Error deleting pet:", err);
     return new Response(JSON.stringify({ error: "Internal Server Error" }), { status: 500 });
   }

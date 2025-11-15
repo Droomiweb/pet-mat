@@ -56,20 +56,23 @@ export default function Profile() {
       console.error("Sign out error", error);
     }
   };
-
-  if (authLoading || loading) {
-    return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="loader">Loading...</div>
-      </div>
-    );
-  }
-
-  if (!user || !userData) {
-    return null; // Redirect is happening
-  }
-
+if (authLoading || loading) {
+  // 1. The loading screen shows...
   return (
+    <div className="flex justify-center items-center min-h-screen">
+      <div className="loader">Loading...</div>
+    </div>
+  );
+}
+
+// 2. ...then the loading finishes, and this line is executed
+if (!user || !userData) {
+  // 3. This renders a BLANK PAGE.
+  return null; 
+}
+
+// 4. The page only shows if it gets here
+return (
     <div className="container mx-auto p-4 pt-20">
       <div className="bg-white shadow-xl rounded-lg overflow-hidden md:max-w-4xl md:mx-auto">
         <div className="md:flex">
