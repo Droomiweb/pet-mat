@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { auth } from "../../lib/firebase";
 import Link from "next/link";
-import { createConversationId } from '../lib/chatUtils'; // 👈 IMPORT
-
+import { createConversationId } from '../../lib/chatUtils'; // 👈 IMPORT
 // ... inside your component
 const router = useRouter();
 const user = auth.currentUser;
