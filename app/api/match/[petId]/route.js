@@ -1,96 +1,107 @@
 // app/api/match/[petId]/route.js
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
+import { textModel } from "../../../lib/gemini";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// --- Compatibility Scoring Logic (Unchanged) ---
-// 1. Temperament Compatibility Score
-const getTemperamentScore = (temp1, temp2) => {
-  const compatiblePairs = {
-    'Friendly': ['Playful', 'Energetic', 'Curious', 'Friendly'],
-    'Playful': ['Friendly', 'Energetic', 'Curious'],
-    'Calm': ['Shy', 'Independent', 'Calm'],
-    'Shy': ['Calm', 'Independent'],
-    'Energetic': ['Playful', 'Friendly', 'Curious'],
-    'Independent': ['Calm', 'Shy', 'Independent'],
-    'Curious': ['Playful', 'Energetic', 'Friendly'],
-    'Other': [],
-  };
-  if (compatiblePairs[temp1]?.includes(temp2)) return 50;
-  if (compatiblePairs[temp2]?.includes(temp1)) return 25;
-  if (temp1 === temp2) return 40;
-  return 0;
-};
-// 2. Energy Level Compatibility Score
-const getEnergyScore = (energy1, energy2) => {
-  if (energy1 === energy2) return 30;
-  if (
-    (energy1 === 'Medium' && (energy2 === 'Low' || energy2 === 'High')) ||
-    (energy2 === 'Medium' && (energy1 === 'Low' || energy1 === 'High'))
-  ) return 15;
-  return 0;
-};
-// 3. Age Compatibility Score
-const getAgeScore = (age1, age2) => {
-  const ageDiff = Math.abs(age1 - age2);
-  if (ageDiff <= 1) return 20;
-  if (ageDiff <= 3) return 10;
-  return 0;
-};
-// --- End of Scoring Logic ---
-
-
-export async function GET(req, { params }) { // <--- FIX 1: Changed signature
+export async function GET(req, { params }) {
   try {
     await connectDB();
 
-    const { petId } = params; // <--- FIX 2: Changed access
+    const { petId } = params;
     if (!petId) {
       return new Response(JSON.stringify({ error: "Pet ID is required" }), { status: 400 });
     }
 
+    // 1. Fetch the user's pet
     const myPet = await Pet.findById(petId).lean();
     if (!myPet) {
       return new Response(JSON.stringify({ error: "User pet not found" }), { status: 404 });
     }
+
+    // 2. Check if pet has completed the AI profile
+    if (!myPet.aiProfileString) {
+      return new Response(JSON.stringify({ error: "Your pet's AI profile is not complete. Cannot find matches." }), { status: 400 });
+    }
     
-    // --- UPDATED: Match Query ---
-    const matchQuery = {
+    // 3. Find all *potential* matches from the database
+    const potentialMatches = await Pet.find({
       _id: { $ne: myPet._id }, 
       ownerId: { $ne: myPet.ownerId }, 
-      type: myPet.type, 
-      gender: myPet.gender === 'Male' ? 'Female' : 'Male',
+      type: myPet.type, // Match same type
+      gender: myPet.gender === 'Male' ? 'Female' : 'Male', // Opposite gender
       verificationStatus: 'verified', // Must be verified
       isBanned: false,
-      isPregnant: { $ne: true }, // --- ADDED: Must not be pregnant
-      listingType: 'Mating', // --- ADDED: Must be listed for Mating
-    };
-    // --- END UPDATED QUERY ---
+      isPregnant: { $ne: true }, 
+      listingType: 'Mating',
+      aiProfileString: { $ne: null, $exists: true } // MUST have an AI profile
+    }).lean();
 
-    const potentialMatches = await Pet.find(matchQuery).lean();
+    if (potentialMatches.length === 0) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
 
-    const scoredMatches = potentialMatches.map(match => {
-      let compatibilityScore = 0;
-      compatibilityScore += getTemperamentScore(myPet.temperament, match.temperament);
-      compatibilityScore += getEnergyScore(myPet.energyLevel, match.energyLevel);
-      compatibilityScore += getAgeScore(myPet.age, match.age);
-      if (myPet.breed === match.breed) {
-        compatibilityScore += 10;
-      }
-      return {
-        ...match,
-        compatibilityScore: compatibilityScore,
-      };
-    });
-
-    const sortedMatches = scoredMatches.sort((a, b) => b.compatibilityScore - a.compatibilityScore);
+    // 4. Prepare data for the AI analysis
+    const profilesToCompare = potentialMatches.map(p => ({
+      petId: p._id.toString(),
+      profile: p.aiProfileString,
+      age: p.age,
+      breed: p.breed
+    }));
     
-    return new Response(JSON.stringify(sortedMatches.slice(0, 10)), {
+    const myPetProfile = {
+      profile: myPet.aiProfileString,
+      age: myPet.age,
+      breed: myPet.breed
+    };
+
+    // 5. Send one large request to the AI for ranking
+    const prompt = `My pet's profile is:
+    ${JSON.stringify(myPetProfile)}
+    
+    I am looking for a mate. Please analyze this list of potential matches and their profiles:
+    ${JSON.stringify(profilesToCompare)}
+    
+    Return a JSON array of the top 10 most compatible matches, ranked from highest to lowest. For each, provide a 'petId', a 'compatibilityScore' (as a number 0-100), and a brief one-sentence 'reason' explaining why they are a good match based on their personalities, age, or breed.
+    
+    Respond *only* with a valid JSON array in this exact format:
+    [
+      {"petId": "...", "compatibilityScore": 95, "reason": "..."},
+      {"petId": "...", "compatibilityScore": 88, "reason": "..."}
+    ]`;
+
+    const result = await textModel.generateContent(prompt);
+    const response = await result.response;
+    let text = response.text();
+    
+    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    
+    const aiRankedMatches = JSON.parse(text);
+
+    // 6. Join AI results with the full Pet data
+    const aiResultsMap = new Map(
+      aiRankedMatches.map(r => [r.petId, r])
+    );
+
+    const finalMatches = potentialMatches
+      .filter(p => aiResultsMap.has(p._id.toString())) // Only include pets the AI ranked
+      .map(p => {
+        const aiData = aiResultsMap.get(p._id.toString());
+        return {
+          ...p, // The full pet object (name, images, etc.)
+          compatibilityScore: aiData.compatibilityScore,
+          matchReason: aiData.reason, // Add the new AI reason
+        };
+      })
+      .sort((a, b) => b.compatibilityScore - a.compatibilityScore); // Re-sort to be safe
+    
+    return new Response(JSON.stringify(finalMatches), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
 
   } catch (err) {
-    console.error("Error in matchmaking API:", err);
-    return new Response(JSON.stringify({ error: "Failed to get matches" }), { status: 500 });
+    console.error("Error in AI matchmaking API:", err);
+    return new Response(JSON.stringify({ error: "Failed to get matches: " + err.message }), { status: 500 });
   }
 }
