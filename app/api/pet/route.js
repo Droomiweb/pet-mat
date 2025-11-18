@@ -1,8 +1,9 @@
 // app/api/pet/route.js
 import connectDB from "../../lib/mongodb";
-import Pet from "../../models/PetModel";
+import Pet from "../../models/PetModel"; 
 import User from "../../models/User";
 import { v2 as cloudinary } from "cloudinary";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Configure Cloudinary
 cloudinary.config({
@@ -11,112 +12,109 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// --- THIS IS THE NEW VERIFICATION LOGIC ---
-// We run this in the background and don't make the user wait
+// Configure Gemini AI
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+// --- BACKGROUND VERIFICATION LOGIC (PRODUCTION GEMINI VERSION) ---
 const runAutoVerification = async (petId, petData) => {
   try {
-    const { certificateUrl, name, age, breed } = petData;
-    const pet = await Pet.findById(petId);
-    if (!pet) throw new Error("Pet not found for verification");
+    const { name, breed, age, certificateUrl } = petData;
+    
+    console.log(`[Verification] Starting Gemini analysis for Pet ${petId}...`);
 
-    // 1. Get Base URL (for calling internal APIs)
-    //    On Vercel, use process.env.NEXT_PUBLIC_APP_URL
-    //    For local, use 'http://localhost:3000'
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    // 1. Fetch image buffer from the Cloudinary URL
+    // (Gemini needs the raw image data to analyze it)
+    const imageResp = await fetch(certificateUrl);
+    if (!imageResp.ok) throw new Error("Failed to fetch certificate image");
+    
+    const imageBuffer = await imageResp.arrayBuffer();
+    const base64Image = Buffer.from(imageBuffer).toString("base64");
 
-    // 2. Call OCR Tesseract API
-    let ocrText = "";
-    try {
-      const ocrResponse = await fetch(`${baseUrl}/api/ocr-tesseract`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ certificateUrl }),
-      });
-      if (ocrResponse.ok) {
-        const ocrData = await ocrResponse.json();
-        ocrText = ocrData.ocrText || "";
-        pet.verificationAnalysis = pet.verificationAnalysis || {};
-        pet.verificationAnalysis.ocrText = ocrText;
+    const imagePart = {
+      inlineData: {
+        data: base64Image,
+        mimeType: "image/jpeg",
+      },
+    };
+
+    // 2. Construct the Prompt (IDENTICAL to your working Test Sandbox)
+    const prompt = `
+      Act as a strict Pet Verification Officer. Analyze this health certificate image.
+      
+      Expected Data (from User):
+      - Name: "${name}"
+      - Breed: "${breed}"
+      - Age: "${age}"
+
+      Tasks:
+      1. Extract the Pet Name, Breed, Age, and Issuer Name visible on the document.
+      2. Compare the extracted text with the Expected Data.
+      3. Be flexible with Case Sensitivity (e.g., "pug" == "Pug") and slight spelling variations.
+      4. Determine a status: "verified" (Matches), "rejected" (Clear mismatch or fake), or "needs-review" (Unclear).
+
+      Respond ONLY with this JSON structure:
+      {
+        "extractedData": {
+          "name": "...",
+          "breed": "...",
+          "age": "...",
+          "issuer": "..."
+        },
+        "matchResults": {
+          "nameMatch": boolean,
+          "breedMatch": boolean,
+          "issuerFound": boolean
+        },
+        "status": "verified" | "rejected" | "needs-review",
+        "reason": "Short explanation"
       }
-    } catch (ocrError) {
-      console.warn("OCR step failed:", ocrError.message);
-      // Continue anyway, AI can still analyze the image
-    }
+    `;
 
-    // 3. Call AI Verify API
-    let aiStatus = "needs-review"; // Default
-    let newVerificationStatus = "pending"; // Default
+    // 3. Run AI Analysis
+    const result = await model.generateContent([prompt, imagePart]);
+    const response = await result.response;
+    
+    // Clean response to ensure valid JSON
+    const text = response.text().replace(/```json/g, "").replace(/```/g, "").trim();
+    const aiResult = JSON.parse(text);
+    
+    // 4. Save Results to DB
+    // We format the extracted data into a readable string for 'ocrText'
+    // and save the full JSON object in 'aiResponse'.
+    const readableSummary = `Extracted: Name=${aiResult.extractedData.name}, Breed=${aiResult.extractedData.breed}, Age=${aiResult.extractedData.age}, Issuer=${aiResult.extractedData.issuer}`;
 
-    try {
-      const aiResponse = await fetch(`${baseUrl}/api/verify-certificate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ certificateUrl, petName: name, petAge: age, petBreed: breed, ocrText }),
-      });
+    await Pet.findByIdAndUpdate(petId, {
+      verificationStatus: aiResult.status,
+      'verificationAnalysis.ocrText': readableSummary, 
+      'verificationAnalysis.aiResponse': JSON.stringify(aiResult),
+      'verificationAnalysis.aiStatus': `auto-${aiResult.status}`,
+    });
+    
+    console.log(`✅ [Verification] Complete for ${petId}. Status: ${aiResult.status}`);
 
-      if (!aiResponse.ok) {
-        throw new Error(`AI API responded with status ${aiResponse.status}`);
-      }
-
-      const aiData = await aiResponse.json();
-      const analysis = aiData.aiAnalysis;
-
-      pet.verificationAnalysis = pet.verificationAnalysis || {};
-      pet.verificationAnalysis.aiResponse = JSON.stringify(analysis);
-
-      // 4. Decide on verification status
-      if (analysis.isCertificateValid) {
-        if (analysis.nameMatch && analysis.breedMatch) {
-          aiStatus = "auto-verified";
-          newVerificationStatus = "verified"; // SUCCESS!
-        } else {
-          // Valid cert, but data doesn't match. Flag for review.
-          aiStatus = "needs-review";
-          newVerificationStatus = "pending"; // Keep pending for admin
-        }
-      } else {
-        // AI thinks it's a fake.
-        aiStatus = "auto-rejected";
-        newVerificationStatus = "rejected"; // REJECT!
-      }
-    } catch (aiError) {
-      console.error("AI verification step failed:", aiError.message);
-      pet.verificationAnalysis = pet.verificationAnalysis || {};
-      pet.verificationAnalysis.aiResponse = JSON.stringify({ error: aiError.message });
-      aiStatus = "needs-review";
-      newVerificationStatus = "pending"; // Failed, so admin must check
-    }
-
-    // 5. Save all results to the Pet document
-    pet.verificationAnalysis = pet.verificationAnalysis || {};
-    pet.verificationAnalysis.aiStatus = aiStatus;
-    pet.verificationStatus = newVerificationStatus;
-    await pet.save();
-
-    console.log(`Auto-verification complete for Pet ${petId}. Status: ${newVerificationStatus}`);
   } catch (err) {
-    console.error(`Background verification failed for Pet ${petId}:`, err);
-    // Try to update the pet to 'needs-review' if it fails
+    console.error(`❌ [Verification] Failed for Pet ${petId}:`, err);
+    // Update status to 'needs-review' so an admin sees it failed
     try {
       await Pet.findByIdAndUpdate(petId, {
-        verificationStatus: "pending",
-        "verificationAnalysis.aiStatus": "needs-review",
-        "verificationAnalysis.aiResponse": JSON.stringify({ error: `Verification process failed: ${err.message}` }),
+        verificationStatus: 'needs-review',
+        'verificationAnalysis.aiStatus': 'error',
+        'verificationAnalysis.aiResponse': JSON.stringify({ error: err.message }),
       });
-    } catch (updateError) {
-      console.error("Failed to even update pet status after error:", updateError);
+    } catch (dbErr) {
+      console.error("Failed to save error status to DB:", dbErr);
     }
   }
 };
-// --- END OF NEW VERIFICATION LOGIC ---
 
+// --- MAIN ROUTE HANDLERS ---
 
-// Add a new pet (POST) - updated: temperament & energyLevel removed
+// POST: Add a new pet
 export async function POST(req) {
   try {
     await connectDB();
 
-    // Note: temperament & energyLevel removed here; they'll be set later in step 2
     const {
       name,
       type,
@@ -129,16 +127,16 @@ export async function POST(req) {
       ownerId,
     } = await req.json();
 
-    // Validation
     if (!name || !type || !age || !breed || !gender || !listingType || !certificateBase64 || !imagesBase64 || !ownerId) {
       return new Response(JSON.stringify({ error: "All fields are required" }), { status: 400 });
     }
 
-    // --- Cloudinary Uploads ---
+    // Upload Certificate
     const certUpload = await cloudinary.uploader.upload(certificateBase64, {
       folder: `certificates/${ownerId}`,
     });
 
+    // Upload Images
     const imageUrls = [];
     for (const base64 of imagesBase64) {
       const upload = await cloudinary.uploader.upload(base64, {
@@ -157,16 +155,16 @@ export async function POST(req) {
       certificateUrl: certUpload.secure_url,
       imageUrls,
       ownerId,
-      verificationStatus: "pending", // Always start as pending
-      // Temperament, EnergyLevel, and aiProfileString are now set in step 2
+      verificationStatus: "pending", 
     };
 
     const newPet = new Pet(petData);
     await newPet.save();
 
-    // --- TRIGGER AUTO-VERIFICATION (background) ---
+    // Trigger background verification (Non-blocking)
+    // This calls the function above with the strict logic
     runAutoVerification(newPet._id, petData).catch((err) => {
-      console.error("Failed to start auto-verification:", err.message);
+      console.error("Failed to trigger background verification:", err);
     });
 
     return new Response(
@@ -182,8 +180,7 @@ export async function POST(req) {
   }
 }
 
-
-// Fetch pets with optional filters (GET)
+// GET: Fetch pets with filters (Unchanged)
 export async function GET(req) {
   try {
     await connectDB();
@@ -201,17 +198,16 @@ export async function GET(req) {
     if (excludeOwnerId) petQuery.ownerId = { $ne: excludeOwnerId };
     if (listingType) petQuery.listingType = listingType;
 
-    // --- NEW: Hide pregnant pets from listings ---
+    // Hide pregnant pets
     petQuery.isPregnant = { $ne: true };
-    // --- END NEW ---
 
-    // --- NEW: Only show verified pets ---
+    // Only show verified pets
+    // (Keep enabled for production so users only see verified listings)
     petQuery.verificationStatus = "verified";
-    // --- END NEW ---
 
     let pets = await Pet.find(petQuery).lean();
 
-    // Filter by city if provided
+    // Filter by city
     if (city) {
       const usersInCity = await User.find({ "location.city": city }, "firebaseUid").lean();
       const userUids = usersInCity.map((u) => u.firebaseUid);

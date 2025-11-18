@@ -1,25 +1,26 @@
 // app/api/generate-questions/route.js
 import { textModel } from "../../lib/gemini";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export async function POST(req) {
   try {
-    const { petName, petType } = await req.json();
+    // 1. Accept petBreed from the request
+    const { petName, petType, petBreed } = await req.json();
 
     if (!petName || !petType) {
       return new Response(JSON.stringify({ error: "Pet name and type are required" }), { status: 400 });
     }
 
-    const prompt = `Generate a list of exactly 10 engaging, open-ended questions for a pet owner to build a personality profile for their ${petType} named '${petName}' for a pet matrimony app. The questions should cover temperament, energy, social habits (with other pets and people), quirks, and preferences. Respond *only* with a valid JSON object in the format: {"questions": ["..."]}
-
-    Example:
-    {"questions": ["How does ${petName} usually greet new people?", "What is ${petName}'s favorite game to play?", "Describe ${petName}'s energy level on a typical day.", "How does ${petName} get along with other ${petType}s?"]}`;
+    // 2. Update prompt to include the breed for better context
+    const prompt = `Generate a list of exactly 10 engaging, open-ended questions for a pet owner to build a personality profile for their ${petBreed || ''} ${petType} named '${petName}' for a pet matrimony app. 
+    
+    The questions should be specific to the behavior and traits common to a ${petBreed || petType}. Cover temperament, energy, social habits, quirks, and preferences. 
+    
+    Respond *only* with a valid JSON object in the format: {"questions": ["..."]}`;
 
     const result = await textModel.generateContent(prompt);
     const response = await result.response;
     let text = response.text();
     
-    // Clean the response
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
     
     const data = JSON.parse(text);
@@ -32,7 +33,7 @@ export async function POST(req) {
 
   } catch (err) {
     console.error("Error generating questions:", err);
-    // Fallback questions
+    // Fallback questions (Generic)
     const fallback = {
         questions: [
             `What is ${petName}'s favorite toy or activity?`,

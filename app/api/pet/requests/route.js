@@ -1,75 +1,78 @@
 // app/api/pet/requests/route.js
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
-// This single PATCH route will handle accepting/rejecting
-// both Mating and Adoption requests by the PET OWNER.
+import { db } from "../../../lib/firebase"; 
+import { collection, addDoc, serverTimestamp, doc, setDoc } from "firebase/firestore";
+
+// Helper to create stable Conversation ID (duplicated here for safety)
+const createConversationId = (petId, uid1, uid2) => {
+    const sortedUIDs = [uid1, uid2].sort();
+    return `${petId}_${sortedUIDs[0]}_${sortedUIDs[1]}`;
+};
 
 export async function PATCH(req) {
   try {
     await connectDB();
-    // 'ownerId' is the person logged in, 'petId' is their pet
     const { ownerId, petId, requestId, requestType, newStatus } = await req.json();
 
     if (!ownerId || !petId || !requestId || !requestType || !newStatus) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
     }
 
-    if (!['approved', 'rejected', 'accepted'].includes(newStatus)) {
-      return new Response(JSON.stringify({ error: "Invalid new status" }), { status: 400 });
-    }
-
     const pet = await Pet.findById(petId);
-    if (!pet) {
-      return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
-    }
+    if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
-    // --- SECURITY CHECK ---
-    // Ensure the person making the request is the owner of the pet
-    if (pet.ownerId !== ownerId) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
-    }
+    if (pet.ownerId !== ownerId) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
 
     let request;
     
+    // --- ADOPTION LOGIC ---
     if (requestType === 'adoption') {
-      if (newStatus === 'accepted') { // 'accepted' is not valid for adoption
-          return new Response(JSON.stringify({ error: "Invalid status for adoption" }), { status: 400 });
+      request = pet.adoptionRequests.id(requestId);
+      if (!request) return new Response(JSON.stringify({ error: "Adoption request not found" }), { status: 404 });
+      request.status = newStatus;
+      
+      if (newStatus === 'approved') {
+        pet.adoptionRequests.forEach(req => {
+          if (req.id !== requestId && req.status === 'pending') req.status = 'rejected';
+        });
+        pet.ownerId = request.requesterId;
+        pet.listingType = 'Mating';
+        pet.adoptionRequests = [];
       }
       
-      request = pet.adoptionRequests.id(requestId);
-      if (!request) {
-        return new Response(JSON.stringify({ error: "Adoption request not found" }), { status: 404 });
-      }
+    // --- MATING LOGIC ---
+    } else if (requestType === 'mating') {
+      request = pet.matingHistory.id(requestId);
+      if (!request) return new Response(JSON.stringify({ error: "Mating request not found" }), { status: 404 });
       
       request.status = newStatus;
 
-      // If approved, reject all other pending adoption requests
-      if (newStatus === 'approved') {
-        pet.adoptionRequests.forEach(req => {
-          if (req.id !== requestId && req.status === 'pending') {
-            req.status = 'rejected';
+      // --- FIX: Send System Message to Chat upon Acceptance ---
+      if (newStatus === 'accepted') {
+          try {
+              const conversationId = createConversationId(petId, ownerId, request.requesterId);
+              
+              // Add system message
+              await addDoc(collection(db, "conversations", conversationId, "messages"), {
+                  senderId: "system",
+                  senderName: "PetMate System",
+                  text: `✅ Mating Request Accepted! You can now discuss details here.`,
+                  createdAt: serverTimestamp(),
+              });
+
+              // Ensure conversation exists/updates
+              await setDoc(doc(db, "conversations", conversationId), {
+                  petId: petId,
+                  participants: [ownerId, request.requesterId],
+                  lastMessage: `✅ Mating Request Accepted!`,
+                  updatedAt: serverTimestamp()
+              }, { merge: true });
+              
+          } catch (fsError) {
+              console.error("Error sending acceptance msg to Firestore:", fsError);
           }
-        });
-        
-        // --- TRANSFER OWNERSHIP ---
-        pet.ownerId = request.requesterId;
-        pet.listingType = 'Mating'; // No longer for adoption
-        pet.adoptionRequests = []; // Clear all requests
       }
-      
-    } else if (requestType === 'mating') {
-      if (newStatus === 'approved') { // 'approved' is not valid for mating
-          return new Response(JSON.stringify({ error: "Invalid status for mating" }), { status: 400 });
-      }
-      
-      request = pet.matingHistory.id(requestId);
-      if (!request) {
-        return new Response(JSON.stringify({ error: "Mating request not found" }), { status: 404 });
-      }
-      
-      // 'accepted' means chat is now open
-      // 'rejected' ends the request
-      request.status = newStatus;
 
     } else {
       return new Response(JSON.stringify({ error: "Invalid request type" }), { status: 400 });

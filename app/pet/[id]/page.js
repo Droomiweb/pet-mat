@@ -4,21 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { auth } from "../../lib/firebase";
 import Link from "next/link";
-import { createConversationId } from '../../lib/chatUtils'; // 👈 IMPORT
-// ... inside your component
-const router = useRouter();
-const user = auth.currentUser;
-const pet = `${params.id}`;
-
-const handleStartChat = () => {
-  if (!user) return router.push("/Login");
-
-  // Use the helper to create the STABLE ID
-  const conversationId = createConversationId(pet._id, user.uid, pet.ownerId);
-
-  // Redirect to the chat page with the *correct, shared* ID
-  router.push(`/messages/${conversationId}`);
-};
+import { createConversationId } from '../../lib/chatUtils'; 
 
 export default function PetDetailPage() {
   const [pet, setPet] = useState(null);
@@ -28,9 +14,23 @@ export default function PetDetailPage() {
   const [newMessage, setNewMessage] = useState("");
   const [requesterPets, setRequesterPets] = useState([]);
   const [requesterPetId, setRequesterPetId] = useState("");
+  
+  // --- MOVED HOOKS INSIDE THE COMPONENT ---
   const params = useParams();
   const router = useRouter();
   const user = auth.currentUser;
+
+  // --- MOVED HANDLE START CHAT INSIDE ---
+  const handleStartChat = () => {
+    if (!user) return router.push("/Login");
+    if (!pet) return;
+
+    // Use the helper to create the STABLE ID
+    const conversationId = createConversationId(pet._id, user.uid, pet.ownerId);
+
+    // Redirect to the chat page with the *correct, shared* ID
+    router.push(`/messages/${conversationId}`);
+  };
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -463,8 +463,7 @@ export default function PetDetailPage() {
 
         {/* --- NEW: Show Adoption Requests List --- */}
         {isAdoptionListing && (
-          <div className="mt-8 pt-6 border-t border-gray-20g
--200">
+          <div className="mt-8 pt-6 border-t border-gray-200">
             <h2 className="text-2xl font-bold text-[#333333] mb-3">Adoption Requests</h2>
             {pet.adoptionRequests?.length === 0 ? (
               <p className="text-[#333333]">No adoption requests yet.</p>

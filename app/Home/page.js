@@ -5,15 +5,15 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "./../lib/firebase";
 
-// --- MAP IMPORTS REMOVED ---
-
 export default function Main() {
-  const [pets, setPets] = useState([]);
-  const [suggestions, setSuggestions] = useState([]);
-  const [userPets, setUserPets] = useState([]);
+  const [pets, setPets] = useState([]); // All pets for the general feed
   
-  // Filters still include 'radius'
-  const [filters, setFilters] = useState({ type: "", breed: "", radius: "50" }); // Default 50km
+  // --- FIX 1: State to hold suggestions for MULTIPLE pets ---
+  // Structure: { "pet_id_1": [matches], "pet_id_2": [matches] }
+  const [suggestionsMap, setSuggestionsMap] = useState({});
+  
+  const [userPets, setUserPets] = useState([]);
+  const [filters, setFilters] = useState({ type: "", breed: "", radius: "50" }); 
   
   const [loading, setLoading] = useState(true);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
@@ -27,7 +27,7 @@ export default function Main() {
       Other: ["Mixed", "Unknown"],
   };
 
-  // This function still sends the 'radius' filter to the API
+  // Fetch Feed Pets
   const fetchPets = async () => {
     setLoading(true);
     try {
@@ -46,8 +46,6 @@ export default function Main() {
       if (res.ok) {
         const data = await res.json();
         setPets(data);
-      } else {
-        console.error("Failed to fetch pets:", await res.text());
       }
     } catch (err) {
       console.error("Error fetching pets:", err);
@@ -56,7 +54,7 @@ export default function Main() {
     }
   };
   
-  // ... (fetchUserPets and fetchSuggestions remain the same) ...
+  // Fetch User's Pets & Trigger Matches for EACH
   const fetchUserPets = async () => {
       const user = auth.currentUser;
       if (!user) {
@@ -71,7 +69,10 @@ export default function Main() {
               setUserPets(matingPets);
               
               if (matingPets.length > 0) {
-                fetchSuggestions(matingPets[0]._id);
+                // --- FIX 2: Loop through ALL mating pets and fetch suggestions ---
+                matingPets.forEach(pet => {
+                    fetchSuggestionsForPet(pet._id);
+                });
               } else {
                 setSuggestionsLoading(false);
               }
@@ -82,24 +83,26 @@ export default function Main() {
       }
   }
 
-  const fetchSuggestions = async (userPetId) => {
-    setSuggestionsLoading(true);
+  // Helper to fetch suggestions for a single pet and update the map
+  const fetchSuggestionsForPet = async (petId) => {
     try {
-      const res = await fetch(`/api/match/${userPetId}`);
+      const res = await fetch(`/api/match/${petId}`);
       if (res.ok) {
         const data = await res.json();
-        setSuggestions(data);
-      } else {
-        setSuggestions([]);
+        // Update the map with results for this specific pet
+        setSuggestionsMap(prev => ({
+            ...prev,
+            [petId]: data
+        }));
       }
     } catch (err) {
-      console.error("Error fetching suggestions:", err);
-      setSuggestions([]);
+      console.error(`Error fetching suggestions for ${petId}:`, err);
     } finally {
+      // We can turn off loading once at least one request finishes, 
+      // or handle granular loading. For simplicity:
       setSuggestionsLoading(false);
     }
   };
-  // ---
 
   useEffect(() => {
     fetchUserPets();
@@ -123,60 +126,69 @@ export default function Main() {
         Discover Your Pet's Mate
       </h1>
 
-      {/* Suggestions Section (Unchanged) */}
+      {/* --- FIX 3: Render Matching Section for EACH User Pet --- */}
       {suggestionsLoading ? (
         <p className="text-center text-[#333333] text-lg mb-8">Loading compatible matches...</p>
-      ) : suggestions.length > 0 && userPets.length > 0 ? (
-          <div className="mb-12">
-            <h2 className="text-3xl font-bold text-[#4A90E2] mb-6 border-l-4 border-[#50E3C2] pl-3">
-              Top Matches for {userPets[0]?.name}
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
-              {suggestions.map((pet) => (
-                <div
-                  key={pet._id}
-                  onClick={() => handlePetClick(pet._id)}
-                  className="cursor-pointer bg-white rounded-xl shadow-lg p-3 hover:scale-105 hover:shadow-2xl transition-transform duration-300 border-2 border-[#50E3C2] relative"
-                >
-                  <div className="absolute top-2 right-2 bg-[#FF9A00] text-white text-xs font-bold px-2 py-1 rounded-full shadow-md">
-                    {pet.compatibilityScore}% Match
-                  </div>
-                  
-                  {pet.imageUrls?.[0] && (
-                    <img
-                      src={pet.imageUrls[0]}
-                      alt={pet.name}
-                      className="w-full h-32 object-cover rounded-lg mb-3"
-                    />
-                  )}
-                  <h3 className="font-bold text-lg text-[#333333] mb-1">{pet.name} ({pet.gender.charAt(0)})</h3>
-                  <p className="text-[#333333] text-sm truncate">Breed: {pet.breed}</p>
-                  <p className="text-[#333333] text-sm">Age: {pet.age}</p>
-                  <p className="text-[#333333] text-sm capitalize">Energy: {pet.energyLevel.toLowerCase()}</p>
-                </div>
-              ))}
-            </div>
-            <div className="border-b border-gray-300 mt-12"></div>
-          </div>
       ) : userPets.length > 0 ? (
-        <p className="text-center text-gray-500 text-lg mb-8">No compatible "Mating" matches found for {userPets[0].name} right now.</p>
+          <div className="mb-12 space-y-12">
+            {userPets.map((myPet) => {
+                const matches = suggestionsMap[myPet._id] || [];
+                
+                // Skip if no matches found for this specific pet
+                if (matches.length === 0) return null;
+
+                return (
+                    <div key={myPet._id} className="bg-white/50 p-6 rounded-3xl border border-white shadow-sm">
+                        <h2 className="text-3xl font-bold text-[#4A90E2] mb-6 border-l-4 border-[#50E3C2] pl-3">
+                          Top Matches for <span className="text-[#333333]">{myPet.name}</span>
+                        </h2>
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
+                          {matches.map((pet) => (
+                            <div
+                              key={pet._id}
+                              onClick={() => handlePetClick(pet._id)}
+                              className="cursor-pointer bg-white rounded-xl shadow-lg p-3 hover:scale-105 hover:shadow-2xl transition-transform duration-300 border-2 border-[#50E3C2] relative"
+                            >
+                              <div className="absolute top-2 right-2 bg-[#FF9A00] text-white text-xs font-bold px-2 py-1 rounded-full shadow-md">
+                                {pet.compatibilityScore}% Match
+                              </div>
+                              
+                              {pet.imageUrls?.[0] && (
+                                <img
+                                  src={pet.imageUrls[0]}
+                                  alt={pet.name}
+                                  className="w-full h-32 object-cover rounded-lg mb-3"
+                                />
+                              )}
+                              <h3 className="font-bold text-lg text-[#333333] mb-1">{pet.name} ({pet.gender.charAt(0)})</h3>
+                              <p className="text-[#333333] text-sm truncate">Breed: {pet.breed}</p>
+                              <p className="text-[#333333] text-sm capitalize">Age: {pet.age}</p>
+                            </div>
+                          ))}
+                        </div>
+                    </div>
+                );
+            })}
+            
+            {/* Fallback if user has pets but 0 total matches */}
+            {Object.values(suggestionsMap).every(arr => arr.length === 0) && (
+                 <p className="text-center text-gray-500 text-lg mb-8">No AI matches found yet. Try adjusting your pet's profile!</p>
+            )}
+          </div>
       ) : (
         <p className="text-center text-gray-500 text-lg mb-8">Add a pet (for mating) to start seeing compatible matches!</p>
       )}
 
-      <h2 className="text-3xl font-bold text-[#333333] mb-6 border-l-4 border-[#4A90E2] pl-3">
+      <h2 className="text-3xl font-bold text-[#333333] mb-6 border-l-4 border-[#4A90E2] pl-3 mt-12">
               Pet Matrimony Listings
       </h2>
       
-      {/* --- Filters Section (Radius Slider is kept) --- */}
+      {/* Filters Section */}
       <div className="flex flex-wrap justify-center gap-4 mb-10 p-5 rounded-xl bg-white shadow-inner items-center">
-        {/* Pet Type */}
         <select
           className="p-3 rounded-lg border-2 border-gray-300 bg-white focus:border-[#4A90E2] transition-colors cursor-pointer"
           value={filters.type}
-          onChange={(e) =>
-            setFilters({ ...filters, type: e.target.value, breed: "" })
-          }
+          onChange={(e) => setFilters({ ...filters, type: e.target.value, breed: "" })}
         >
           <option value="">All Types</option>
           <option value="Dog">Dog</option>
@@ -186,25 +198,18 @@ export default function Main() {
           <option value="Other">Other</option>
         </select>
 
-        {/* Breed (depends on type) */}
         <select
           className="p-3 rounded-lg border-2 border-gray-300 bg-white focus:border-[#4A90E2] transition-colors cursor-pointer"
           value={filters.breed}
-          onChange={(e) =>
-            setFilters({ ...filters, breed: e.target.value })
-          }
+          onChange={(e) => setFilters({ ...filters, breed: e.target.value })}
           disabled={!filters.type}
         >
           <option value="">All Breeds</option>
-          {filters.type &&
-            breedOptions[filters.type].map((breed) => (
-              <option key={breed} value={breed}>
-                {breed}
-              </option>
-            ))}
+          {filters.type && breedOptions[filters.type].map((breed) => (
+              <option key={breed} value={breed}>{breed}</option>
+          ))}
         </select>
 
-        {/* Radius Slider */}
         <div className="flex items-center gap-2 p-3 rounded-lg border-2 border-gray-300 bg-white">
             <label htmlFor="radius" className="font-medium text-gray-700">Radius:</label>
             <input
@@ -223,9 +228,7 @@ export default function Main() {
         </div>
       </div>
 
-      {/* --- MAP VIEW REMOVED --- */}
-
-      {/* Pet Grid (Unchanged) */}
+      {/* Pet Grid */}
       {loading ? (
         <p className="text-center text-[#333333] text-xl py-10">Loading wonderful pets...</p>
       ) : pets.length === 0 ? (
@@ -240,7 +243,6 @@ export default function Main() {
               onClick={() => handlePetClick(pet._id)}
               className="cursor-pointer bg-white rounded-xl shadow-lg p-4 hover:scale-[1.03] hover:shadow-2xl transition-transform duration-300 border-b-4 border-[#4A90E2] hover:border-[#50E3C2] relative"
             >
-              {/* Distance Badge (This still works!) */}
               {pet.distance !== undefined && (
                   <span className="absolute top-2 left-2 text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
                     {pet.distance.toFixed(1)} km away

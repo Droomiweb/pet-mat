@@ -11,8 +11,8 @@ export default function AddPet() {
   // Pet details
   const [petName, setPetName] = useState("");
   const [petAge, setPetAge] = useState("");
-  const [petType, setPetType] = useState(""); // Will be auto-filled
-  const [petBreed, setPetBreed] = useState(""); // Will be auto-filled
+  const [petType, setPetType] = useState(""); 
+  const [petBreed, setPetBreed] = useState(""); 
   const [petGender, setPetGender] = useState("");
   const [listingType, setListingType] = useState("Mating");
   
@@ -36,7 +36,7 @@ export default function AddPet() {
     }
   }, [user, authLoading, router]);
 
-  // All possible breeds (for the dropdown, in case AI is wrong)
+  // All possible breeds (for the dropdown)
   const petBreeds = {
     Dog: ["Labrador Retriever", "German Shepherd", "Golden Retriever", "Bulldog", "Poodle", "Beagle", "Other"],
     Cat: ["Persian", "Siamese", "Maine Coon", "Bengal", "British Shorthair", "Ragdoll", "Other"],
@@ -53,7 +53,7 @@ export default function AddPet() {
       reader.onerror = (err) => reject(err);
     });
 
-  // --- NEW: Handle Image Selection and AI Analysis ---
+  // --- Handle Image Selection and AI Analysis ---
   const handleImageChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -71,25 +71,43 @@ export default function AddPet() {
       const res = await fetch("/api/analyze-pet-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageB64, mimeType: file.type }),
+        body: JSON.stringify({ imageUrl: imageB64, mimeType: file.type }),
       });
       
-      const data = await res.json();
+      const data = await res.json(); // Expecting { type: "Dog", breed: "Pug" }
 
       if (res.ok) {
-        // 3. Auto-fill form and move to step 2
-        setPetType(data.type || "Other");
-        setPetBreed(data.breed || "Other");
-        setStep(2); // Move to the details form
+        // --- FIX START: CORRECTLY PARSE JSON RESPONSE ---
+        
+        // 1. Normalize Type (Capitalize first letter: "dog" -> "Dog")
+        let detectedType = data.type || "Other";
+        detectedType = detectedType.charAt(0).toUpperCase() + detectedType.slice(1).toLowerCase();
+
+        // Ensure type exists in our list, otherwise default to "Other"
+        const validTypes = Object.keys(petBreeds);
+        if (!validTypes.includes(detectedType)) {
+            detectedType = "Other";
+        }
+
+        // 2. Get Breed
+        let detectedBreed = data.breed || "Unknown";
+
+        // Set State
+        setPetType(detectedType);
+        setPetBreed(detectedBreed);
+        
+        // --- FIX END ---
+
+        setStep(2); 
       } else {
-        throw new Error(data.error || "AI analysis failed, please enter manually.");
+        throw new Error(data.error || "AI analysis failed.");
       }
     } catch (err) {
       console.error(err);
-      setError("Analysis failed. Please select a pet type and breed manually.");
-      // Still move to step 2, but fields will be empty
-      setPetType("Other"); // Default to Other
-      setPetBreed("Other");
+      // If AI fails, just go to step 2 with defaults
+      setError("Could not auto-detect pet. Please enter details manually.");
+      setPetType(""); 
+      setPetBreed("");
       setStep(2);
     } finally {
       setIsAnalyzing(false);
@@ -100,7 +118,6 @@ export default function AddPet() {
     setCertificate(e.target.files[0]);
   };
 
-  // --- UPDATED: HandleSubmit ---
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -108,12 +125,12 @@ export default function AddPet() {
 
     if (
       !petName.trim() ||
-      petAge === "" ||
+      !petAge ||
       !petType ||
       !petBreed ||
       !petGender ||
       !certificate ||
-      !petImage // Check for the single image
+      !petImage 
     ) {
       setLoading(false);
       return setError("Please fill all fields properly and upload files.");
@@ -125,12 +142,9 @@ export default function AddPet() {
     }
 
     try {
-      // We need Base64 for all files
       const certificateBase64 = await fileToBase64(certificate);
-      // The `petImage` is now the *only* image at this step.
-      // Your backend API `app/api/pet/route.js` expects `imagesBase64` as an *array*.
       const petImageBase64 = await fileToBase64(petImage);
-      const imagesBase64 = [petImageBase64]; // Send it as an array
+      const imagesBase64 = [petImageBase64]; 
 
       const res = await fetch("/api/pet", {
         method: "POST",
@@ -143,17 +157,13 @@ export default function AddPet() {
           gender: petGender,
           listingType: listingType,
           certificateBase64,
-          imagesBase64, // Send the array
+          imagesBase64, 
           ownerId: user.uid,
-          // NOTE: Temperament and EnergyLevel are NOT sent.
         }),
       });
 
       const data = await res.json();
       if (res.status === 201) {
-        // --- NEW: Redirect to questionnaire ---
-        // data.message will be "Pet added successfully! Verification is in progress."
-        // data.petId is what we need
         router.push(`/add-pet-profile/${data.petId}`);
       } else {
         setError(data.error || "Something went wrong");
@@ -194,20 +204,19 @@ export default function AddPet() {
 
         {/* --- STEP 1: Image Upload --- */}
         <div className="w-full flex flex-col items-center">
-          <label className="cursor-pointer w-full h-64 bg-gray-100/50 rounded-xl border-2 border-dashed border-gray-400/80 flex items-center justify-center text-gray-600 hover:bg-gray-200/50 hover:border-gray-500/80 transition-all duration-300">
+          <label className="cursor-pointer w-full h-64 bg-gray-100/50 rounded-xl border-2 border-dashed border-gray-400/80 flex items-center justify-center text-gray-600 hover:bg-gray-200/50 hover:border-gray-500/80 transition-all duration-300 relative overflow-hidden">
             {petImagePreview ? (
               <Image
                 src={petImagePreview}
                 alt="Pet preview"
-                width={250}
-                height={250}
-                className="object-cover h-full w-full rounded-xl"
+                fill
+                className="object-cover rounded-xl"
               />
             ) : (
-              <span className="text-center font-semibold">
+              <span className="text-center font-semibold px-4">
                 Click to upload your pet's main image
                 <br/>
-                (This will be analyzed by AI)
+                <span className="text-sm font-normal">(AI will auto-detect breed)</span>
               </span>
             )}
             <input
@@ -230,12 +239,11 @@ export default function AddPet() {
         {/* --- STEP 2: Details Form (Conditional) --- */}
         {step === 2 && (
           <form onSubmit={handleSubmit} className="w-full flex flex-col mt-6">
-            <div className="p-3 mb-4 bg-green-100/50 border border-green-300/80 rounded-lg text-center">
+            
+            <div className="p-3 mb-4 bg-green-100/80 border border-green-300 rounded-lg text-center shadow-sm">
               <span className="text-green-800 font-semibold">
-                AI Result: {petType} - {petBreed}
+                AI Detected: {petType} - {petBreed}
               </span>
-              <br/>
-              <span className="text-sm text-gray-600">You can correct this if needed.</span>
             </div>
 
             {/* Listing Type */}
@@ -251,7 +259,6 @@ export default function AddPet() {
               </select>
             </div>
 
-            {/* Pet Name */}
             <input
               type="text"
               value={petName}
@@ -261,7 +268,6 @@ export default function AddPet() {
               required
             />
 
-            {/* Pet Age */}
             <input
               type="number"
               value={petAge}
@@ -272,27 +278,26 @@ export default function AddPet() {
               required
             />
 
-            {/* Pet Type (Auto-filled) */}
+            {/* --- PET TYPE DROPDOWN --- */}
             <div className="input-style p-0 mb-4">
               <select
                 value={petType}
                 onChange={(e) => {
                   setPetType(e.target.value);
-                  setPetBreed(petBreeds[e.target.value]?.[0] || "Other"); // Reset breed on type change
+                  // Reset breed if user manually changes type
+                  setPetBreed(petBreeds[e.target.value]?.[0] || "Other"); 
                 }}
                 className="w-full p-3 bg-transparent cursor-pointer outline-none text-primary"
                 required
               >
                 <option value="" disabled>Select Pet Type *</option>
                 {Object.keys(petBreeds).map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
+                  <option key={type} value={type}>{type}</option>
                 ))}
               </select>
             </div>
 
-            {/* Pet Breed (Auto-filled) */}
+            {/* --- PET BREED DROPDOWN --- */}
             <div className="input-style p-0 mb-4">
               <select
                 value={petBreed}
@@ -301,16 +306,20 @@ export default function AddPet() {
                 required
               >
                 <option value="" disabled>Select Pet Breed *</option>
-                {petType &&
-                  (petBreeds[petType] || ["Other"]).map((breed) => (
-                    <option key={breed} value={breed}>
-                      {breed}
-                    </option>
-                  ))}
+                
+                {/* List Standard Breeds */}
+                {petType && (petBreeds[petType] || ["Other"]).map((breed) => (
+                    <option key={breed} value={breed}>{breed}</option>
+                ))}
+                
+                {/* ADD CUSTOM OPTION IF AI DETECTED A BREED NOT IN THE LIST */}
+                {petBreed && 
+                 (!petBreeds[petType] || !petBreeds[petType].includes(petBreed)) && (
+                   <option value={petBreed}>{petBreed}</option>
+                )}
               </select>
             </div>
 
-            {/* Pet Gender */}
             <div className="input-style p-0 mb-4">
               <select
                 value={petGender}
@@ -324,7 +333,6 @@ export default function AddPet() {
               </select>
             </div>
 
-            {/* Certificate Upload */}
             <div className="mb-4">
               <span className="self-start text-sm font-semibold mb-1 block text-gray-700">
                 Health Certificate (PDF/Image)
@@ -343,7 +351,6 @@ export default function AddPet() {
               </label>
             </div>
 
-            {/* Submit */}
             <button type="submit" className="mt-4 btn-primary" disabled={loading}>
               {loading ? "Registering..." : "Next: Create AI Profile"}
             </button>

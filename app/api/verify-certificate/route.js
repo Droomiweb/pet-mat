@@ -1,8 +1,8 @@
 // app/api/verify-certificate/route.js
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { visionModel } from "../../lib/gemini"; // <-- FIX 1: Import the shared visionModel
 
-// Use a model that supports JSON mode or is good with structured responses
-const geminiProVision = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY).getGenerativeModel({ model: "gemini-1.5-flash" });
+// --- FIX 2: Removed the old "geminiProVision" model creation ---
+// const geminiProVision = new GoogleGenerativeAI(...
 
 // Function to convert a remote image URL to a format the Gemini model can read
 async function fetchAndEncodeImage(url) {
@@ -14,7 +14,7 @@ async function fetchAndEncodeImage(url) {
   const contentType = response.headers.get("Content-Type") || "image/jpeg";
   return {
     inlineData: {
-      data: Buffer.from(buffer).toString("base6S4"),
+      data: Buffer.from(buffer).toString("base64"),
       mimeType: contentType,
     },
   };
@@ -30,8 +30,7 @@ export async function POST(req) {
 
     const imagePart = await fetchAndEncodeImage(certificateUrl);
     
-    // --- UPDATED PROMPT ---
-    // This new prompt forces the AI to return only JSON.
+    // --- UPDATED PROMPT (This prompt is unchanged) ---
     const prompt = `
     Analyze this pet certificate.
     User-provided data:
@@ -64,7 +63,8 @@ export async function POST(req) {
     `;
     // --- END UPDATED PROMPT ---
 
-    const result = await geminiProVision.generateContent([prompt, imagePart]);
+    // --- FIX 3: Use the imported 'visionModel' ---
+    const result = await visionModel.generateContent([prompt, imagePart]);
     const response = await result.response;
     let text = response.text();
 

@@ -18,7 +18,6 @@ export default function AddPetProfile() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // 1. Fetch Pet and Generate Questions
   useEffect(() => {
     if (authLoading || !user || !petId) return;
 
@@ -27,18 +26,22 @@ export default function AddPetProfile() {
         setLoading(true);
         setError(null);
         
-        // A. Fetch the pet's details (we need its name/type)
         const petRes = await fetch(`/api/pet/${petId}`);
         if (!petRes.ok) throw new Error("Failed to fetch pet details.");
         const petData = await petRes.json();
         setPet(petData);
 
-        // B. Call API to generate questions
+        // --- FIX 1: Pass petBreed to the API ---
         const qRes = await fetch("/api/generate-questions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ petName: petData.name, petType: petData.type }),
+          body: JSON.stringify({ 
+            petName: petData.name, 
+            petType: petData.type,
+            petBreed: petData.breed // <--- Added this
+          }),
         });
+        
         if (!qRes.ok) throw new Error("Failed to generate AI questions.");
         const qData = await qRes.json();
         setQuestions(qData.questions);
@@ -53,26 +56,21 @@ export default function AddPetProfile() {
     fetchPetAndQuestions();
   }, [petId, user, authLoading]);
 
-  // 2. Handle Answer Submission
   const handleAnswer = (answer) => {
     const newAnswers = { ...answers, [currentQIndex]: answer };
     setAnswers(newAnswers);
     
-    // Move to next question
     if (currentQIndex < questions.length - 1) {
       setCurrentQIndex(currentQIndex + 1);
     } else {
-      // All questions answered, submit the profile
       submitProfile(newAnswers);
     }
   };
 
-  // 3. Submit Profile to AI
   const submitProfile = async (finalAnswers) => {
     setLoading(true);
     setError(null);
     try {
-      // Convert answers object to a Q&A array
       const qaPairs = questions.map((q, index) => ({
         question: q,
         answer: finalAnswers[index] || "No answer."
@@ -86,7 +84,6 @@ export default function AddPetProfile() {
 
       if (!res.ok) throw new Error("Failed to save your AI profile.");
       
-      // Success! Go to profile.
       router.push("/Profile?profile_success=true");
 
     } catch (err) {
@@ -127,7 +124,6 @@ export default function AddPetProfile() {
               Your answers will create a unique AI personality profile.
             </p>
             
-            {/* Progress Bar */}
             <div className="w-full bg-gray-200 rounded-full h-2.5 mb-6">
               <div 
                 className="bg-[#4A90E2] h-2.5 rounded-full transition-all duration-300" 
@@ -135,18 +131,19 @@ export default function AddPetProfile() {
               ></div>
             </div>
 
-            {/* Current Question */}
             <div className="w-full text-center">
               <h2 className="text-xl font-semibold text-gray-800 mb-6 min-h-[60px]">
                 {questions[currentQIndex]}
               </h2>
               
-              {/* Simple Text Input for answers */}
               <form 
                 onSubmit={(e) => {
                   e.preventDefault();
                   const answer = e.target.elements.answer.value;
-                  if (answer.trim()) handleAnswer(answer);
+                  if (answer.trim()) {
+                    handleAnswer(answer);
+                    e.target.reset(); // <--- FIX 2: CLEARS THE TEXT AREA
+                  }
                 }}
                 className="w-full flex flex-col items-center"
               >
@@ -156,6 +153,7 @@ export default function AddPetProfile() {
                   className="input-style w-full"
                   placeholder="Type your answer here..."
                   required
+                  // Note: We removed 'autoFocus' to prevent jumping on mobile
                 ></textarea>
                 <button type="submit" className="btn-primary mt-4 w-full max-w-xs">
                   {currentQIndex < questions.length - 1 ? "Next Question" : "Finish & Create Profile"}

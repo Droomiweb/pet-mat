@@ -1,31 +1,35 @@
 // app/components/RequestManager.js
 "use client"; 
 import { useState } from "react";
-import { useAuth } from './../auth-provider'; // Adjust this path if your auth-provider is elsewhere
+import { useAuth } from './../auth-provider'; 
 
-// Pass the pet object as a prop
-// You also need a way to refresh the data, so we pass 'onUpdate'
 export default function RequestManager({ pet, onUpdate }) {
-  const { user } = useAuth(); // Get the logged-in user
+  const { user } = useAuth(); 
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // This single function handles all request updates
   const handleRequestUpdate = async (request, requestType, newStatus) => {
     if (!user) return;
     setLoading(true);
     setError(null);
+
+    // Fallback: If request._id is missing, we can't update it securely via API.
+    if (!request._id) {
+        alert("Error: This request has invalid data (missing ID).");
+        setLoading(false);
+        return;
+    }
 
     try {
       const res = await fetch('/api/pet/requests', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ownerId: user.uid, // The logged-in user
-          petId: pet._id,     // The pet being managed
+          ownerId: user.uid, 
+          petId: pet._id,    
           requestId: request._id,
-          requestType: requestType, // 'mating' or 'adoption'
-          newStatus: newStatus,     // 'accepted', 'rejected', 'approved'
+          requestType: requestType, 
+          newStatus: newStatus,    
         }),
       });
 
@@ -34,7 +38,6 @@ export default function RequestManager({ pet, onUpdate }) {
         throw new Error(data.error || 'Failed to update request');
       }
 
-      // If successful, call the onUpdate function from the parent to refresh data
       alert(`Request ${newStatus} successfully!`);
       if (onUpdate) {
         onUpdate();
@@ -47,9 +50,12 @@ export default function RequestManager({ pet, onUpdate }) {
     }
   };
 
-  // Filter for pending requests
   const pendingMatingRequests = pet.matingHistory ? pet.matingHistory.filter(r => r.status === 'pending') : [];
   const pendingAdoptionRequests = pet.adoptionRequests ? pet.adoptionRequests.filter(r => r.status === 'pending') : [];
+
+  if (pendingMatingRequests.length === 0 && pendingAdoptionRequests.length === 0) {
+      return null; // Hide component if no pending requests
+  }
 
   return (
     <div className="p-4 border rounded-lg shadow-md bg-white mt-4">
@@ -63,8 +69,9 @@ export default function RequestManager({ pet, onUpdate }) {
           {pendingMatingRequests.length === 0 ? (
             <p className="text-sm text-gray-500">No pending mating requests.</p>
           ) : (
-            pendingMatingRequests.map(req => (
-              <div key={req._id} className="flex flex-col sm:flex-row items-center justify-between p-2 my-2 border rounded-md">
+            // FIX: Added 'index' and fallback key to prevent unique key warning
+            pendingMatingRequests.map((req, index) => (
+              <div key={req._id || `mating-${index}`} className="flex flex-col sm:flex-row items-center justify-between p-2 my-2 border rounded-md">
                 <div className="mb-2 sm:mb-0">
                   <p><strong>{req.requesterPetName}</strong> (Owner: {req.requesterName})</p>
                 </div>
@@ -97,8 +104,9 @@ export default function RequestManager({ pet, onUpdate }) {
           {pendingAdoptionRequests.length === 0 ? (
             <p className="text-sm text-gray-500">No pending adoption requests.</p>
           ) : (
-            pendingAdoptionRequests.map(req => (
-              <div key={req._id} className="flex flex-col sm:flex-row items-center justify-between p-2 my-2 border rounded-md">
+            // FIX: Added 'index' and fallback key
+            pendingAdoptionRequests.map((req, index) => (
+              <div key={req._id || `adopt-${index}`} className="flex flex-col sm:flex-row items-center justify-between p-2 my-2 border rounded-md">
                 <div className="mb-2 sm:mb-0">
                   <p><strong>{req.requesterName}</strong></p>
                   <p className="text-sm text-gray-600">"{req.message}"</p>
