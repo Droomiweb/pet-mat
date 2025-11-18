@@ -1,120 +1,140 @@
-// app/aichat/page.js
+// app/AiDoc/page.js
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import { auth } from "../lib/firebase";
-import model from "../lib/gemini"; 
 import { useRouter } from "next/navigation";
 
 export default function AIChat() {
-  const [user, setUser] = useState(null);
+  // UI Messages
   const [messages, setMessages] = useState([]);
+  // Gemini History (for API context)
+  const [geminiHistory, setGeminiHistory] = useState([]);
+  
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+  
   const router = useRouter();
-
   const textareaRef = useRef(null);
-  const chatScrollRef = useRef(null);
+  const chatScrollRef = useRef(null); // Points to the scrollable container
 
-  // Fetch user + pets for initial AI message
-  const fetchUserDataAndPets = async () => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      router.push("/Login");
-      return;
-    }
-    setUser(currentUser);
-
-    try {
-      const res = await fetch(`/api/pet/user/${currentUser.uid}`);
-      if (res.ok) {
-        const petsData = await res.json();
-        const petContext = petsData.map(p => `${p.name} (${p.breed}, ${p.age} years old)`).join("; ");
-        
-        setMessages([
-          {
-            sender: "ai",
-            text: `Hello! I'm Dr. Paws, your personal pet care assistant. I see you have ${petsData.length} pets registered. Your companion${petsData.length === 1 ? '' : 's'} include: ${petContext || "no pets yet"}. How can I help you ensure their well-being today?`
-          },
-        ]);
-      } else {
-        setMessages([
-          {
-            sender: "ai",
-            text: "Hello! I'm Dr. Paws. I couldn't load your pet data, but I'm ready to answer any general pet care questions you have!"
-          },
-        ]);
+  // 1. Initialize Chat & Context on Load
+  useEffect(() => {
+    const initChat = async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        router.push("/Login");
+        return;
       }
-    } catch (err) {
-      console.error("Error fetching pet data for AI context:", err);
+
+      try {
+        // Fetch User's Pets for Context
+        const res = await fetch(`/api/pet/user/${currentUser.uid}`);
+        const petsData = res.ok ? await res.json() : [];
+        
+        const petContext = petsData.length > 0 
+          ? petsData.map(p => `- ${p.name} (${p.breed}, ${p.age}y, ${p.gender})`).join("\n")
+          : "No registered pets found.";
+
+        // Specialized Vet System Prompt (Same as before)
+        const systemInstruction = `
+          You are Dr. Paws, a virtual veterinarian assistant. Your goal is to triage pet health concerns professionally.
+
+          **User's Registered Pets:**
+          ${petContext}
+
+          **Your Clinical Protocol:**
+          1.  **Context Check:** If the user asks a health question without naming a pet, check the list above. If ambiguous, ask "Which pet are we talking about?" first.
+          2.  **Triage Phase (CRITICAL):** DO NOT jump to a diagnosis immediately. If the user gives vague symptoms (e.g., "My dog is vomiting"), ask 2-3 clarifying questions first (Duration? Frequency? Behavior? Eating habits?) like a real vet would.
+          3.  **Emergency Detection:** If symptoms indicate an emergency (pale gums, bloating, seizure, difficulty breathing, blocked cat), STOP and tell them to go to an ER vet immediately.
+          4.  **Advice Structure:**
+              * **Observation:** "It sounds like [Pet Name] might be experiencing..."
+              * **Home Care:** Give safe, non-medical supportive care steps (e.g., bland diet, hydration).
+              * **Warning Signs:** "If you see X, Y, or Z, see a vet."
+          5.  **Tone:** Empathetic, calm, professional, but clear. Keep responses concise (under 150 words) unless detailed instructions are needed.
+        `;
+
+        const initialGreeting = `Hello! I'm Dr. Paws. I have your pet records ready. How can I help your furry family today?`;
+
+        setMessages([
+          { sender: "ai", text: initialGreeting }
+        ]);
+
+        setGeminiHistory([
+          {
+            role: "user",
+            parts: [{ text: `System Instruction: ${systemInstruction}` }],
+          },
+          {
+            role: "model",
+            parts: [{ text: initialGreeting }],
+          },
+        ]);
+
+        setIsInitialized(true);
+
+      } catch (err) {
+        console.error("Error initializing AI:", err);
+      }
+    };
+
+    initChat();
+  }, [router]);
+
+  // Scroll to bottom whenever messages change
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
     }
-  };
-
-  useEffect(() => {
-    fetchUserDataAndPets();
-  }, []);
-
-  // autosize textarea so it grows like WhatsApp
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    ta.style.height = "auto";
-    const newHeight = Math.min(ta.scrollHeight, 160); // cap height
-    ta.style.height = `${newHeight}px`;
-  }, [input]);
-
-  // scroll to bottom on new message / loading
-  useEffect(() => {
-    const el = chatScrollRef.current;
-    if (!el) return;
-    // small timeout so layout settles (instant scroll often works too)
-    setTimeout(() => {
-      el.scrollTop = el.scrollHeight;
-    }, 40);
   }, [messages, loading]);
 
-  // Send message function (kept your logic)
   const sendMessage = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || !isInitialized) return;
 
-    const currentUser = auth.currentUser;
-    if (!currentUser) return router.push("/Login");
-
-    setLoading(true);
-    const newMessage = { sender: "user", text: input };
-    setMessages((prev) => [...prev, newMessage]);
+    const userMsg = input.trim();
     setInput("");
+    
+    // 1. Update UI immediately
+    setMessages((prev) => [...prev, { sender: "user", text: userMsg }]);
+    setLoading(true);
+
+    // Reset textarea height
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     try {
-      const res = await fetch(`/api/pet/user/${currentUser.uid}`);
-      const petsData = res.ok ? await res.json() : [];
+      // 2. Call Server API (Uses the dedicated server route to keep API key safe)
+      const res = await fetch("/api/ai-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          history: geminiHistory,
+          message: userMsg
+        }),
+      });
 
-      const petContext = petsData.map(p => `${p.name} the ${p.breed} with age ${p.age} and gender ${p.gender}`).join(", ");
-      
-      const contextPrompt = `
-You are "Dr. Paws", a friendly, experienced, and highly knowledgeable virtual veterinarian.
-Your goal is to provide helpful, general pet-care advice and suggestions.
-Always speak with confidence, empathy, and professionalism.
-Focus on preventative care, nutrition, behavior, and common non-emergency ailments.
-Always keep the context of the user's pets in mind. The user's registered pets are: ${petContext}.
-If the user's question doesn't specify a pet, please ask them which pet they are referring to.
-If the advice involves what sounds like a serious medical condition (e.g., severe lethargy, non-stop vomiting, injury), you MUST politely and firmly recommend that the user immediately consult a licensed, in-person veterinarian.
-Do not use disclaimers about not being a real doctor in your response; instead, let your helpful tone and context-aware advice guide the user.
-`;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "API Error");
 
-      const result = await model.generateContent([contextPrompt, newMessage.text]);
-      const response = await result.response;
-      const text = await response.text();
+      const aiResponseText = data.text;
 
-      setMessages((prev) => [...prev, { sender: "ai", text }]);
+      // 3. Update UI
+      setMessages((prev) => [...prev, { sender: "ai", text: aiResponseText }]);
+
+      // 4. Update History
+      setGeminiHistory((prev) => [
+        ...prev,
+        { role: "user", parts: [{ text: userMsg }] },
+        { role: "model", parts: [{ text: aiResponseText }] },
+      ]);
+
     } catch (error) {
-      console.error("Error generating AI response:", error);
-      setMessages((prev) => [...prev, { sender: "ai", text: "Dr. Paws is taking a nap! Sorry, I am unable to respond right now." }]);
+      console.error("Chat Error:", error);
+      setMessages((prev) => [...prev, { sender: "ai", text: "Dr. Paws is offline. Please try again later." }]);
     } finally {
       setLoading(false);
     }
   };
 
-  // handle enter to send (shift+enter to newline)
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -123,84 +143,102 @@ Do not use disclaimers about not being a real doctor in your response; instead, 
   };
 
   return (
-    <div className="h-screen w-screen bg-[#F4F7F9] flex justify-center items-stretch p-0">
-      <div className="w-full max-w-xl bg-white rounded-none sm:rounded-2xl shadow-2xl flex flex-col h-full sm:h-[95vh] border-t-8 border-[#4A90E2] sm:my-4 relative">
+    // Main Container: Fixed to viewport, padded top for Navbar
+    <div className="fixed inset-0 bg-[#E2F4EF] pt-[60px] flex flex-col h-dvh"> 
+      
+      {/* Chat Wrapper: Centered, Shadowed, Flex Column */}
+      <div className="w-full max-w-3xl mx-auto flex flex-col h-full bg-white shadow-2xl border-x border-gray-200 relative overflow-hidden">
         
-        {/* Header */}
-        <div className="sticky top-0 bg-white p-4 border-b border-gray-200 z-10">
-            <h1 className="text-3xl font-extrabold text-[#333333] text-center">
-                Dr. Paws Chat 🩺
-            </h1>
-        </div>
-        
-        {/* Chat window (give bottom padding so messages are not hidden by fixed input) */}
-        <div
-          ref={chatScrollRef}
-          className="flex-1 overflow-y-auto space-y-4 p-4 pb-[140px]" 
-          // pb must be >= input bar height + safe-area; 140px is safe default
-        >
-          {messages.map((msg, index) => (
-            <div
-              key={index}
-              className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`p-3 rounded-2xl max-w-[85%] shadow-md break-words ${
-                  msg.sender === "user"
-                    ? "bg-[#50E3C2] text-[#0f1724] rounded-br-none" 
-                    : "bg-[#4A90E2] text-white rounded-tl-none" 
-                }`}
-              >
-                {msg.text}
-              </div>
+        {/* --- HEADER --- */}
+        <div className="shrink-0 bg-white px-4 py-3 border-b border-gray-300 flex items-center justify-between z-20 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-[#E2F4EF] border border-gray-300 flex items-center justify-center overflow-hidden">
+               <span className="text-2xl">🩺</span>
             </div>
-          ))}
+            <div>
+              <h1 className="text-gray-800 font-bold text-base leading-tight">Dr. Paws</h1>
+              <p className="text-xs text-[#50E3C2] font-semibold">Online • AI Vet</p>
+            </div>
+          </div>
+        </div>
+
+        {/* --- MESSAGES AREA (Scrollable) --- */}
+        <div 
+          className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 bg-[#F4F7F9] relative scroll-smooth" 
+          ref={chatScrollRef}
+        >
+          {/* Decorative background overlay - optional, commented out for cleaner look */}
+          {/* <div className="absolute inset-0 opacity-[0.06] pointer-events-none" style={{backgroundImage: "radial-gradient(#4A90E2 1px, transparent 1px)", backgroundSize: "20px 20px"}}></div> */}
+
+          {messages.map((msg, index) => {
+            const isUser = msg.sender === "user";
+            return (
+              <div key={index} className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
+                <div 
+                  className={`relative max-w-[80%] px-4 py-2 rounded-xl shadow-md text-sm leading-relaxed whitespace-pre-wrap ${
+                    isUser 
+                      ? "bg-[#50E3C2] text-gray-800 rounded-br-none" // Accent Teal for User
+                      : "bg-white text-gray-800 rounded-bl-none border border-gray-200"     // White for AI
+                  }`}
+                >
+                  {/* Little tail for speech bubble */}
+                  <div className={`absolute bottom-0 w-0 h-0 border-[8px] border-transparent ${
+                      isUser 
+                      ? "-right-1 border-r-[#50E3C2]" 
+                      : "-left-1 border-l-white"
+                  }`}></div>
+                  
+                  {msg.text}
+                  <div className="text-[10px] text-gray-500 text-right mt-1 select-none">
+                    {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          
           {loading && (
-            <div className="flex justify-start">
-              <div className="bg-gray-200 text-[#4A90E2] p-3 rounded-xl animate-pulse font-medium">
-                Dr. Paws is thinking...
+            <div className="flex justify-start w-full">
+              <div className="bg-white p-3 rounded-xl rounded-bl-none shadow-sm border border-gray-100">
+                 <div className="flex gap-1">
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-75"></span>
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150"></span>
+                 </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* FIXED bottom input — WhatsApp-like style */}
-        <div
-          className="fixed left-0 right-0 bottom-0 flex justify-center z-50 pointer-events-auto"
-          // Use inline style to preserve safe-area padding (this centers the bar)
-          style={{ padding: "12px 12px", paddingBottom: `calc(env(safe-area-inset-bottom, 0) + 12px)` }}
-        >
-          <div className="w-full max-w-xl px-2">
-            <div className="flex items-end gap-3">
-              {/* Textarea */}
+        {/* --- INPUT AREA (Sticky Bottom) --- */}
+        <div className="shrink-0 bg-white px-4 py-3 border-t border-gray-300">
+          <div className="flex items-end gap-3 max-w-4xl mx-auto">
+            <div className="flex-1 bg-white rounded-3xl border border-gray-300 focus-within:border-[#4A90E2] shadow-inner">
               <textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask Dr. Paws about your pets' health..."
+                placeholder="Ask Dr. Paws about your pets..."
+                className="w-full bg-transparent border-none focus:ring-0 text-gray-800 text-sm resize-none max-h-32 placeholder-gray-500 px-4 py-3"
                 rows={1}
-                className="flex-1 resize-none min-h-[44px] max-h-[160px] px-4 py-3 rounded-full border border-gray-300 focus:outline-none focus:ring-0 focus:border-[#4A90E2] text-[#333333] text-sm bg-white shadow-sm"
-                disabled={loading}
-                aria-label="Message"
+                style={{ minHeight: '24px' }}
               />
-
-              {/* Circular Send button */}
-              <button
-                onClick={sendMessage}
-                disabled={loading || !input.trim()}
-                aria-label="Send message"
-                className={`flex items-center justify-center h-11 w-11 rounded-full transition-all ${
-                  input.trim() ? "bg-[#4A90E2] text-white shadow-lg hover:bg-[#3A75B9]" : "bg-gray-300 text-white cursor-default opacity-80"
-                }`}
-                title={input.trim() ? "Send" : "Type a message to enable"}
-              >
-                {/* simple paper-plane icon */}
-                <svg viewBox="0 0 24 24" width="18" height="18" className="fill-current">
-                  <path d="M2 21l21-9L2 3v7l15 2-15 2z" />
-                </svg>
-              </button>
             </div>
+            
+            <button
+              onClick={sendMessage}
+              disabled={!input.trim() || loading}
+              className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-md ${
+                input.trim() 
+                  ? "bg-[#4A90E2] hover:bg-[#3A75B9] text-white transform hover:scale-105" // Primary Blue for Send
+                  : "bg-gray-300 text-gray-500 cursor-default"
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5">
+                <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+              </svg>
+            </button>
           </div>
         </div>
 
