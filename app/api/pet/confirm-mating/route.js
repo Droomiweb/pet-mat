@@ -1,15 +1,15 @@
 // app/api/pet/confirm-mating/route.js
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
-// This route is for BOTH users to confirm mating has occurred *after* // a request has been 'accepted'.
 
 export async function PATCH(req) {
   try {
     await connectDB();
     // 'userId' is the person logged in
-    const { userId, petId, requestId } = await req.json();
+    // 'requesterId' is passed as fallback if requestId is missing
+    const { userId, petId, requestId, requesterId } = await req.json();
 
-    if (!userId || !petId || !requestId) {
+    if (!userId || !petId) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
     }
     
@@ -19,13 +19,28 @@ export async function PATCH(req) {
       return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
     }
 
-    const request = pet.matingHistory.id(requestId);
+    // 1. Try finding request by ID
+    let request;
+    if (requestId) {
+        request = pet.matingHistory.id(requestId);
+    }
+    
+    // 2. Fallback: Find by Requester ID + Status
+    // This handles old data where _id might be missing
+    if (!request && requesterId) {
+        console.log("Confirm Mating: Finding by requesterId fallback...");
+        request = pet.matingHistory.find(
+            r => r.requesterId === requesterId && 
+            ['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating'].includes(r.status)
+        );
+    }
+
     if (!request) {
       return new Response(JSON.stringify({ error: "Mating request not found" }), { status: 404 });
     }
 
-    // The request must be in 'accepted' state to be confirmed
-    if (request.status !== 'accepted') {
+    // Validate Status
+    if (!['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating'].includes(request.status)) {
       return new Response(JSON.stringify({ error: `Cannot confirm mating. Request status is '${request.status}'` }), { status: 400 });
     }
     
@@ -51,7 +66,6 @@ export async function PATCH(req) {
       request.status = 'mated';
       
       // Mating is confirmed! Set the female pet to 'pregnant'
-      // and hide her from listings.
       if (pet.gender === 'Female') {
         pet.isPregnant = true;
       } else if (otherPet.gender === 'Female') {
@@ -63,6 +77,8 @@ export async function PATCH(req) {
       request.status = userRole === 'owner' ? 'ownerConfirmedMating' : 'requesterConfirmedMating';
     }
 
+    // IMPORTANT: Mark array as modified so Mongoose saves mixed type updates
+    pet.markModified('matingHistory');
     await pet.save();
 
     return new Response(JSON.stringify({ message: "Mating confirmation updated!", request }), { status: 200 });

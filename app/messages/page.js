@@ -1,37 +1,39 @@
 // app/messages/page.js
 "use client";
 import { useEffect, useState } from "react";
-import { db } from "../lib/firebase"; // Import db for Firestore
+import { db } from "../lib/firebase"; 
 import { collection, query, where, onSnapshot, orderBy } from "firebase/firestore";
-import { useAuth } from "../auth-provider"; // ✅ Use the auth hook for reliable user data
+import { useAuth } from "../auth-provider"; 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function MessagesPage() {
-  const [myPets, setMyPets] = useState([]); // Pets owned by user (for requests)
-  const [conversations, setConversations] = useState([]); // Active chats (Firestore)
+  const [myPets, setMyPets] = useState([]); 
+  const [conversations, setConversations] = useState([]); 
   
-  // We manage a local loading state that starts true
   const [dataLoading, setDataLoading] = useState(true); 
   
   const router = useRouter();
-  // ✅ Get user from the hook. This ensures we wait for Firebase to initialize.
   const { user, loading: authLoading } = useAuth(); 
 
   useEffect(() => {
-    // 1. Wait for Auth to finish loading
     if (authLoading) return;
     
-    // 2. If not logged in, redirect
     if (!user) {
       router.push("/Login");
       return;
     }
 
-    // 3. Fetch My Pets (MongoDB) - To show pending REQUESTS
+    // --- UPDATED FETCH FUNCTION ---
     const fetchMyPetsRequests = async () => {
       try {
-        const res = await fetch(`/api/pet/user/${user.uid}`);
+        // FIX: Added timestamp to URL to bypass all caches
+        const timestamp = new Date().getTime();
+        const res = await fetch(`/api/pet/user/${user.uid}?t=${timestamp}`, { 
+            cache: 'no-store',
+            headers: { 'Pragma': 'no-cache' }
+        });
+        
         if (res.ok) {
           const data = await res.json();
           setMyPets(data);
@@ -43,7 +45,6 @@ export default function MessagesPage() {
 
     fetchMyPetsRequests();
 
-    // 4. Fetch Conversations (Firestore) - To show ACTIVE CHATS
     try {
         const q = query(
           collection(db, "conversations"),
@@ -59,11 +60,12 @@ export default function MessagesPage() {
             const conversationId = doc.id; 
             const petId = data.petId || conversationId.split('_')[0];
 
-            // Fetch Pet Details for the UI
             try {
                 let petDetails = { name: 'Unknown Pet', image: '/imgs/dog.jpg' };
                 if (petId && petId.length > 10) {
-                    const res = await fetch(`/api/pet/${petId}`);
+                    // Fetch pet details (also dynamic)
+                    const timestamp = new Date().getTime();
+                    const res = await fetch(`/api/pet/${petId}?t=${timestamp}`);
                     if(res.ok) {
                         const p = await res.json();
                         petDetails = { name: p.name, image: p.imageUrls?.[0] || '/imgs/dog.jpg' };
@@ -84,12 +86,10 @@ export default function MessagesPage() {
           }
           
           setConversations(chats);
-          setDataLoading(false); // ✅ Turn off loading on success
+          setDataLoading(false); 
         }, (error) => {
-            // ✅ ERROR HANDLER: If index is missing, this runs
             console.error("Firestore Error:", error);
-            alert("Database Error: Please check the console for a link to create the required index.");
-            setDataLoading(false); // ✅ Turn off loading even on error
+            setDataLoading(false); 
         });
 
         return () => unsubscribe();
@@ -98,9 +98,8 @@ export default function MessagesPage() {
         setDataLoading(false);
     }
 
-  }, [user, authLoading, router]); // Dependencies updated
+  }, [user, authLoading, router]); 
   
-  // Combined loading state
   if (authLoading || dataLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen bg-[#F4F7F9]">

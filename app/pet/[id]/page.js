@@ -8,27 +8,19 @@ import { createConversationId } from '../../lib/chatUtils';
 
 export default function PetDetailPage() {
   const [pet, setPet] = useState(null);
-  // --- NEW STATE FOR PEDIGREE ---
   const [pedigree, setPedigree] = useState(null);
-  // --- END NEW STATE ---
   const [newMessage, setNewMessage] = useState("");
   const [requesterPets, setRequesterPets] = useState([]);
   const [requesterPetId, setRequesterPetId] = useState("");
   
-  // --- MOVED HOOKS INSIDE THE COMPONENT ---
   const params = useParams();
   const router = useRouter();
   const user = auth.currentUser;
 
-  // --- MOVED HANDLE START CHAT INSIDE ---
   const handleStartChat = () => {
     if (!user) return router.push("/Login");
     if (!pet) return;
-
-    // Use the helper to create the STABLE ID
     const conversationId = createConversationId(pet._id, user.uid, pet.ownerId);
-
-    // Redirect to the chat page with the *correct, shared* ID
     router.push(`/messages/${conversationId}`);
   };
 
@@ -50,20 +42,16 @@ export default function PetDetailPage() {
       const data = await res.json();
       setPet(data);
 
-      // Pass gender directly to avoid state lag
       if (user && data.listingType === "Mating") {
         await fetchRequesterPets(user.uid, data.type, data.gender);
       }
 
-      // --- NEW: Fetch Pedigree ---
       await fetchPedigree(params.id);
-      // --- END NEW ---
     } catch (err) {
       console.error(err);
     }
   };
 
-  // --- NEW: Pedigree Fetch Function ---
   const fetchPedigree = async (petId) => {
     try {
       const res = await fetch(`/api/pedigree/${petId}`);
@@ -75,15 +63,12 @@ export default function PetDetailPage() {
       console.error("Error fetching pedigree:", err);
     }
   };
-  // --- END NEW ---
 
-  // Added petGender to params
   const fetchRequesterPets = async (uid, petType, petGender) => {
     try {
       const petsRes = await fetch(`/api/pet/user/${uid}`);
       if (petsRes.ok) {
         const allPets = await petsRes.json();
-        // UPDATED: Filter for opposite gender using param
         const compatiblePets = allPets.filter(
           (p) => p.type === petType && p.gender !== petGender && p.listingType === "Mating"
         );
@@ -99,7 +84,6 @@ export default function PetDetailPage() {
     }
   };
 
-  // --- sendMatingRequest Function (Unchanged) ---
   const sendMatingRequest = async () => {
     if (!user) return alert("Login first");
     if (user.uid === pet.ownerId) return alert("You cannot send a mating request to your own pet.");
@@ -145,7 +129,6 @@ export default function PetDetailPage() {
     }
   };
 
-  // --- UPDATED: sendAdoptionInquiry to sendAdoptionRequest ---
   const sendAdoptionRequest = async () => {
     if (!user) return alert("Login first");
     if (user.uid === pet.ownerId) return alert("This is your pet.");
@@ -156,52 +139,39 @@ export default function PetDetailPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "adoptionRequest", // <-- CHANGED
+          action: "adoptionRequest",
           requesterId: user.uid,
           requesterName: user.email.split("@")[0],
-          messageText: newMessage, // <-- Use messageText to send the message
+          messageText: newMessage,
         }),
       });
       
-      const data = await res.json(); // Get JSON response
+      const data = await res.json();
 
       if (res.ok) {
         alert("Your adoption request has been sent to the owner!");
         setNewMessage("");
-        fetchPet(); // Refresh pet data to show the request
+        fetchPet(); 
       } else {
-        // Show specific error from the API
         alert(`Failed to send request: ${data.error || 'Check console for details.'}`);
       }
     } catch (err) {
       console.error(err);
     }
   };
-  // --- END UPDATE ---
 
-  // --- 1. NEW: Add this function to handle the button click ---
   const handleViewLocation = () => {
-    // Check if the location data we fetched from the API exists
-    // The 'coordinates' field is what we need from the User model
     if (!pet.ownerLocation || !pet.ownerLocation.coordinates || pet.ownerLocation.coordinates.length < 2) {
       return alert("Owner's location is not available.");
     }
-    
-    // Coordinates are stored as [longitude, latitude]
     const lng = pet.ownerLocation.coordinates[0];
     const lat = pet.ownerLocation.coordinates[1];
-    
-    // Create a Google Maps URL with the coordinates
-    const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-    
-    // Open the URL in a new tab
+    const url = `https://www.google.com/maps?q=${lat},${lng}`;
     window.open(url, "_blank", "noopener,noreferrer");
   };
-  // --- END NEW FUNCTION ---
 
   useEffect(() => {
     fetchPet();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id, user?.uid]);
 
   if (!pet) return <p className="text-[#333333] text-center mt-20 text-xl">Loading pet details...</p>;
@@ -212,16 +182,13 @@ export default function PetDetailPage() {
   const isAdoptionListing = pet.listingType === "Adoption";
   const canSendRequest = pet.verificationStatus === "verified" && requesterPets.length > 0 && !!requesterPetId;
 
-  // --- NEW: Check if *this* user has a pending request ---
   const hasPendingAdoptionRequest = pet.adoptionRequests?.some(
       (req) => req.requesterId === user?.uid && req.status === "pending"
   );
-  // --- END NEW ---
 
   return (
     <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-10">
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl p-6 md:p-10 border-t-8 border-[#4A90E2]">
-        {/* Listing Type Badge */}
         <div className="mb-4">
           <span
             className={`font-bold px-4 py-2 rounded-full text-sm uppercase tracking-wider ${
@@ -242,7 +209,6 @@ export default function PetDetailPage() {
           />
         )}
 
-        {/* Pet Info */}
         <h1 className="text-4xl font-extrabold text-[#333333] mb-3">{pet.name}</h1>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-4">
           <p className="text-lg text-[#333333]">
@@ -263,7 +229,6 @@ export default function PetDetailPage() {
         <p className="text-lg text-[#333333]">Breed: {pet.breed}</p>
         <p className="text-lg text-[#333333] mb-4">Age: {pet.age}</p>
         
-        {/* --- 2. UPDATED: Add the new button here --- */}
         <div className="flex flex-wrap gap-4 items-center mb-6">
           {pet.certificateUrl && (
             <a
@@ -276,21 +241,46 @@ export default function PetDetailPage() {
             </a>
           )}
 
-          {/* This is the new button */}
           {pet.ownerLocation?.coordinates && pet.ownerLocation.coordinates.length > 0 && !isOwner && (
             <button
               onClick={handleViewLocation}
               className="flex items-center gap-2 text-white bg-[#4A90E2] hover:bg-[#3A75B9] font-medium rounded-lg px-4 py-2 transition shadow-md"
             >
-              <svg /* Simple map pin icon */ xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                 <path fillRule="evenodd" d="M9.69 18.933l.003.001C9.89 19.02 10 19 10 19s.11.02.308-.066l.002-.001.006-.003.018-.008a5.741 5.741 0 00.281-.14c.186-.096.446-.24.757-.433.62-.384 1.445-.966 2.274-1.765C15.302 14.988 17 12.493 17 10A7 7 0 103 10c0 2.493 1.698 4.988 3.355 6.584a13.733 13.733 0 002.273 1.765 11.842 11.842 0 00.757.433.62.62 0 00.28.14l.018.008.006.003zM10 11.25a1.25 1.25 0 100-2.5 1.25 1.25 0 000 2.5z" clipRule="evenodd" />
               </svg>
               View Owner's Location
             </button>
           )}
         </div>
-        {/* --- END UPDATE --- */}
 
+        {/* --- NEW: AI Personality Profile Section --- */}
+        {pet.aiProfileString && (
+          <div className="mt-8 mb-8 p-6 bg-gradient-to-r from-[#F4F7F9] to-white rounded-2xl border border-[#4A90E2]/30 shadow-md relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-2 h-full bg-[#4A90E2]"></div>
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-2xl">✨</span>
+              <h2 className="text-2xl font-bold text-[#333333]">Personality Profile</h2>
+            </div>
+            <p className="text-gray-700 italic text-lg leading-relaxed mb-4">
+              "{pet.aiProfileString}"
+            </p>
+            
+            <div className="flex flex-wrap gap-3">
+               {pet.temperament && (
+                 <span className="px-4 py-1 bg-white text-[#4A90E2] text-sm font-bold rounded-full border border-[#4A90E2] shadow-sm">
+                   Temperament: {pet.temperament}
+                 </span>
+               )}
+               {pet.energyLevel && (
+                 <span className="px-4 py-1 bg-white text-[#FF9A00] text-sm font-bold rounded-full border border-[#FF9A00] shadow-sm">
+                   Energy: {pet.energyLevel}
+                 </span>
+               )}
+            </div>
+          </div>
+        )}
+        {/* --- END NEW SECTION --- */}
 
         {/* Pedigree Section */}
         {pedigree && (pedigree.dam || pedigree.sire) && (
@@ -326,7 +316,6 @@ export default function PetDetailPage() {
               This pet listing is currently banned and cannot receive requests.
             </p>
           ) : isAdoptionListing ? (
-            // --- UPDATED: ADOPTION UI ---
             <>
               <textarea
                 placeholder="Write an inquiry message to the owner..."
@@ -337,7 +326,7 @@ export default function PetDetailPage() {
                 disabled={hasPendingAdoptionRequest}
               />
               <button
-                onClick={sendAdoptionRequest} // <-- RENAMED function
+                onClick={sendAdoptionRequest}
                 className={`py-3 px-6 rounded-xl font-bold transition shadow-md ${
                   hasPendingAdoptionRequest 
                     ? "bg-gray-400 text-gray-700 cursor-not-allowed"
@@ -348,9 +337,7 @@ export default function PetDetailPage() {
                 {hasPendingAdoptionRequest ? "Request Pending" : "Send Adoption Request"}
               </button>
             </>
-            // --- END ADOPTION UI ---
           ) : (
-            // --- MATING UI (Existing) ---
             <>
               {requesterPets.length > 1 && (
                 <div className="mb-4">
@@ -400,7 +387,6 @@ export default function PetDetailPage() {
                 Send Mating Request {pet.verificationStatus !== "verified" && `(${pet.verificationStatus})`}
               </button>
             </>
-            // --- END MATING UI ---
           )}
         </div>
 
@@ -437,7 +423,7 @@ export default function PetDetailPage() {
           )}
         </div>
 
-        {/* Mating History Section (Only show if pet is for mating) */}
+        {/* History Sections */}
         {!isAdoptionListing && (
           <div className="mt-8 pt-6 border-t border-gray-200">
             <h2 className="text-2xl font-bold text-[#333333] mb-3">Mating History</h2>
@@ -461,7 +447,6 @@ export default function PetDetailPage() {
           </div>
         )}
 
-        {/* --- NEW: Show Adoption Requests List --- */}
         {isAdoptionListing && (
           <div className="mt-8 pt-6 border-t border-gray-200">
             <h2 className="text-2xl font-bold text-[#333333] mb-3">Adoption Requests</h2>
@@ -477,10 +462,8 @@ export default function PetDetailPage() {
                       req.status === "rejected" ? "text-red-600" : "text-gray-600"
                     }`}
                   >
-                    {/* Only show requester name if user is owner */}
                     {isOwner ? `${req.requesterName}` : `Request ${idx + 1}`} 
                     - <span className="uppercase">{req.status}</span>
-                    {/* Show message only to owner or the user who sent it */}
                     {(isOwner || req.requesterId === user?.uid) && (
                         <p className="text-sm italic pl-4 text-gray-500">"{req.message}"</p>
                     )}
@@ -490,13 +473,11 @@ export default function PetDetailPage() {
             )}
           </div>
         )}
-        {/* --- END NEW SECTION --- */}
       </div>
     </div>
   );
 }
 
-// --- Pedigree Card Component (Unchanged) ---
 function PedigreeCard({ pet, title }) {
   if (!pet) {
     return (

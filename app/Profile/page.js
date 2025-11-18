@@ -5,11 +5,10 @@ import { useAuth } from "../auth-provider";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 
-// --- NEW IMPORTS ---
+// --- IMPORTS ---
 import PetStatusBadge from "../components/PetStatusBadge";
 import RequestManager from "../components/RequestManager";
 import MatingConfirmation from "../components/MatingConfirmation";
-// --- END NEW IMPORTS ---
 
 export default function Profile() {
   const { user, loading: authLoading, userData, signOut } = useAuth();
@@ -17,19 +16,23 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // --- UPDATED to useCallback ---
-  // We make this a useCallback so we can pass it as a prop ('onUpdate')
-  // to our new components without causing infinite re-renders.
+  // --- UPDATED FETCH FUNCTION ---
   const fetchUserPets = useCallback(async () => {
     if (user) {
       try {
         setLoading(true);
-        const res = await fetch(`/api/pet/user/${user.uid}`);
+        const timestamp = new Date().getTime();
+        const res = await fetch(`/api/pet/user/${user.uid}?t=${timestamp}`, { 
+            cache: 'no-store',
+            headers: { 'Pragma': 'no-cache' }
+        });
+        
         if (res.ok) {
           const data = await res.json();
           setPets(data);
+          router.refresh();
         } else {
-          console.error("Failed to fetch pets");
+          console.error(`Failed to fetch pets. Status: ${res.status} ${res.statusText}`);
         }
       } catch (error) {
         console.error("Error fetching pets:", error);
@@ -37,16 +40,15 @@ export default function Profile() {
         setLoading(false);
       }
     }
-  }, [user]); // Dependency array includes 'user'
-  // --- END UPDATED ---
+  }, [user, router]); 
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/Login");
     } else if (user) {
-      fetchUserPets(); // Call the function
+      fetchUserPets(); 
     }
-  }, [authLoading, user, router, fetchUserPets]); // Added fetchUserPets
+  }, [authLoading, user, router, fetchUserPets]); 
 
   const handleSignOut = async () => {
     try {
@@ -56,23 +58,20 @@ export default function Profile() {
       console.error("Sign out error", error);
     }
   };
-if (authLoading || loading) {
-  // 1. The loading screen shows...
+
+  if (authLoading || loading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="loader">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user || !userData) {
+    return null; 
+  }
+
   return (
-    <div className="flex justify-center items-center min-h-screen">
-      <div className="loader">Loading...</div>
-    </div>
-  );
-}
-
-// 2. ...then the loading finishes, and this line is executed
-if (!user || !userData) {
-  // 3. This renders a BLANK PAGE.
-  return null; 
-}
-
-// 4. The page only shows if it gets here
-return (
     <div className="container mx-auto p-4 pt-20">
       <div className="bg-white shadow-xl rounded-lg overflow-hidden md:max-w-4xl md:mx-auto">
         <div className="md:flex">
@@ -126,7 +125,6 @@ return (
                       <div className="ml-4">
                         <h4 className="text-2xl font-semibold text-gray-900 flex items-center">
                           {pet.name}
-                          {/* --- FEATURE 1: PET STATUS BADGE --- */}
                           <PetStatusBadge status={pet.verificationStatus} />
                         </h4>
                         <p className="text-gray-600">
@@ -138,7 +136,6 @@ return (
                       </div>
                     </div>
 
-                    {/* --- NEW: Show verification details if pending/rejected --- */}
                     {['pending', 'needs-review', 'rejected'].includes(pet.verificationStatus) && (
                       <div className="p-3 my-2 text-sm bg-yellow-100 border border-yellow-300 rounded-md">
                         <strong>Verification Status: </strong>
@@ -148,17 +145,15 @@ return (
                       </div>
                     )}
 
-                    {/* --- FEATURE 2: REQUEST MANAGER --- */}
-                    {/* This component will only show pending requests */}
+                    {/* Request Manager */}
                     <RequestManager pet={pet} onUpdate={fetchUserPets} />
 
-                    {/* --- FEATURE 3: MATING CONFIRMATION --- */}
-                    {/* This component will only show for accepted requests */}
-                    {pet.matingHistory && pet.matingHistory.map((request) => {
+                    {/* 1. INCOMING REQUESTS (As Owner) */}
+                    {pet.matingHistory && pet.matingHistory.map((request, index) => {
                       if (['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'].includes(request.status)) {
                         return (
                           <MatingConfirmation
-                            key={request._id}
+                            key={request._id || `inc-${index}`}
                             pet={pet}
                             request={request}
                             onUpdate={fetchUserPets}
@@ -167,6 +162,16 @@ return (
                       }
                       return null;
                     })}
+
+                    {/* 2. OUTGOING REQUESTS (As Requester) */}
+                    {pet.outgoingRequests && pet.outgoingRequests.map((request, index) => (
+                          <MatingConfirmation
+                            key={request._id || `out-${index}`}
+                            pet={pet}
+                            request={request}
+                            onUpdate={fetchUserPets}
+                          />
+                    ))}
                     
                   </div>
                 ))}

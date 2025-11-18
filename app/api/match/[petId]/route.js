@@ -7,7 +7,7 @@ export async function GET(req, context) {
   try {
     await connectDB();
 
-    const { petId } = await context.params; // Correctly await params
+    const { petId } = await context.params;
 
     if (!petId) {
       return new Response(JSON.stringify({ error: "Pet ID is required" }), { status: 400 });
@@ -24,11 +24,18 @@ export async function GET(req, context) {
       return new Response(JSON.stringify({ error: "Your pet's AI profile is not complete." }), { status: 400 });
     }
     
+    // --- FIX START: Create Case-Insensitive Regex for Breed ---
+    // This handles "Pug" vs "pug" vs "Pug " mismatches
+    const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const breedRegex = new RegExp(`^${escapeRegex(myPet.breed.trim())}$`, 'i');
+    // --- FIX END ---
+
     // 3. Find matches
     const potentialMatches = await Pet.find({
       _id: { $ne: myPet._id }, 
       ownerId: { $ne: myPet.ownerId }, 
       type: myPet.type, 
+      breed: { $regex: breedRegex }, // <--- UPDATED: Uses Regex for flexible matching
       gender: myPet.gender === 'Male' ? 'Female' : 'Male', 
       verificationStatus: 'verified', 
       isBanned: false,
@@ -52,7 +59,7 @@ export async function GET(req, context) {
     const myPetProfile = {
       profile: myPet.aiProfileString,
       age: myPet.age,
-      breed: myPet.breed // <--- FIXED: Changed myReal.breed to myPet.breed
+      breed: myPet.breed
     };
 
     // 5. Send to AI

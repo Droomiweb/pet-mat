@@ -4,7 +4,7 @@ import Pet from "../../../models/PetModel";
 import { db } from "../../../lib/firebase"; 
 import { collection, addDoc, serverTimestamp, doc, setDoc } from "firebase/firestore";
 
-// Helper to create stable Conversation ID (duplicated here for safety)
+// Helper to create stable Conversation ID
 const createConversationId = (petId, uid1, uid2) => {
     const sortedUIDs = [uid1, uid2].sort();
     return `${petId}_${sortedUIDs[0]}_${sortedUIDs[1]}`;
@@ -13,9 +13,9 @@ const createConversationId = (petId, uid1, uid2) => {
 export async function PATCH(req) {
   try {
     await connectDB();
-    const { ownerId, petId, requestId, requestType, newStatus } = await req.json();
+    const { ownerId, petId, requestId, requestType, newStatus, requesterId } = await req.json();
 
-    if (!ownerId || !petId || !requestId || !requestType || !newStatus) {
+    if (!ownerId || !petId || !requestType || !newStatus) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
     }
 
@@ -26,34 +26,40 @@ export async function PATCH(req) {
 
     let request;
     
-    // --- ADOPTION LOGIC ---
-    if (requestType === 'adoption') {
-      request = pet.adoptionRequests.id(requestId);
-      if (!request) return new Response(JSON.stringify({ error: "Adoption request not found" }), { status: 404 });
-      request.status = newStatus;
-      
-      if (newStatus === 'approved') {
-        pet.adoptionRequests.forEach(req => {
-          if (req.id !== requestId && req.status === 'pending') req.status = 'rejected';
-        });
-        pet.ownerId = request.requesterId;
-        pet.listingType = 'Mating';
-        pet.adoptionRequests = [];
+    // --- MATING LOGIC ---
+    if (requestType === 'mating') {
+      // 1. Try finding by ID first
+      if (requestId && typeof pet.matingHistory.id === 'function') {
+        request = pet.matingHistory.id(requestId);
       }
       
-    // --- MATING LOGIC ---
-    } else if (requestType === 'mating') {
-      request = pet.matingHistory.id(requestId);
+      // 2. Fallback: Find by Requester ID and 'pending' status
+      if (!request) {
+          // Try finding by ID manually in array if .id() failed
+          request = pet.matingHistory.find(r => r._id?.toString() === requestId);
+          
+          // If still not found, use requesterId
+          if (!request && requesterId) {
+             request = pet.matingHistory.find(
+               r => r.requesterId === requesterId && r.status === 'pending'
+             );
+          }
+      }
+
       if (!request) return new Response(JSON.stringify({ error: "Mating request not found" }), { status: 404 });
       
+      // UPDATE STATUS
       request.status = newStatus;
+      
+      // *** CRITICAL FIX: Tell Mongoose the array changed ***
+      pet.markModified('matingHistory'); 
 
-      // --- FIX: Send System Message to Chat upon Acceptance ---
+      // Send System Message to Chat upon Acceptance
       if (newStatus === 'accepted') {
           try {
-              const conversationId = createConversationId(petId, ownerId, request.requesterId);
+              const targetRequesterId = request.requesterId; 
+              const conversationId = createConversationId(petId, ownerId, targetRequesterId);
               
-              // Add system message
               await addDoc(collection(db, "conversations", conversationId, "messages"), {
                   senderId: "system",
                   senderName: "PetMate System",
@@ -61,10 +67,9 @@ export async function PATCH(req) {
                   createdAt: serverTimestamp(),
               });
 
-              // Ensure conversation exists/updates
               await setDoc(doc(db, "conversations", conversationId), {
                   petId: petId,
-                  participants: [ownerId, request.requesterId],
+                  participants: [ownerId, targetRequesterId],
                   lastMessage: `✅ Mating Request Accepted!`,
                   updatedAt: serverTimestamp()
               }, { merge: true });
@@ -74,6 +79,38 @@ export async function PATCH(req) {
           }
       }
 
+    // --- ADOPTION LOGIC ---
+    } else if (requestType === 'adoption') {
+      if (requestId && typeof pet.adoptionRequests.id === 'function') {
+         request = pet.adoptionRequests.id(requestId);
+      }
+      if (!request) {
+         request = pet.adoptionRequests.find(r => r._id?.toString() === requestId);
+         if (!request && requesterId) {
+            request = pet.adoptionRequests.find(
+                r => r.requesterId === requesterId && r.status === 'pending'
+            );
+         }
+      }
+
+      if (!request) return new Response(JSON.stringify({ error: "Adoption request not found" }), { status: 404 });
+      
+      request.status = newStatus;
+      
+      if (newStatus === 'approved') {
+        pet.adoptionRequests.forEach(req => {
+          if (req._id?.toString() !== request._id?.toString() && req.status === 'pending') {
+              req.status = 'rejected';
+          }
+        });
+        pet.ownerId = request.requesterId;
+        pet.listingType = 'Mating';
+        pet.adoptionRequests = []; // Clear requests on transfer
+      }
+      
+      // *** CRITICAL FIX: Tell Mongoose the array changed ***
+      pet.markModified('adoptionRequests');
+      
     } else {
       return new Response(JSON.stringify({ error: "Invalid request type" }), { status: 400 });
     }

@@ -92,7 +92,7 @@ export default function VerificationTestPage() {
 
             <div className="pt-4">
               <label className="block font-bold text-gray-700 mb-2">Upload Certificate</label>
-              <input type="file" accept="image/*" onChange={handleImageChange} className="w-full" />
+              <input type="file" accept="image/pdf/*" onChange={handleImageChange} className="w-full" />
             </div>
 
             {preview && (
