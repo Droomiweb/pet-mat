@@ -1,93 +1,108 @@
 // app/api/marketplace/recommendations/route.js
-import connectDB from "../../../../lib/mongodb";
-import Product from "../../../../models/ProductModel";
-import Pet from "../../../../models/PetModel";
-import { textModel } from "../../../../lib/gemini";
+import connectDB from "../../../lib/mongodb"; 
+import Pet from "../../../models/PetModel"; 
+import { textModel } from "../../../lib/gemini"; 
+import * as cheerio from 'cheerio'; 
 
-// Force dynamic to ensure we get fresh AI results
 export const dynamic = 'force-dynamic';
+
+// --- Helper: Scrape Amazon (Unchanged) ---
+async function fetchRealAmazonImage(query) {
+  try {
+    const url = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+      },
+      cache: 'no-store'
+    });
+    if (!response.ok) return null;
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    const imageUrl = $('.s-image').first().attr('src');
+    return imageUrl || null;
+  } catch (error) {
+    return null;
+  }
+}
 
 export async function POST(req) {
   try {
     await connectDB();
     const { petId } = await req.json();
 
-    if (!petId) {
-      return new Response(JSON.stringify({ error: "Pet ID is required" }), { status: 400 });
-    }
+    if (!petId) return new Response(JSON.stringify({ error: "Pet ID required" }), { status: 400 });
 
-    // 1. Fetch the Pet Data
     const pet = await Pet.findById(petId);
     if (!pet || !pet.aiProfileString) {
-      return new Response(JSON.stringify({ error: "Pet profile not found. Please complete the AI profile first." }), { status: 400 });
+      return new Response(JSON.stringify({ error: "Pet profile not found." }), { status: 400 });
     }
 
-    // 2. Fetch Local Marketplace Products (for hybrid suggestions)
-    const allProducts = await Product.find({}).select('name description category price').lean();
-    
-    // Format local products for AI context
-    const productListString = allProducts.map(p => 
-      `ID: ${p._id}, Name: "${p.name}", Desc: "${p.description}"`
-    ).join("\n");
-
-    // 3. Construct the AI Prompt
+    // --- UPDATED PROMPT: Ask for 12 items ---
     const prompt = `
-      Act as a generic pet shopping expert.
-      
-      Target Pet Profile:
-      - Species/Breed: ${pet.type} / ${pet.breed}
-      - Age: ${pet.age} years
-      - Personality: "${pet.aiProfileString}"
-      - Temperament: ${pet.temperament}
-      - Energy Level: ${pet.energyLevel}
+      Act as a professional personal shopper for this pet:
+      "${pet.aiProfileString}"
+      (Breed: ${pet.breed}, Type: ${pet.type}, Age: ${pet.age}, Energy: ${pet.energyLevel})
 
       Your Task:
-      1. **Local Match:** Recommend up to 3 Product IDs from this local inventory that fit the pet:
-      ${productListString}
-
-      2. **External Search:** Generate 4 specific, distinct search queries for items this specific pet would love or needs. 
-         - Focus on their specific traits (e.g., if "heavy chewer", suggest "indestructible toys").
-         - Do NOT simply search for the breed name. Search for *solutions* or *fun items*.
-         - Examples: "orthopedic bed for older dog", "interactive laser toy for energetic cat", "calming treats for anxious puppy".
+      Generate exactly 12 high-quality product recommendations available on Amazon India.
+      
+      **Constraint:**
+      - 6 items MUST be **Food/Nutrition/Treats** (Specific to breed/age, e.g., "Calcium bones", "Puppy kibble").
+      - 6 items MUST be **Toys/Gear/Grooming** (Specific to behavior, e.g., "Squeaky toy", "Shampoo", "Leash").
+      
+      For EACH item, provide:
+      1. "title": A clean, short product name (Max 5-6 words).
+      2. "query": The precise Amazon search query.
+      3. "price": Estimated price in INR.
+      4. "fallbackImagePrompt": A simple visual description for an AI image generator.
+      5. "category": "Food" or "Gear".
 
       **Respond ONLY with this JSON structure:**
       {
-        "localMatchIds": ["id1", "id2"],
-        "externalQueries": [
-           "search query 1",
-           "search query 2",
-           "search query 3",
-           "search query 4"
+        "recommendations": [
+          { "title": "...", "query": "...", "price": "...", "fallbackImagePrompt": "...", "category": "..." }
+          // ... total 12 items
         ]
       }
     `;
 
-    // 4. Generate with Gemini
     const result = await textModel.generateContent(prompt);
     const response = await result.response;
-    let text = response.text().replace(/```json/g, "").replace(/```/g, "").trim();
+    let text = response.text();
+
+    const jsonStartIndex = text.indexOf('{');
+    const jsonEndIndex = text.lastIndexOf('}');
+    if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
+        text = text.substring(jsonStartIndex, jsonEndIndex + 1);
+    }
     
     let aiData;
     try {
         aiData = JSON.parse(text);
     } catch (e) {
-        console.error("JSON Parse Error:", text);
-        // Fallback if AI JSON is broken
-        aiData = { localMatchIds: [], externalQueries: [`toys for ${pet.breed}`, `food for ${pet.breed}`] };
+        aiData = { recommendations: [] };
     }
 
-    // 5. Filter the real local product objects based on AI IDs
-    const recommendedProducts = allProducts.filter(p => 
-        aiData.localMatchIds?.includes(p._id.toString())
+    // Fetch Real Images in Parallel
+    // Note: Fetching 12 images might take 2-3 seconds, which is acceptable for a "generating" state.
+    const enrichedRecommendations = await Promise.all(
+      (aiData.recommendations || []).map(async (item) => {
+        const realImage = await fetchRealAmazonImage(item.query);
+        return {
+          ...item,
+          imageUrl: realImage || `https://image.pollinations.ai/prompt/photorealistic ${item.fallbackImagePrompt} white background?nologo=true`
+        };
+      })
     );
 
     return new Response(JSON.stringify({
-        localProducts: recommendedProducts,
-        externalQueries: aiData.externalQueries || []
+        recommendations: enrichedRecommendations
     }), { status: 200 });
 
   } catch (err) {
     console.error("Recommendation Error:", err);
-    return new Response(JSON.stringify({ localProducts: [], externalQueries: [] }), { status: 500 });
+    return new Response(JSON.stringify({ recommendations: [] }), { status: 200 });
   }
 }

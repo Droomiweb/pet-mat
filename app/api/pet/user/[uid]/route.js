@@ -31,10 +31,10 @@ export async function GET(req, context) {
     
     userPets.forEach(pet => {
         if (pet._id) {
-            // --- FIX: Explicitly format matingHistory items ---
+            // Format matingHistory items
             const safeMatingHistory = (pet.matingHistory || []).map(item => ({
                 ...item,
-                _id: item._id ? item._id.toString() : null, // Ensure string ID
+                _id: item._id ? item._id.toString() : null,
                 requesterPetId: item.requesterPetId ? item.requesterPetId.toString() : null
             }));
             
@@ -42,7 +42,6 @@ export async function GET(req, context) {
                 ...item,
                 _id: item._id ? item._id.toString() : null
             }));
-            // --------------------------------------------------
 
             formattedPetsMap[pet._id.toString()] = {
                 _id: pet._id.toString(),
@@ -57,11 +56,14 @@ export async function GET(req, context) {
                 imageUrls: pet.imageUrls || [],
                 certificateUrl: pet.certificateUrl || null,
                 messages: pet.messages || [],
-                matingHistory: safeMatingHistory, // Use safe version
-                adoptionRequests: safeAdoptionRequests, // Use safe version
+                matingHistory: safeMatingHistory, 
+                adoptionRequests: safeAdoptionRequests, 
                 verificationStatus: pet.verificationStatus,
                 isBanned: pet.isBanned,
                 isPregnant: pet.isPregnant,
+                // --- FIX: Added this line so Marketplace can see the profile ---
+                aiProfileString: pet.aiProfileString, 
+                // --------------------------------------------------------------
                 outgoingRequests: [] 
             };
         }
@@ -83,8 +85,8 @@ export async function GET(req, context) {
                     if (requesterPetIdStr && formattedPetsMap[requesterPetIdStr]) {
                         formattedPetsMap[requesterPetIdStr].outgoingRequests.push({
                             ...req,
-                            _id: req._id ? req._id.toString() : null, // Ensure string ID
-                            partnerId: partnerPet._id.toString(), // Ensure partner ID is set
+                            _id: req._id ? req._id.toString() : null,
+                            partnerId: partnerPet._id.toString(),
                             partnerName: partnerPet.name,         
                             partnerOwnerId: partnerPet.ownerId,
                             isOutgoing: true 
