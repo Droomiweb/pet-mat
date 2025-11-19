@@ -1,7 +1,30 @@
 // app/models/PetModel.js
 import mongoose from "mongoose";
 
-// Define sub-schemas to ensure they get _id and timestamps
+// --- NEW: Sub-schema for Vaccination Records ---
+const VaccinationSchema = new mongoose.Schema({
+  vaccineName: { type: String, required: true },
+  vaccinationDate: { type: Date, required: true }, // Date vaccine was given
+  expiryDate: { type: Date, required: true },     // Date it expires
+  status: { type: String, enum: ['active', 'expired', 'upcoming', 'needs-review'], default: 'active' }, 
+});
+
+// --- NEW: Sub-schema for Certificate AI Analysis ---
+const CertificateAnalysisSchema = new mongoose.Schema({
+  certificateUrl: String,
+  extractedOwnerName: String,
+  extractedPetName: String,
+  aiOcrText: String, // Full OCR text for admin review
+  ownerNameMatch: { type: Boolean, default: false },
+  status: { 
+    type: String, 
+    enum: ['pending', 'verified', 'rejected', 'needs-review', 'ai-error'],
+    default: 'pending' 
+  },
+  reason: String, // Short reason for rejection/review
+});
+
+
 const MatingRequestSchema = new mongoose.Schema({
   requesterId: String,
   requesterName: String,
@@ -59,23 +82,26 @@ const petSchema = new mongoose.Schema({
   nftTokenId: { type: Number, default: null, index: true },
   nftContractAddress: { type: String, default: null },
 
-  certificateUrl: String,
-  imageUrls: [String],
-  ownerId: String,
+  // --- UPDATED FIELDS ---
+  certificateUrl: String, 
   
-  isPregnant: { type: Boolean, default: false },
-
   verificationStatus: { 
     type: String, 
     enum: ['pending', 'verified', 'rejected', 'needs-review'],
     default: 'pending' 
   },
   
-  verificationAnalysis: {
-    ocrText: { type: String, default: null },
-    aiResponse: { type: String, default: null },
-    aiStatus: { type: String, default: 'pending' }, 
-  },
+  // NEW: Store Detailed Certificate Analysis (Replaces old verificationAnalysis)
+  certificateAnalysis: { type: CertificateAnalysisSchema, default: {} },
+  
+  // NEW: Store Vaccination Records
+  vaccinationHistory: [VaccinationSchema],
+  // --- END UPDATED FIELDS ---
+
+  imageUrls: [String],
+  ownerId: String,
+  
+  isPregnant: { type: Boolean, default: false },
 
   aiProfileString: { type: String, default: null, index: true },
   

@@ -61,15 +61,16 @@ export async function GET(req, context) {
                 verificationStatus: pet.verificationStatus,
                 isBanned: pet.isBanned,
                 isPregnant: pet.isPregnant,
-                // --- FIX: Added this line so Marketplace can see the profile ---
                 aiProfileString: pet.aiProfileString, 
-                // --------------------------------------------------------------
+                // --- CRITICAL FIX: ADD VACCINATION HISTORY HERE ---
+                vaccinationHistory: pet.vaccinationHistory || [],
+                // ---------------------------------------------------
                 outgoingRequests: [] 
             };
         }
     });
 
-    // 4. Find outgoing requests in Partner Pets and attach them to User Pets
+    // 4. Find outgoing requests in Partner Pets and attach them to User Pets (unchanged)
     if (Array.isArray(partnerPets)) {
         partnerPets.forEach(partnerPet => {
             if (!Array.isArray(partnerPet.matingHistory)) return;

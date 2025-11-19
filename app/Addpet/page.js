@@ -19,7 +19,7 @@ export default function AddPet() {
   // Files
   const [petImage, setPetImage] = useState(null);
   const [petImagePreview, setPetImagePreview] = useState(null);
-  const [certificate, setCertificate] = useState(null);
+  const [certificateFile, setCertificateFile] = useState(null); 
 
   // State
   const [error, setError] = useState(null);
@@ -27,7 +27,7 @@ export default function AddPet() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user, userData, loading: authLoading } = useAuth(); // Using your custom auth
 
   // Auth redirect
   useEffect(() => {
@@ -77,13 +77,12 @@ export default function AddPet() {
       const data = await res.json(); // Expecting { type: "Dog", breed: "Pug" }
 
       if (res.ok) {
-        // --- FIX START: CORRECTLY PARSE JSON RESPONSE ---
+        // --- CORRECTLY PARSE JSON RESPONSE ---
         
-        // 1. Normalize Type (Capitalize first letter: "dog" -> "Dog")
+        // 1. Normalize Type
         let detectedType = data.type || "Other";
         detectedType = detectedType.charAt(0).toUpperCase() + detectedType.slice(1).toLowerCase();
 
-        // Ensure type exists in our list, otherwise default to "Other"
         const validTypes = Object.keys(petBreeds);
         if (!validTypes.includes(detectedType)) {
             detectedType = "Other";
@@ -96,8 +95,6 @@ export default function AddPet() {
         setPetType(detectedType);
         setPetBreed(detectedBreed);
         
-        // --- FIX END ---
-
         setStep(2); 
       } else {
         throw new Error(data.error || "AI analysis failed.");
@@ -114,8 +111,9 @@ export default function AddPet() {
     }
   };
 
+  // UPDATED: Use certificateFile state
   const handleCertificateChange = (e) => {
-    setCertificate(e.target.files[0]);
+    setCertificateFile(e.target.files[0]);
   };
 
   const handleSubmit = async (e) => {
@@ -129,41 +127,49 @@ export default function AddPet() {
       !petType ||
       !petBreed ||
       !petGender ||
-      !certificate ||
+      !certificateFile || // Check for the new file state
       !petImage 
     ) {
       setLoading(false);
-      return setError("Please fill all fields properly and upload files.");
+      return setError("Please fill all fields properly and upload both pet image and certificate.");
     }
 
-    if (!user) {
+    if (!user || !userData) { // Ensure user data is available
       setLoading(false);
       return router.push("/Login");
     }
 
     try {
-      const certificateBase64 = await fileToBase64(certificate);
+      const certificateBase64 = await fileToBase64(certificateFile); // Use certificateFile
       const petImageBase64 = await fileToBase64(petImage);
       const imagesBase64 = [petImageBase64]; 
+
+      // Get the owner's name from userData for verification comparison
+      const ownerName = userData.name; 
 
       const res = await fetch("/api/pet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: petName,
-          age: parseInt(petAge, 10),
+          age: petAge, // Send as string/number as before
           type: petType,
           breed: petBreed,
           gender: petGender,
           listingType: listingType,
-          certificateBase64,
+          
+          certificateBase64, // Send base64 for Certificate
+          certificateMimeType: certificateFile.type, // Send MIME type
+          
           imagesBase64, 
           ownerId: user.uid,
+          ownerName: ownerName, // NEW: Send owner's full name for AI verification
         }),
       });
 
       const data = await res.json();
       if (res.status === 201) {
+        // Redirect to profile creation, as before
         router.push(`/add-pet-profile/${data.petId}`);
       } else {
         setError(data.error || "Something went wrong");
@@ -203,6 +209,7 @@ export default function AddPet() {
         )}
 
         {/* --- STEP 1: Image Upload --- */}
+        {step === 1 && (
         <div className="w-full flex flex-col items-center">
           <label className="cursor-pointer w-full h-64 bg-gray-100/50 rounded-xl border-2 border-dashed border-gray-400/80 flex items-center justify-center text-gray-600 hover:bg-gray-200/50 hover:border-gray-500/80 transition-all duration-300 relative overflow-hidden">
             {petImagePreview ? (
@@ -235,11 +242,26 @@ export default function AddPet() {
             </div>
           )}
         </div>
+        )}
 
         {/* --- STEP 2: Details Form (Conditional) --- */}
         {step === 2 && (
           <form onSubmit={handleSubmit} className="w-full flex flex-col mt-6">
             
+            {/* --- FIX START: Add the Image Preview to Step 2 --- */}
+            {petImagePreview && (
+                <div className="relative w-full h-48 mb-6 rounded-xl overflow-hidden shadow-lg border-2 border-gray-200">
+                    <Image
+                        src={petImagePreview}
+                        alt="Pet preview"
+                        fill
+                        className="object-cover"
+                    />
+                </div>
+            )}
+            {/* --- FIX END: Add the Image Preview to Step 2 --- */}
+            
+
             <div className="p-3 mb-4 bg-green-100/80 border border-green-300 rounded-lg text-center shadow-sm">
               <span className="text-green-800 font-semibold">
                 AI Detected: {petType} - {petBreed}
@@ -335,14 +357,18 @@ export default function AddPet() {
 
             <div className="mb-4">
               <span className="self-start text-sm font-semibold mb-1 block text-gray-700">
-                Health Certificate (PDF/Image)
+                Health/Vaccination Certificate (PDF/Image)
               </span>
+              <p className="text-xs text-gray-500 mb-1">
+                Owner name on certificate must match your registered name: **{userData?.name || "Loading..."}**
+              </p>
               <label className="cursor-pointer w-full bg-[#4A90E2] text-white text-center py-3 rounded-xl hover:bg-[#3A75B9] transition shadow-md hover:shadow-lg flex items-center justify-center">
                 <span className="truncate max-w-[80%]">
-                  {certificate ? `Selected: ${certificate.name}` : "Upload Certificate (Required)"}
+                  {certificateFile ? `Selected: ${certificateFile.name}` : "Upload Certificate (Required)"}
                 </span>
                 <input
                   type="file"
+                  // UPDATED: Allow PDF and images
                   accept="image/*,application/pdf"
                   onChange={handleCertificateChange}
                   className="sr-only"

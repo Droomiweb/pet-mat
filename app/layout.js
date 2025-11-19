@@ -4,7 +4,8 @@ import { Poppins } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "./auth-provider";
 import MaintenancePage from "./Maintenance";
-import { SpeedInsights } from "@vercel/speed-insights/next";
+// --- FIX: REMOVE problematic import that might inject CSP-violating scripts
+// import { SpeedInsights } from "@vercel/speed-insights/next"; 
 
 // --- FIX: Import DB connection and models directly ---
 import connectDB from "./lib/mongodb";
@@ -78,7 +79,8 @@ export default async function RootLayout({ children }) {
             <>
               <NavbarrWrapper />
                 {children}
-              <SpeedInsights/>
+              {/* --- FIX: Remove SpeedInsights component to resolve CSP issue --- */}
+              {/* <SpeedInsights/> */}
             </>
           )}
         </AuthProvider>

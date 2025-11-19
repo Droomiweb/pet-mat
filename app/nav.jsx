@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "./auth-provider";
 import { auth } from "./lib/firebase";
-import { useRouter, usePathname } from "next/navigation"; // ✅ added usePathname
+import { useRouter, usePathname } from "next/navigation";
 import { Menu, Transition } from "@headlessui/react";
 
 // --- icons (unchanged) ---
@@ -29,17 +29,28 @@ const CommunityIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/
 const AIIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>);
 const PredictIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21 16-4-4-4 4"/><path d="m17 20-4-4-4 4"/><path d="m21 8-4-4-4 4"/><path d="m17 12-4-4-4 4"/><path d="M12 22v-8"/><path d="M12 10V3"/><path d="m3 16 4-4 4 4"/><path d="m7 20 4-4 4 4"/><path d="m3 8 4-4 4 4"/><path d="m7 12 4-4 4 4"/></svg>);
 const SupportIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>);
+const ReminderIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.37 21a2 2 0 0 0 3.26 0"/></svg>);
 
-export default function Navbar({ unreadMessageCount = 0 }) {
+
+export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { user } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();              // ✅ current route
+  const pathname = usePathname();
 
   const handleLogout = async () => {
     await auth.signOut();
     router.push("/Login");
   };
+
+  // --- NEW HELPER: Get badge display text ---
+  const getBadgeText = (count) => {
+    if (count > 9) {
+      return '9+';
+    }
+    return count;
+  };
+  // --- END NEW HELPER ---
 
   // links
   const mainNavItems = [
@@ -52,6 +63,7 @@ export default function Navbar({ unreadMessageCount = 0 }) {
     { name: "Dr. Paws AI", href: "/AiDoc", icon: AIIcon },
     { name: "AI Predictor", href: "/AiPredict", icon: PredictIcon },
     { name: "Pregnancy Support", href: "/pregnancy-support", icon: SupportIcon },
+    { name: `Reminders (${reminderCount})`, href: "/reminders", icon: ReminderIcon },
   ];
   const allMobileNavItems = [
     { name: "Home", href: "/" },
@@ -61,17 +73,18 @@ export default function Navbar({ unreadMessageCount = 0 }) {
     { name: "Dr. Paws AI", href: "/AiDoc" },
     { name: "Pregnancy Support", href: "/pregnancy-support" },
     { name: "AI Predictor", href: "/AiPredict" },
+    { name: `Reminders (${reminderCount})`, href: "/reminders" },
     { name: "Add New Pet", href: "/Addpet", isButton: true },
     { name: "Logout", onClick: handleLogout, isButton: true },
   ];
 
-  // ✅ helpers for active route (handles exact and section matches)
+  // helpers for active route (handles exact and section matches)
   const isActive = (href) => {
     if (href === "/") return pathname === "/";
     return pathname === href || pathname.startsWith(href + "/");
   };
 
-  // ✅ shared classes for nicer hover + active
+  // shared classes for nicer hover + active
   const baseLink =
     "relative px-4 py-2 rounded-lg font-semibold transition-all duration-300 ease-out";
   const hoverLink =
@@ -114,27 +127,26 @@ export default function Navbar({ unreadMessageCount = 0 }) {
           </h1>
         </div>
 
-        {/* DESKTOP NAV */}
+        {/* DESKTOP NAV (Omitted for brevity - unchanged except for prop usage) */}
         <div className="hidden sm:flex items-center space-x-3">
-          {/* Main Links with new hover + active */}
-          {mainNavItems.map((item) => {
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={`group ${baseLink} ${hoverLink} ${
-                  active ? activeWrap : inactiveText
-                }`}
-              >
-                <span className="relative z-10">{item.name}</span>
-                <span className={active ? activeUnderline : underline} />
-              </Link>
-            );
-          })}
+            {/* ... main links and features dropdown ... */}
+            {mainNavItems.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={`group ${baseLink} ${hoverLink} ${
+                    active ? activeWrap : inactiveText
+                  }`}
+                >
+                  <span className="relative z-10">{item.name}</span>
+                  <span className={active ? activeUnderline : underline} />
+                </Link>
+              );
+            })}
 
-          {/* Features Dropdown Button gets same treatment */}
-          <Menu as="div" className="relative">
+            <Menu as="div" className="relative">
             {({ open }) => (
               <>
                 <Menu.Button
@@ -142,7 +154,8 @@ export default function Navbar({ unreadMessageCount = 0 }) {
                     isActive("/community") ||
                     isActive("/AiDoc") ||
                     isActive("/AiPredict") ||
-                    isActive("/pregnancy-support")
+                    isActive("/pregnancy-support") ||
+                    isActive("/reminders")
                       ? activeWrap
                       : inactiveText
                   } flex items-center gap-1`}
@@ -155,7 +168,8 @@ export default function Navbar({ unreadMessageCount = 0 }) {
                       isActive("/community") ||
                       isActive("/AiDoc") ||
                       isActive("/AiPredict") ||
-                      isActive("/pregnancy-support")
+                      isActive("/pregnancy-support") ||
+                      isActive("/reminders")
                         ? activeUnderline
                         : underline
                     }`}
@@ -195,7 +209,6 @@ export default function Navbar({ unreadMessageCount = 0 }) {
             )}
           </Menu>
 
-          {/* Buttons unchanged */}
           <button
             onClick={() => router.push("/Addpet")}
             className="bg-secondary text-primary px-5 py-2 rounded-full font-bold shadow-md hover:shadow-xl hover:scale-105 transition-all duration-300 ml-4"
@@ -210,18 +223,33 @@ export default function Navbar({ unreadMessageCount = 0 }) {
           </button>
         </div>
 
-        {/* RIGHT: messages */}
-        <Link href="/messages" className="relative p-2 rounded-full text-white hover:bg-white/10 transition-colors duration-300">
-          <MessageIcon size={28} />
-          {unreadMessageCount > 0 && (
-            <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-red-100 transform translate-x-1/2 -translate-y-1/2 bg-red-600 rounded-full transition-all duration-300">
-              {unreadMessageCount}
-            </span>
-          )}
-        </Link>
+        {/* RIGHT: messages and reminders section */}
+        <div className="flex items-center gap-4">
+            {/* Reminder Icon (Unchanged) */}
+            {user && (
+            <Link href="/reminders" className="relative p-2 rounded-full text-white hover:bg-white/10 transition-colors duration-300">
+                <ReminderIcon size={28} />
+                {reminderCount > 0 && (
+                <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-red-100 transform translate-x-1/2 -translate-y-1/2 bg-red-600 rounded-full transition-all duration-300">
+                    {getBadgeText(reminderCount)}
+                </span>
+                )}
+            </Link>
+            )}
+
+            {/* Message Icon (UPDATED) */}
+            <Link href="/messages" className="relative p-2 rounded-full text-white hover:bg-white/10 transition-colors duration-300">
+                <MessageIcon size={28} />
+                {unreadMessageCount > 0 && (
+                <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-red-100 transform translate-x-1/2 -translate-y-1/2 bg-red-600 rounded-full transition-all duration-300">
+                    {getBadgeText(unreadMessageCount)} {/* <-- USE NEW HELPER HERE */}
+                </span>
+                )}
+            </Link>
+        </div>
       </div>
 
-      {/* MOBILE MENU (unchanged) */}
+      {/* MOBILE MENU (Omitted for brevity) */}
       <div className={`fixed top-0 left-0 h-full w-64 bg-white shadow-2xl transition-transform duration-300 z-50 sm:hidden ${menuOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="p-5 bg-primary/90 text-white flex flex-col items-start pt-10">
           <Link href="/Profile" onClick={() => setMenuOpen(false)}>
