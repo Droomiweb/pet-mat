@@ -1,8 +1,10 @@
 // app/api/pet/requests/route.js
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
+import User from "../../../models/User"; // <-- Import User model
 import { db } from "../../../lib/firebase"; 
 import { collection, addDoc, serverTimestamp, doc, setDoc } from "firebase/firestore";
+import { sendWhatsAppText } from "../../../lib/greenApi"; // <-- WhatsApp function
 
 // Helper to create stable Conversation ID
 const createConversationId = (petId, uid1, uid2) => {
@@ -19,7 +21,7 @@ export async function PATCH(req) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
     }
 
-    const pet = await Pet.findById(petId);
+    const pet = await Pet.findById(petId); // This is User B's pet
     if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
     if (pet.ownerId !== ownerId) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
@@ -54,12 +56,13 @@ export async function PATCH(req) {
       // *** CRITICAL FIX: Tell Mongoose the array changed ***
       pet.markModified('matingHistory'); 
 
-      // Send System Message to Chat upon Acceptance
+      // Send System Message to Chat and WHATSAPP
       if (newStatus === 'accepted') {
+          const targetRequesterId = request.requesterId; 
+          const conversationId = createConversationId(petId, ownerId, targetRequesterId);
+          
+          // A. Firestore Message (Real-time)
           try {
-              const targetRequesterId = request.requesterId; 
-              const conversationId = createConversationId(petId, ownerId, targetRequesterId);
-              
               await addDoc(collection(db, "conversations", conversationId, "messages"), {
                   senderId: "system",
                   senderName: "PetMate System",
@@ -77,9 +80,36 @@ export async function PATCH(req) {
           } catch (fsError) {
               console.error("Error sending acceptance msg to Firestore:", fsError);
           }
+
+          // B. WHATSAPP NOTIFICATION TO REQUESTER (USER A)
+          try {
+            // Fetch the requester's phone number
+            const requesterUser = await User.findOne({ firebaseUid: targetRequesterId }).select('phone name').lean();
+            if (requesterUser && requesterUser.phone) {
+                const petProfileLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pet/${pet._id}`;
+                const whatsappMessage = `
+                    🎉 GREAT NEWS! Your mating request for ${pet.name} has been **ACCEPTED** by the owner!
+                    
+                    Start chatting now to finalize the details.
+                    
+                    View Pet Profile: ${petProfileLink}
+                `.trim();
+                
+                const fullPhoneNumber = `91${requesterUser.phone}`;
+                await sendWhatsAppText(fullPhoneNumber, whatsappMessage);
+                console.log(`[WhatsApp] Sent acceptance notification to Requester: ${requesterUser.phone}`);
+            }
+          } catch (waError) {
+              console.error("Error sending WhatsApp acceptance notification:", waError);
+          }
+
+      }
+      if (newStatus === 'rejected') {
+          // You could optionally send a rejection notification here as well
+          console.log(`Mating request for ${pet.name} rejected.`);
       }
 
-    // --- ADOPTION LOGIC ---
+    // --- ADOPTION LOGIC (UNCHANGED) ---
     } else if (requestType === 'adoption') {
       if (requestId && typeof pet.adoptionRequests.id === 'function') {
          request = pet.adoptionRequests.id(requestId);

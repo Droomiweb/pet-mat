@@ -7,6 +7,11 @@ const UserSchema = new mongoose.Schema({
   phone: { type: String, required: true },
   firebaseUid: { type: String, required: true, unique: true },
   
+  // --- NEW FIELDS FOR OTP RESET ---
+  otpCode: { type: String, default: null },
+  otpExpiry: { type: Date, default: null },
+  // --- END NEW FIELDS ---
+  
   // UPDATED: Add a 'type' field and a '2dsphere' index
   // The 'type' must be "Point" for geospatial queries.
   location: {

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../auth-provider";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link"; 
 
 // --- IMPORTS ---
 import PetStatusBadge from "../components/PetStatusBadge";
@@ -16,7 +17,8 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // --- UPDATED FETCH FUNCTION ---
+  // (fetchUserPets and useEffect remains the same)
+
   const fetchUserPets = useCallback(async () => {
     if (user) {
       try {
@@ -90,9 +92,20 @@ export default function Profile() {
               <p className="text-gray-600">@{userData.username}</p>
               <p className="text-gray-600 mt-2">{userData.phone}</p>
               <p className="text-gray-600 mt-1">{userData.location?.city || "Location not set"}</p>
+              
+              {/* --- UPDATED: Beautiful Reset Password Button --- */}
+              {/* Using btn-fancy-primary defined in globals.css */}
+              <Link
+                href="/forgot-password"
+                className="mt-6 w-full max-w-[200px] text-center btn-fancy-primary text-sm"
+              >
+                Reset Password
+              </Link>
+              {/* --- END UPDATED --- */}
+              
               <button
                 onClick={handleSignOut}
-                className="mt-6 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-full"
+                className="mt-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-full"
               >
                 Sign Out
               </button>

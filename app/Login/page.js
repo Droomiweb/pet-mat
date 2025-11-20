@@ -80,7 +80,15 @@ export default function Login() {
               Enter your credentials to access your account.
             </p>
 
-            <form onSubmit={handleLogin} className="space-y-5">
+           <form onSubmit={handleLogin} className="space-y-5">
+              {/* ... (Username and Password inputs) ... */}
+
+              {/* --- NEW: Forgot Password Link --- */}
+              <div className="flex justify-end text-sm">
+                  <Link href="/forgot-password" className="text-sm font-semibold text-[#4A90E2] hover:text-[#3A75B9] hover:underline transition-colors">
+                      Forgot Password?
+                  </Link>
+              </div>
               <div>
                 <label htmlFor="username" className="block text-sm font-bold text-gray-700 mb-1 ml-1">
                   Username
