@@ -6,19 +6,17 @@ import { useRouter } from "next/navigation";
 import { auth } from "./../lib/firebase";
 
 export default function Main() {
-  const [pets, setPets] = useState([]); // All pets for the general feed
-  
-  // --- FIX 1: State to hold suggestions for MULTIPLE pets ---
-  // Structure: { "pet_id_1": [matches], "pet_id_2": [matches] }
-  const [suggestionsMap, setSuggestionsMap] = useState({});
-  
-  const [userPets, setUserPets] = useState([]);
+  // --- State Variables ---
+  const [pets, setPets] = useState([]); // General feed pets
+  const [suggestionsMap, setSuggestionsMap] = useState({}); // Matches for user's pets
+  const [userPets, setUserPets] = useState([]); // User's own pets
   const [filters, setFilters] = useState({ type: "", breed: "", radius: "50" }); 
   
   const [loading, setLoading] = useState(true);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const router = useRouter();
   
+  // --- Constants ---
   const breedOptions = {
       Dog: ["Labrador Retriever", "German Shepherd", "Golden Retriever", "Bulldog", "Poodle", "Beagle", "Other"],
       Cat: ["Persian", "Maine Coon", "Siamese", "Bengal", "Ragdoll", "British Shorthair", "Other"],
@@ -27,7 +25,9 @@ export default function Main() {
       Other: ["Mixed", "Unknown"],
   };
 
-  // Fetch Feed Pets
+  // --- Fetch Functions ---
+
+  // 1. Fetch Feed Pets (General Listings)
   const fetchPets = async () => {
     setLoading(true);
     try {
@@ -54,7 +54,7 @@ export default function Main() {
     }
   };
   
-  // Fetch User's Pets & Trigger Matches for EACH
+  // 2. Fetch User's Pets & Handle Pregnancy Redirect
   const fetchUserPets = async () => {
       const user = auth.currentUser;
       if (!user) {
@@ -65,11 +65,22 @@ export default function Main() {
           const res = await fetch(`/api/pet/user/${user.uid}`);
           if (res.ok) {
               let data = await res.json();
+              
+              // --- NEW: PREGNANCY REDIRECT LOGIC ---
+              // If ANY of the user's pets are pregnant, redirect to the tracker immediately.
+              // This hides the mating interface as requested.
+              const pregnantPet = data.find(p => p.isPregnant);
+              if (pregnantPet) {
+                  router.push(`/pregnancy-tracker/${pregnantPet._id}`);
+                  return; 
+              }
+              // -------------------------------------
+
               const matingPets = data.filter(p => p.listingType === 'Mating');
               setUserPets(matingPets);
               
+              // If user has pets listed for mating, fetch suggestions for EACH
               if (matingPets.length > 0) {
-                // --- FIX 2: Loop through ALL mating pets and fetch suggestions ---
                 matingPets.forEach(pet => {
                     fetchSuggestionsForPet(pet._id);
                 });
@@ -83,7 +94,7 @@ export default function Main() {
       }
   }
 
-  // Helper to fetch suggestions for a single pet and update the map
+  // 3. Helper to fetch suggestions for a single pet
   const fetchSuggestionsForPet = async (petId) => {
     try {
       const res = await fetch(`/api/match/${petId}`);
@@ -98,11 +109,11 @@ export default function Main() {
     } catch (err) {
       console.error(`Error fetching suggestions for ${petId}:`, err);
     } finally {
-      // We can turn off loading once at least one request finishes, 
-      // or handle granular loading. For simplicity:
       setSuggestionsLoading(false);
     }
   };
+
+  // --- Effects ---
 
   useEffect(() => {
     fetchUserPets();
@@ -113,6 +124,8 @@ export default function Main() {
     fetchPets();
   }, [filters]);
 
+
+  // --- Handlers ---
 
   const handlePetClick = (petId) => {
     const user = auth.currentUser;
@@ -126,7 +139,7 @@ export default function Main() {
         Discover Your Pet's Mate
       </h1>
 
-      {/* --- FIX 3: Render Matching Section for EACH User Pet --- */}
+      {/* --- SECTION 1: AI MATCHING SUGGESTIONS --- */}
       {suggestionsLoading ? (
         <p className="text-center text-[#333333] text-lg mb-8">Loading compatible matches...</p>
       ) : userPets.length > 0 ? (
@@ -183,7 +196,7 @@ export default function Main() {
               Pet Matrimony Listings
       </h2>
       
-      {/* Filters Section */}
+      {/* --- SECTION 2: FILTERS --- */}
       <div className="flex flex-wrap justify-center gap-4 mb-10 p-5 rounded-xl bg-white shadow-inner items-center">
         <select
           className="p-3 rounded-lg border-2 border-gray-300 bg-white focus:border-[#4A90E2] transition-colors cursor-pointer"
@@ -228,7 +241,7 @@ export default function Main() {
         </div>
       </div>
 
-      {/* Pet Grid */}
+      {/* --- SECTION 3: GENERAL LISTINGS GRID --- */}
       {loading ? (
         <p className="text-center text-[#333333] text-xl py-10">Loading wonderful pets...</p>
       ) : pets.length === 0 ? (

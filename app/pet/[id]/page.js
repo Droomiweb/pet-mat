@@ -13,6 +13,12 @@ export default function PetDetailPage() {
   const [requesterPets, setRequesterPets] = useState([]);
   const [requesterPetId, setRequesterPetId] = useState("");
   
+  // --- NEW: AI ADVISOR STATES ---
+  const [advisorLoading, setAdvisorLoading] = useState(false);
+  const [advisorResult, setAdvisorResult] = useState(null); // { analysis, offspringImage }
+  const [showAdvisorModal, setShowAdvisorModal] = useState(false);
+  // ------------------------------
+
   const params = useParams();
   const router = useRouter();
   const user = auth.currentUser;
@@ -170,6 +176,44 @@ export default function PetDetailPage() {
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
+  // --- NEW: RUN AI ADVISOR FUNCTION ---
+  const runAiAdvisor = async () => {
+    if (!requesterPetId && requesterPets.length !== 1) {
+        return alert("Please select YOUR pet from the dropdown first (under 'Send Mating Request').");
+    }
+    
+    const myPetId = requesterPetId || requesterPets[0]?._id;
+    if (!myPetId) return alert("No compatible pet found to compare.");
+
+    setAdvisorLoading(true);
+    setShowAdvisorModal(true); // Open modal immediately
+
+    try {
+        const res = await fetch('/api/ai-advisor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                petAId: myPetId, // User's Pet
+                petBId: pet._id  // Profile Pet
+            })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            setAdvisorResult(data);
+        } else {
+            alert(data.error || "Failed to generate advice.");
+            setShowAdvisorModal(false);
+        }
+    } catch (err) {
+        console.error(err);
+        alert("AI Advisor failed.");
+        setShowAdvisorModal(false);
+    } finally {
+        setAdvisorLoading(false);
+    }
+  };
+  // ------------------------------------
+
   useEffect(() => {
     fetchPet();
   }, [params.id, user?.uid]);
@@ -186,8 +230,63 @@ export default function PetDetailPage() {
       (req) => req.requesterId === user?.uid && req.status === "pending"
   );
 
+  // Determine if advisor button should be shown
+  const showAdvisorButton = !isOwner && !isAdoptionListing && (requesterPets.length > 0);
+
   return (
-    <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-10">
+    <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-10 relative">
+      
+      {/* --- NEW: AI ADVISOR MODAL --- */}
+      {showAdvisorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl overflow-y-auto max-h-[90vh] animate-in fade-in zoom-in duration-300">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold text-[#333333] flex items-center gap-2">
+                        🧬 AI Mating Advisor
+                    </h2>
+                    <button onClick={() => setShowAdvisorModal(false)} className="text-3xl text-gray-400 hover:text-gray-800">&times;</button>
+                </div>
+
+                {advisorLoading ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p className="text-lg font-semibold text-blue-600 animate-pulse">Analyzing Medical History & DNA...</p>
+                        <p className="text-sm text-gray-500 mt-2">Generating Offspring Prediction Image...</p>
+                    </div>
+                ) : advisorResult && (
+                    <div className="space-y-6">
+                        {/* Analysis Text */}
+                        <div className="bg-blue-50 p-5 rounded-xl border border-blue-100">
+                            <h3 className="font-bold text-blue-800 mb-2 text-lg">Compatibility Analysis</h3>
+                            <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{advisorResult.analysis}</p>
+                        </div>
+
+                        {/* Offspring Image */}
+                        <div className="text-center">
+                            <h3 className="font-bold text-gray-800 mb-3 text-lg">Predicted Offspring Appearance</h3>
+                            <div className="relative w-full h-64 sm:h-80 rounded-xl overflow-hidden shadow-lg border-4 border-white bg-gray-100 group">
+                                <img 
+                                    src={advisorResult.offspringImage} 
+                                    alt="Predicted Puppy/Kitten" 
+                                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                                />
+                            </div>
+                            <p className="text-xs text-gray-400 mt-2 italic">*AI generated prediction. Actual results may vary.</p>
+                        </div>
+                        
+                        <button 
+                            onClick={() => setShowAdvisorModal(false)}
+                            className="w-full bg-gray-800 text-white py-3 rounded-xl font-bold hover:bg-black transition shadow-lg"
+                        >
+                            Close Report
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+      )}
+      {/* --- END MODAL --- */}
+
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl p-6 md:p-10 border-t-8 border-[#4A90E2]">
         <div className="mb-4">
           <span
@@ -254,7 +353,7 @@ export default function PetDetailPage() {
           )}
         </div>
 
-        {/* --- NEW: AI Personality Profile Section --- */}
+        {/* AI Personality Profile Section */}
         {pet.aiProfileString && (
           <div className="mt-8 mb-8 p-6 bg-gradient-to-r from-[#F4F7F9] to-white rounded-2xl border border-[#4A90E2]/30 shadow-md relative overflow-hidden">
             <div className="absolute top-0 left-0 w-2 h-full bg-[#4A90E2]"></div>
@@ -280,7 +379,6 @@ export default function PetDetailPage() {
             </div>
           </div>
         )}
-        {/* --- END NEW SECTION --- */}
 
         {/* Pedigree Section */}
         {pedigree && (pedigree.dam || pedigree.sire) && (
@@ -363,8 +461,34 @@ export default function PetDetailPage() {
                   Request will be sent for your pet: **{requesterPets[0].name}**.
                 </p>
               )}
+              
+              {/* --- ACTION BUTTONS CONTAINER --- */}
+              <div className="flex flex-col sm:flex-row gap-4">
+                  {requesterPets.length > 0 && (
+                    <button
+                        onClick={sendMatingRequest}
+                        className={`flex-1 py-3 px-6 rounded-xl font-bold transition shadow-md ${
+                        canSendRequest ? "bg-[#4A90E2] hover:bg-[#3A75B9] text-white" : "bg-gray-400 text-gray-700 cursor-not-allowed"
+                        }`}
+                        disabled={!canSendRequest}
+                    >
+                        Send Mating Request {pet.verificationStatus !== "verified" && `(${pet.verificationStatus})`}
+                    </button>
+                  )}
+
+                  {/* --- NEW AI ADVISOR BUTTON --- */}
+                  {showAdvisorButton && (
+                      <button
+                        onClick={runAiAdvisor}
+                        className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white py-3 px-6 rounded-xl font-bold shadow-lg transition flex items-center justify-center gap-2 transform hover:scale-[1.02]"
+                      >
+                        <span>✨</span> AI Mating Advisor
+                      </button>
+                  )}
+              </div>
+
               {requesterPets.length === 0 && user && (
-                <p className="text-red-500 font-semibold mb-4">
+                <p className="text-red-500 font-semibold mt-4">
                   You have no registered pets of type {pet.type} with the opposite gender to request a mating.
                 </p>
               )}
@@ -373,19 +497,10 @@ export default function PetDetailPage() {
                 placeholder="Write an introductory message for the owner (optional)..."
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                className="w-full border-2 border-gray-300 p-3 rounded-lg mb-4 focus:border-[#4A90E2] transition-colors"
+                className="w-full border-2 border-gray-300 p-3 rounded-lg my-4 focus:border-[#4A90E2] transition-colors"
                 rows="3"
                 disabled={pet.verificationStatus !== "verified"}
               />
-              <button
-                onClick={sendMatingRequest}
-                className={`py-3 px-6 rounded-xl font-bold transition shadow-md ${
-                  canSendRequest ? "bg-[#4A90E2] hover:bg-[#3A75B9] text-white" : "bg-gray-400 text-gray-700 cursor-not-allowed"
-                }`}
-                disabled={!canSendRequest}
-              >
-                Send Mating Request {pet.verificationStatus !== "verified" && `(${pet.verificationStatus})`}
-              </button>
             </>
           )}
         </div>

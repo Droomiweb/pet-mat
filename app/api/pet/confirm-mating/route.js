@@ -5,15 +5,12 @@ import Pet from "../../../models/PetModel";
 export async function PATCH(req) {
   try {
     await connectDB();
-    // 'userId' is the person logged in
-    // 'requesterId' is passed as fallback if requestId is missing
     const { userId, petId, requestId, requesterId } = await req.json();
 
     if (!userId || !petId) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
     }
     
-    // Find the pet who OWNS the request (the "dam" or "sire")
     const pet = await Pet.findById(petId);
     if (!pet) {
       return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
@@ -26,9 +23,7 @@ export async function PATCH(req) {
     }
     
     // 2. Fallback: Find by Requester ID + Status
-    // This handles old data where _id might be missing
     if (!request && requesterId) {
-        console.log("Confirm Mating: Finding by requesterId fallback...");
         request = pet.matingHistory.find(
             r => r.requesterId === requesterId && 
             ['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating'].includes(r.status)
@@ -44,7 +39,6 @@ export async function PATCH(req) {
       return new Response(JSON.stringify({ error: `Cannot confirm mating. Request status is '${request.status}'` }), { status: 400 });
     }
     
-    // Find the other pet (the requester's pet)
     const otherPet = await Pet.findById(request.requesterPetId);
     if (!otherPet) {
         return new Response(JSON.stringify({ error: "Requester pet not found" }), { status: 404 });
@@ -65,19 +59,12 @@ export async function PATCH(req) {
     if (request.ownerMatedConfirmation && request.requesterMatedConfirmation) {
       request.status = 'mated';
       
-      // Mating is confirmed! Set the female pet to 'pregnant'
-      if (pet.gender === 'Female') {
-        pet.isPregnant = true;
-      } else if (otherPet.gender === 'Female') {
-        otherPet.isPregnant = true;
-        await otherPet.save();
-      }
+      // --- CHANGE: WE DO NOT SET isPregnant = true HERE ANYMORE ---
+      // The female pet owner must explicitly click "Confirm Pregnancy" in the UI later.
     } else {
-      // Only one person has confirmed, update the status
       request.status = userRole === 'owner' ? 'ownerConfirmedMating' : 'requesterConfirmedMating';
     }
 
-    // IMPORTANT: Mark array as modified so Mongoose saves mixed type updates
     pet.markModified('matingHistory');
     await pet.save();
 

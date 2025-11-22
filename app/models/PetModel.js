@@ -1,29 +1,37 @@
 // app/models/PetModel.js
 import mongoose from "mongoose";
 
-// --- NEW: Sub-schema for Vaccination Records ---
+// --- Vaccination Sub-schema ---
 const VaccinationSchema = new mongoose.Schema({
   vaccineName: { type: String, required: true },
-  vaccinationDate: { type: Date, required: true }, // Date vaccine was given
-  expiryDate: { type: Date, required: true },     // Date it expires
+  vaccinationDate: { type: Date, required: true }, 
+  expiryDate: { type: Date, required: true },     
   status: { type: String, enum: ['active', 'expired', 'upcoming', 'needs-review'], default: 'active' }, 
 });
 
-// --- NEW: Sub-schema for Certificate AI Analysis ---
+// --- Certificate Analysis Sub-schema ---
 const CertificateAnalysisSchema = new mongoose.Schema({
   certificateUrl: String,
   extractedOwnerName: String,
   extractedPetName: String,
-  aiOcrText: String, // Full OCR text for admin review
+  aiOcrText: String, 
   ownerNameMatch: { type: Boolean, default: false },
   status: { 
     type: String, 
     enum: ['pending', 'verified', 'rejected', 'needs-review', 'ai-error'],
     default: 'pending' 
   },
-  reason: String, // Short reason for rejection/review
+  reason: String, 
 });
 
+// --- NEW: Pregnancy Day Plan Schema ---
+const PregnancyDaySchema = new mongoose.Schema({
+  day: Number,
+  food: String,
+  activity: String,
+  careTips: String,
+  warningSigns: String
+});
 
 const MatingRequestSchema = new mongoose.Schema({
   requesterId: String,
@@ -32,7 +40,6 @@ const MatingRequestSchema = new mongoose.Schema({
   requesterPetName: String,
   status: { type: String, default: 'pending' },
   requestedAt: { type: Date, default: Date.now },
-  // Confirmation flags
   ownerMatedConfirmation: { type: Boolean, default: false },
   requesterMatedConfirmation: { type: Boolean, default: false }
 });
@@ -82,7 +89,6 @@ const petSchema = new mongoose.Schema({
   nftTokenId: { type: Number, default: null, index: true },
   nftContractAddress: { type: String, default: null },
 
-  // --- UPDATED FIELDS ---
   certificateUrl: String, 
   
   verificationStatus: { 
@@ -91,23 +97,23 @@ const petSchema = new mongoose.Schema({
     default: 'pending' 
   },
   
-  // NEW: Store Detailed Certificate Analysis (Replaces old verificationAnalysis)
   certificateAnalysis: { type: CertificateAnalysisSchema, default: {} },
-  
-  // NEW: Store Vaccination Records
   vaccinationHistory: [VaccinationSchema],
-  // --- END UPDATED FIELDS ---
 
   imageUrls: [String],
   ownerId: String,
   
+  // --- UPDATED PREGNANCY FIELDS ---
   isPregnant: { type: Boolean, default: false },
+  pregnancyStartDate: { type: Date, default: null }, // When user clicked "Confirm Pregnancy"
+  pregnancyPlan: [PregnancyDaySchema], // Stores the AI generated daily plan
+  // --------------------------------
 
   aiProfileString: { type: String, default: null, index: true },
+  medicalHistoryLog: { type: String, default: "No medical history recorded yet." },
   
   isBanned: { type: Boolean, default: false },
 
-  // Use defined schemas
   matingHistory: [MatingRequestSchema],
   messages: [MessageSchema],
   adoptionRequests: [AdoptionRequestSchema]
