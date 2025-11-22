@@ -1,10 +1,22 @@
 // app/pet/[id]/page.js
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { auth } from "../../lib/firebase";
 import Link from "next/link";
 import { createConversationId } from '../../lib/chatUtils'; 
+
+// --- Cute DNA/Loading Animation Component ---
+const DNALoading = () => (
+  <div className="flex flex-col items-center justify-center py-4">
+    <div className="flex space-x-2 animate-pulse mb-2">
+        <div className="w-3 h-3 bg-pink-500 rounded-full animate-bounce"></div>
+        <div className="w-3 h-3 bg-purple-500 rounded-full animate-bounce delay-75"></div>
+        <div className="w-3 h-3 bg-blue-500 rounded-full animate-bounce delay-150"></div>
+    </div>
+    <p className="text-xs text-purple-600 font-bold animate-pulse">Mixing Genes...</p>
+  </div>
+);
 
 export default function PetDetailPage() {
   const [pet, setPet] = useState(null);
@@ -13,16 +25,24 @@ export default function PetDetailPage() {
   const [requesterPets, setRequesterPets] = useState([]);
   const [requesterPetId, setRequesterPetId] = useState("");
   
-  // --- NEW: AI ADVISOR STATES ---
-  const [advisorLoading, setAdvisorLoading] = useState(false);
-  const [advisorResult, setAdvisorResult] = useState(null); // { analysis, offspringImage }
+  // --- AI CHAT ADVISOR STATES ---
   const [showAdvisorModal, setShowAdvisorModal] = useState(false);
-  // ------------------------------
-
+  const [chatHistory, setChatHistory] = useState([]); // Stores UI messages
+  const [geminiHistory, setGeminiHistory] = useState([]); // Stores API context
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  
+  // --- IMAGE GEN STATES ---
+  const [generatedImage, setGeneratedImage] = useState(null);
+  const [imageLoading, setImageLoading] = useState(false);
+  
+  const chatEndRef = useRef(null);
+  
   const params = useParams();
   const router = useRouter();
   const user = auth.currentUser;
 
+  // --- Helpers ---
   const handleStartChat = () => {
     if (!user) return router.push("/Login");
     if (!pet) return;
@@ -41,6 +61,7 @@ export default function PetDetailPage() {
     }
   };
 
+  // --- Data Fetching ---
   const fetchPet = async () => {
     try {
       const res = await fetch(`/api/pet/${params.id}`);
@@ -90,6 +111,7 @@ export default function PetDetailPage() {
     }
   };
 
+  // --- Actions ---
   const sendMatingRequest = async () => {
     if (!user) return alert("Login first");
     if (user.uid === pet.ownerId) return alert("You cannot send a mating request to your own pet.");
@@ -176,8 +198,8 @@ export default function PetDetailPage() {
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
-  // --- NEW: RUN AI ADVISOR FUNCTION ---
-  const runAiAdvisor = async () => {
+  // --- AI ADVISOR LOGIC ---
+  const openAiAdvisor = () => {
     if (!requesterPetId && requesterPets.length !== 1) {
         return alert("Please select YOUR pet from the dropdown first (under 'Send Mating Request').");
     }
@@ -185,35 +207,97 @@ export default function PetDetailPage() {
     const myPetId = requesterPetId || requesterPets[0]?._id;
     if (!myPetId) return alert("No compatible pet found to compare.");
 
-    setAdvisorLoading(true);
-    setShowAdvisorModal(true); // Open modal immediately
+    setShowAdvisorModal(true);
+    
+    // Initial greeting if empty
+    if (chatHistory.length === 0) {
+        const initialMsg = { 
+            role: 'model', 
+            text: `Hello! I'm Dr. Paws, your AI Mating Advisor. I have analyzed the medical records, vaccination history, and lineage of both ${pet.name} and your pet. What would you like to know about their compatibility?` 
+        };
+        setChatHistory([initialMsg]);
+    }
+  };
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!chatInput.trim() || chatLoading) return;
+
+    const myPetId = requesterPetId || requesterPets[0]?._id;
+    const userMsg = chatInput;
+    
+    // Update UI immediately
+    setChatHistory(prev => [...prev, { role: 'user', text: userMsg }]);
+    setChatInput("");
+    setChatLoading(true);
 
     try {
-        const res = await fetch('/api/ai-advisor', {
+        const res = await fetch('/api/ai-advisor/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                petAId: myPetId, // User's Pet
-                petBId: pet._id  // Profile Pet
+                petAId: myPetId, 
+                petBId: pet._id,
+                history: geminiHistory, // Send context history
+                message: userMsg
+            })
+        });
+        
+        const data = await res.json();
+        if (res.ok) {
+            const botMsg = { role: 'model', text: data.text };
+            setChatHistory(prev => [...prev, botMsg]);
+            
+            // Update Gemini history context (limit to last 10 turns to save tokens)
+            setGeminiHistory(prev => [
+                ...prev.slice(-10), 
+                { role: 'user', parts: [{ text: userMsg }] },
+                { role: 'model', parts: [{ text: data.text }] }
+            ]);
+        } else {
+            alert("AI Error: " + data.error);
+        }
+    } catch (err) {
+        console.error(err);
+    } finally {
+        setChatLoading(false);
+    }
+  };
+
+  const generateOffspringImage = async () => {
+    const myPetId = requesterPetId || requesterPets[0]?._id;
+    setImageLoading(true);
+    setGeneratedImage(null); 
+
+    try {
+        const res = await fetch('/api/ai-advisor/generate-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                petAId: myPetId, 
+                petBId: pet._id
             })
         });
         const data = await res.json();
         if (res.ok) {
-            setAdvisorResult(data);
+            setGeneratedImage(data.imageUrl);
         } else {
-            alert(data.error || "Failed to generate advice.");
-            setShowAdvisorModal(false);
+            alert("Failed to generate image.");
         }
     } catch (err) {
         console.error(err);
-        alert("AI Advisor failed.");
-        setShowAdvisorModal(false);
     } finally {
-        setAdvisorLoading(false);
+        setImageLoading(false);
     }
   };
-  // ------------------------------------
 
+  // Auto-scroll chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory, generatedImage, imageLoading]);
+
+
+  // --- Lifecycle ---
   useEffect(() => {
     fetchPet();
   }, [params.id, user?.uid]);
@@ -236,52 +320,99 @@ export default function PetDetailPage() {
   return (
     <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-10 relative">
       
-      {/* --- NEW: AI ADVISOR MODAL --- */}
+      {/* --- AI CHATBOT MODAL --- */}
       {showAdvisorModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl overflow-y-auto max-h-[90vh] animate-in fade-in zoom-in duration-300">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold text-[#333333] flex items-center gap-2">
-                        🧬 AI Mating Advisor
+            <div className="bg-white rounded-3xl max-w-2xl w-full h-[85vh] flex flex-col shadow-2xl animate-in fade-in zoom-in duration-300 overflow-hidden border-4 border-purple-100">
+                
+                {/* Header */}
+                <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-4 flex justify-between items-center shrink-0">
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        🧬 Genetic Mating Advisor
                     </h2>
-                    <button onClick={() => setShowAdvisorModal(false)} className="text-3xl text-gray-400 hover:text-gray-800">&times;</button>
+                    <button onClick={() => setShowAdvisorModal(false)} className="text-white/80 hover:text-white text-2xl">×</button>
                 </div>
 
-                {advisorLoading ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                        <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                        <p className="text-lg font-semibold text-blue-600 animate-pulse">Analyzing Medical History & DNA...</p>
-                        <p className="text-sm text-gray-500 mt-2">Generating Offspring Prediction Image...</p>
-                    </div>
-                ) : advisorResult && (
-                    <div className="space-y-6">
-                        {/* Analysis Text */}
-                        <div className="bg-blue-50 p-5 rounded-xl border border-blue-100">
-                            <h3 className="font-bold text-blue-800 mb-2 text-lg">Compatibility Analysis</h3>
-                            <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{advisorResult.analysis}</p>
-                        </div>
-
-                        {/* Offspring Image */}
-                        <div className="text-center">
-                            <h3 className="font-bold text-gray-800 mb-3 text-lg">Predicted Offspring Appearance</h3>
-                            <div className="relative w-full h-64 sm:h-80 rounded-xl overflow-hidden shadow-lg border-4 border-white bg-gray-100 group">
-                                <img 
-                                    src={advisorResult.offspringImage} 
-                                    alt="Predicted Puppy/Kitten" 
-                                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                                />
-                            </div>
-                            <p className="text-xs text-gray-400 mt-2 italic">*AI generated prediction. Actual results may vary.</p>
-                        </div>
+                {/* Scrollable Content Area */}
+                <div className="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-4">
+                    
+                    {/* Image Generation Section */}
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-purple-100 text-center">
+                        <h3 className="text-sm font-bold text-gray-700 mb-3">Predicted Offspring Look</h3>
                         
-                        <button 
-                            onClick={() => setShowAdvisorModal(false)}
-                            className="w-full bg-gray-800 text-white py-3 rounded-xl font-bold hover:bg-black transition shadow-lg"
-                        >
-                            Close Report
-                        </button>
+                        {generatedImage ? (
+                            <div className="relative w-full h-64 rounded-lg overflow-hidden shadow-md group">
+                                <img src={generatedImage} alt="Offspring" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                                <button 
+                                    onClick={generateOffspringImage}
+                                    className="absolute bottom-2 right-2 bg-white/90 p-2 rounded-full shadow-lg text-xs font-bold hover:bg-white"
+                                >
+                                    🔄 Regenerate
+                                </button>
+                            </div>
+                        ) : imageLoading ? (
+                            <DNALoading />
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-32 bg-purple-50 rounded-lg border-2 border-dashed border-purple-200">
+                                <button 
+                                    onClick={generateOffspringImage}
+                                    className="bg-gradient-to-r from-pink-500 to-purple-600 text-white px-6 py-2 rounded-full font-bold shadow-lg hover:scale-105 transition transform flex items-center gap-2"
+                                >
+                                    <span>✨</span> Generate Offspring Image
+                                </button>
+                                <p className="text-xs text-gray-500 mt-2">AI will predict features based on both parents</p>
+                            </div>
+                        )}
                     </div>
-                )}
+
+                    {/* Chat Messages */}
+                    <div className="space-y-4 pb-2">
+                        {chatHistory.map((msg, idx) => (
+                            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${
+                                    msg.role === 'user' 
+                                    ? 'bg-purple-600 text-white rounded-br-none' 
+                                    : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none shadow-sm'
+                                }`}>
+                                    {msg.role === 'model' && <span className="text-xs font-bold text-purple-600 block mb-1">Dr. Paws AI</span>}
+                                    {msg.text}
+                                </div>
+                            </div>
+                        ))}
+                        {chatLoading && (
+                            <div className="flex justify-start">
+                                <div className="bg-white p-3 rounded-2xl rounded-bl-none shadow-sm border border-gray-200">
+                                    <div className="flex space-x-1">
+                                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-75"></div>
+                                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        <div ref={chatEndRef} />
+                    </div>
+                </div>
+
+                {/* Input Area */}
+                <form onSubmit={handleSendMessage} className="p-4 bg-white border-t border-gray-200 flex gap-2 shrink-0">
+                    <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        placeholder="Ask about lineage, health risks, or compatibility..."
+                        className="flex-1 border border-gray-300 rounded-full px-4 py-2 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                    />
+                    <button 
+                        type="submit" 
+                        disabled={chatLoading || !chatInput.trim()}
+                        className="bg-purple-600 text-white p-2 rounded-full hover:bg-purple-700 disabled:bg-gray-300 transition"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+                            <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                        </svg>
+                    </button>
+                </form>
             </div>
         </div>
       )}
@@ -479,10 +610,10 @@ export default function PetDetailPage() {
                   {/* --- NEW AI ADVISOR BUTTON --- */}
                   {showAdvisorButton && (
                       <button
-                        onClick={runAiAdvisor}
+                        onClick={openAiAdvisor}
                         className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white py-3 px-6 rounded-xl font-bold shadow-lg transition flex items-center justify-center gap-2 transform hover:scale-[1.02]"
                       >
-                        <span>✨</span> AI Mating Advisor
+                        <span>🤖</span> Chat with Mating Advisor
                       </button>
                   )}
               </div>

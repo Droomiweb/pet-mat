@@ -15,7 +15,6 @@ cloudinary.config({
 
 // Configure Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-// Use Flash for multimodal (vision + text) tasks
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); 
 
 
@@ -30,7 +29,7 @@ const fileToGenerativePart = (base64, mimeType) => {
   };
 };
 
-// --- UPDATED: calculateAgeInYears (Minor date improvement for consistency) ---
+// --- calculateAgeInYears Helper ---
 const calculateAgeInYears = (dobString) => {
     if (!dobString || dobString.toUpperCase() === 'N/A') return null;
     const parts = dobString.split('/');
@@ -44,12 +43,11 @@ const calculateAgeInYears = (dobString) => {
 
     const totalMonths = (now.getFullYear() - dob.getFullYear()) * 12 + (now.getMonth() - dob.getMonth()) + (now.getDate() < dob.getDate() ? -1 : 0);
     
-    // Return age rounded to one decimal place
     return Math.round((totalMonths / 12) * 10) / 10;
 };
 
 
-// --- UPDATED: runCertificateAnalysis (Final Status Logic Implemented) ---
+// --- runCertificateAnalysis Helper ---
 const runCertificateAnalysis = async (petData) => {
     const { name, breed, age, certificateBase64, certificateMimeType, ownerName } = petData;
     
@@ -60,7 +58,7 @@ const runCertificateAnalysis = async (petData) => {
     let ownerNameMatch = false;
     const MAX_RETRIES = 3;
 
-    // --- START RETRY LOOP IMPLEMENTATION ---
+    // --- START RETRY LOOP ---
     for (let i = 0; i < MAX_RETRIES; i++) {
         try {
             const prompt = `
@@ -83,7 +81,7 @@ const runCertificateAnalysis = async (petData) => {
                 "extractedData": {
                   "petName": "...",
                   "ownerName": "...",
-                  "extractedDOB": "DD/MM/YYYY or N/A", // NEW FIELD
+                  "extractedDOB": "DD/MM/YYYY or N/A", 
                   "extractedAge": "X years or N/A",
                   "aiOcrText": "Full readable text (for debug/admin)"
                 },
@@ -103,7 +101,6 @@ const runCertificateAnalysis = async (petData) => {
             let cleanedText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
             aiResult = JSON.parse(cleanedText);
 
-            // Exit the loop on success
             break; 
 
         } catch (err) {
@@ -117,50 +114,43 @@ const runCertificateAnalysis = async (petData) => {
             }
         }
     }
-    // --- END RETRY LOOP IMPLEMENTATION ---
+    // --- END RETRY LOOP ---
     
     if (!aiResult) {
         return { aiResult: null, ownerNameMatch: false, error: "AI analysis failed after all retries." };
     }
 
-
-    // --- CRITICAL FIX START: Permissive Owner Name Check ---
+    // --- Permissive Owner Name Check ---
     const extractedOwnerName = aiResult.extractedData?.ownerName?.toLowerCase() || '';
     const expectedOwnerName = ownerName.toLowerCase();
     
-    // Check if the expected name is a substring of the extracted name OR vice versa.
     const isSubstringMatch = extractedOwnerName.includes(expectedOwnerName) || 
                              expectedOwnerName.includes(extractedOwnerName);
                              
-    // Add a sanity check: names must be at least 3 characters long to prevent matching single letters
     const isSane = extractedOwnerName.length >= 3 || expectedOwnerName.length >= 3;
     
     ownerNameMatch = isSubstringMatch && isSane;
-    // --- CRITICAL FIX END ---
 
-    // --- FINAL STATUS LOGIC CHANGE: Promote to Verified on Match ---
+    // --- FINAL STATUS LOGIC ---
     let finalStatus;
     let finalReason;
 
     if (ownerNameMatch) {
-        // If the name matches, this is the highest security signal. Promote to VERIFIED.
         finalStatus = 'verified';
         finalReason = "Owner name matched, and key certificate data was successfully extracted. Auto-verified.";
     } else {
-        // If the name does NOT match, fail the verification process.
         finalStatus = 'rejected';
         finalReason = "Owner Name Mismatch. Primary security check failed (Name on certificate does not match user name).";
     }
-    // --- END FINAL STATUS LOGIC CHANGE ---
     
     aiResult.finalStatus = finalStatus;
-    aiResult.reason = finalReason; // Update reason
+    aiResult.reason = finalReason; 
 
     return { aiResult, ownerNameMatch };
 };
 
 
-// --- MAIN ROUTE HANDLER ---
+// --- MAIN ROUTE HANDLERS ---
 
 // POST: Add a new pet
 export async function POST(req) {
@@ -170,7 +160,7 @@ export async function POST(req) {
     const {
       name,
       type,
-      age: userProvidedAge, // Rename user-provided age
+      age: userProvidedAge, 
       breed,
       gender,
       listingType,
@@ -204,10 +194,9 @@ export async function POST(req) {
         name, breed, age: userProvidedAge, certificateBase64, certificateMimeType, ownerName 
     });
     
-    // Check for critical failure after retries
     if (analysisResult.error) {
         console.error("Critical AI Failure: ", analysisResult.error);
-        // Fallback: Save pet as PENDING
+        // Fallback: Save pet as NEEDS-REVIEW
         const petCreationData = {
           name,
           type,
@@ -218,7 +207,7 @@ export async function POST(req) {
           certificateUrl: certUpload.secure_url,
           imageUrls,
           ownerId,
-          verificationStatus: 'needs-review', // Immediately flag for admin review
+          verificationStatus: 'needs-review', 
           certificateAnalysis: {
               certificateUrl: certUpload.secure_url,
               status: 'ai-error', 
@@ -245,43 +234,38 @@ export async function POST(req) {
     if (aiData?.extractedData?.extractedDOB && aiData.extractedData.extractedDOB.toUpperCase() !== 'N/A') {
         const calculatedAge = calculateAgeInYears(aiData.extractedData.extractedDOB);
         if (calculatedAge !== null) {
-            finalAge = calculatedAge; // Use the calculated age in decimal years
+            finalAge = calculatedAge; 
             console.log(`✅ Age calculated from DOB (${aiData.extractedData.extractedDOB}): ${finalAge} years`);
         }
     } else if (aiData?.extractedData?.extractedAge) {
-         // Fallback to extracted age if DOB is missing but age is provided on cert
          const ageMatch = aiData.extractedData.extractedAge.match(/(\d+)/);
          if (ageMatch) {
              finalAge = parseInt(ageMatch[1], 10);
          }
     }
     
-    // --- NEW HELPER FOR CONSISTENT UTC DATE SAVING ---
+    // Helper for UTC dates
     const parseDateToUTC = (dateStr) => {
         if (!dateStr || dateStr.toUpperCase() === 'N/A') return null;
         const parts = dateStr.split('/');
         if (parts.length === 3) {
-            // Use Date.UTC to create a universal timestamp for the date at midnight UTC
             return new Date(Date.UTC(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10)));
         }
         return null;
     };
-    // ----------------------------------------------------
-
 
     const petCreationData = {
       name,
       type,
-      age: finalAge, // Use the determined final age
+      age: finalAge, 
       breed,
       gender,
       listingType,
       certificateUrl: certUpload.secure_url,
       imageUrls,
       ownerId,
-      verificationStatus: aiData?.finalStatus || 'needs-review', // Uses 'verified' if name matched
+      verificationStatus: aiData?.finalStatus || 'needs-review', 
       
-      // NEW: Certificate Analysis Object
       certificateAnalysis: {
           certificateUrl: certUpload.secure_url,
           extractedOwnerName: aiData?.extractedData?.ownerName || null,
@@ -292,20 +276,18 @@ export async function POST(req) {
           reason: aiData?.reason || analysisResult.error,
       },
 
-      // --- CRITICAL FIX/STORAGE: Vaccination History Array for Reminders ---
       vaccinationHistory: (aiData?.vaccinationRecords || []).map(vax => {
           
-          const vaxDate = parseDateToUTC(vax.vaccinationDate); // Use UTC-safe parser
-          const expiryDate = parseDateToUTC(vax.expiryDate);   // Use UTC-safe parser
+          const vaxDate = parseDateToUTC(vax.vaccinationDate);
+          const expiryDate = parseDateToUTC(vax.expiryDate);
 
-          // Determine status, including 'upcoming' for reminder page
           let status = 'active';
           if (!expiryDate || isNaN(expiryDate.getTime())) {
-              status = 'needs-review'; // Can't determine
+              status = 'needs-review'; 
           } else if (expiryDate < new Date()) {
               status = 'expired';
           } else if (expiryDate < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)) {
-              status = 'upcoming'; // Expires within 30 days - REMINDER TRIGGER
+              status = 'upcoming'; 
           }
           
           return {
@@ -314,8 +296,7 @@ export async function POST(req) {
               expiryDate: expiryDate,
               status: status,
           };
-      }).filter(vax => vax.vaccinationDate), // Only save records where a vaccination date was found
-      // --- END CRITICAL FIX/STORAGE ---
+      }).filter(vax => vax.vaccinationDate), 
     };
 
     const newPet = new Pet(petCreationData);
@@ -334,9 +315,8 @@ export async function POST(req) {
   }
 }
 
-// GET: Fetch pets with filters (Unchanged from original)
+// GET: Fetch pets with filters
 export async function GET(req) {
-    // ... (rest of the original GET handler from app/api/pet/route.js)
     try {
         await connectDB();
     
@@ -347,28 +327,55 @@ export async function GET(req) {
         const excludeOwnerId = searchParams.get("excludeOwnerId");
         const listingType = searchParams.get("listingType");
     
+        // Build the Query
         const petQuery = {};
         if (type) petQuery.type = type;
         if (breed) petQuery.breed = breed;
         if (excludeOwnerId) petQuery.ownerId = { $ne: excludeOwnerId };
         if (listingType) petQuery.listingType = listingType;
     
-        // Hide pregnant pets
+        // 1. Hide Pregnant Pets
         petQuery.isPregnant = { $ne: true };
     
-        // Only show verified pets
-        // (Keep enabled for production so users only see verified listings)
+        // 2. Only show Verified Pets
         petQuery.verificationStatus = "verified";
-    
+
+        // --- 3. NEW LOGIC: HIDE MATED FEMALES ---
+        // This handles two cases:
+        // A. The female received the request (status is in her matingHistory)
+        // B. The female sent the request (status is in the male's matingHistory, so we need to look up her ID)
+        
+        // Step A: Find IDs of all pets that were Requesters in a "mated" transaction
+        // (This is fast because it uses MongoDB's distinct command)
+        const matedRequesterIds = await Pet.distinct("matingHistory.requesterPetId", { 
+            "matingHistory.status": "mated" 
+        });
+
+        // Step B: Apply the exclusion logic
+        // Show if: (Male) OR (Female AND Not Mated as Host AND Not Mated as Guest)
+        petQuery.$or = [
+            { gender: { $ne: "Female" } }, // Males are always shown (can mate multiple times)
+            { 
+                $and: [
+                    // Case 1: Not mated as a Receiver (Host)
+                    { "matingHistory.status": { $ne: "mated" } }, 
+                    // Case 2: Not mated as a Requester (Guest) - utilizing the lookup above
+                    { _id: { $nin: matedRequesterIds } }
+                ]
+            }
+        ];
+        
+        // Run the query
         let pets = await Pet.find(petQuery).lean();
     
-        // Filter by city
+        // Filter by city (Frontend filter logic moved to backend)
         if (city) {
           const usersInCity = await User.find({ "location.city": city }, "firebaseUid").lean();
           const userUids = usersInCity.map((u) => u.firebaseUid);
           pets = pets.filter((pet) => userUids.includes(pet.ownerId));
         }
     
+        // Attach Location Data
         const petsWithLocation = await Promise.all(
           pets.map(async (pet) => {
             const owner = await User.findOne({ firebaseUid: pet.ownerId }, "location").lean();

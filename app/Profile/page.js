@@ -23,6 +23,7 @@ export default function Profile() {
       try {
         setLoading(true);
         const timestamp = new Date().getTime();
+        // Use no-store AND timestamp to guarantee fresh data
         const res = await fetch(`/api/pet/user/${user.uid}?t=${timestamp}`, { 
             cache: 'no-store',
             headers: { 'Pragma': 'no-cache' }
@@ -60,7 +61,7 @@ export default function Profile() {
     }
   };
 
-  // --- NEW: HANDLE CONFIRM PREGNANCY ---
+  // --- HANDLE CONFIRM PREGNANCY ---
   const handleConfirmPregnancy = async (petId) => {
     if(!confirm(`Are you sure you want to confirm pregnancy for this pet?\nThis will switch their profile to 'Pregnancy Mode' and generate a daily care plan.`)) return;
     
@@ -76,7 +77,8 @@ export default function Profile() {
             alert("Pregnancy confirmed! Redirecting to care tracker...");
             router.push(`/pregnancy-tracker/${petId}`);
         } else {
-            alert("Failed to confirm pregnancy.");
+            const data = await res.json();
+            alert(`Failed to confirm pregnancy: ${data.error || 'Unknown error'}`);
         }
     } catch(err) {
         console.error(err);
@@ -136,8 +138,11 @@ export default function Profile() {
             {pets.length > 0 ? (
               <div className="space-y-6">
                 {pets.map((pet) => {
-                  // Check if this pet has a "mated" status in history
-                  const isMated = pet.matingHistory?.some(req => req.status === 'mated');
+                  
+                  // --- FIX: Check BOTH incoming and outgoing requests for 'mated' status ---
+                  const isMated = 
+                    pet.matingHistory?.some(req => req.status === 'mated') || 
+                    pet.outgoingRequests?.some(req => req.status === 'mated');
                   
                   return (
                     <div key={pet._id} className={`p-4 rounded-lg shadow-md border ${pet.isPregnant ? 'bg-pink-50 border-pink-200' : 'bg-gray-50 border-gray-200'}`}>
@@ -162,7 +167,7 @@ export default function Profile() {
                         </div>
                       </div>
 
-                      {/* --- NEW: BUTTONS FOR PREGNANCY WORKFLOW --- */}
+                      {/* --- BUTTONS FOR PREGNANCY WORKFLOW --- */}
                       
                       {/* 1. Pregnant: Show Tracker Link */}
                       {pet.isPregnant && (
@@ -175,6 +180,7 @@ export default function Profile() {
                       )}
 
                       {/* 2. Mated BUT Not Pregnant yet (Female Owner Only): Show Confirm Button */}
+                      {/* This checks the 'isMated' variable we fixed above */}
                       {!pet.isPregnant && isMated && pet.gender === 'Female' && (
                           <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl text-center">
                               <p className="text-blue-800 font-semibold mb-2">Mating is confirmed. Is {pet.name} pregnant?</p>
@@ -198,10 +204,10 @@ export default function Profile() {
                         </div>
                       )}
 
-                      {/* Request Manager */}
+                      {/* Request Manager (For Pending Requests) */}
                       <RequestManager pet={pet} onUpdate={fetchUserPets} />
 
-                      {/* Mating Confirmations */}
+                      {/* Mating Confirmations (Incoming) */}
                       {pet.matingHistory && pet.matingHistory.map((request, index) => {
                         if (['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'].includes(request.status)) {
                           return (
@@ -216,7 +222,7 @@ export default function Profile() {
                         return null;
                       })}
 
-                      {/* Outgoing Requests */}
+                      {/* Mating Confirmations (Outgoing - Added by API) */}
                       {pet.outgoingRequests && pet.outgoingRequests.map((request, index) => (
                             <MatingConfirmation
                               key={request._id || `out-${index}`}
