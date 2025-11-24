@@ -9,11 +9,10 @@ export async function POST(req) {
       return NextResponse.json({ error: "Location required" }, { status: 400 });
     }
 
-    // Radius in meters (default 5000m if not provided)
+    // Radius in meters (default 5000m)
     const radiusMeters = (radius || 5) * 1000;
 
     // Construct Overpass QL query
-    // We look for nodes, ways, and relations with amenity=veterinary
     const query = `
       [out:json][timeout:25];
       (
@@ -24,23 +23,46 @@ export async function POST(req) {
       out center;
     `;
 
-    const endpoint = "https://overpass-api.de/api/interpreter";
-    
-    const response = await fetch(endpoint, {
-      method: "POST",
-      body: query,
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded" // Overpass expects raw body or form
-      }
-    });
+    // List of Overpass API instances (Main + Backup)
+    const servers = [
+      "https://overpass-api.de/api/interpreter",       // Primary (Germany)
+      "https://interpret.openstreetmap.fr/overpass/api/interpreter" // Backup (France)
+    ];
 
-    if (!response.ok) {
-      throw new Error("Failed to fetch from mapping service");
+    let data = null;
+    let fetchError = null;
+
+    // Try servers one by one
+    for (const endpoint of servers) {
+      try {
+        console.log(`Attempting fetch from: ${endpoint}`);
+        const response = await fetch(endpoint, {
+          method: "POST",
+          body: `data=${encodeURIComponent(query)}`, // Form-encoded body is safer for some endpoints
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded"
+          }
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.warn(`Server ${endpoint} failed: ${response.status} - ${errorText}`);
+          continue; // Try next server
+        }
+
+        data = await response.json();
+        break; // Success! Exit loop
+      } catch (err) {
+        console.error(`Connection error with ${endpoint}:`, err.message);
+        fetchError = err;
+      }
     }
 
-    const data = await response.json();
+    if (!data) {
+      throw new Error("All mapping servers failed. Please try again later.");
+    }
 
-    // Transform Overpass data into a cleaner format
+    // Transform Data
     const hospitals = data.elements.map((place) => {
         const pLat = place.lat || place.center?.lat;
         const pLng = place.lon || place.center?.lon;
@@ -55,12 +77,13 @@ export async function POST(req) {
             website: place.tags.website || null,
             opening_hours: place.tags.opening_hours || null
         };
-    }).filter(h => h.lat && h.lng); // Ensure valid coordinates
+    }).filter(h => h.lat && h.lng);
 
     return NextResponse.json({ hospitals });
 
   } catch (error) {
-    console.error("Vet Search Error:", error);
-    return NextResponse.json({ error: "Failed to find hospitals" }, { status: 500 });
+    console.error("Vet Search Final Error:", error);
+    // Return a user-friendly error so the frontend doesn't crash
+    return NextResponse.json({ error: "Could not fetch vet data.", details: error.message }, { status: 500 });
   }
 }
