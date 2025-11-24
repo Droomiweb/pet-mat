@@ -1,33 +1,39 @@
-import connectDB from "../../../../lib/mongodb";
-import ForumPost from "../../../../models/ForumPost";
-import ForumReply from "../../../../models/ForumReply";
+import connectDB from "../../../lib/mongodb"; // Corrected path (3 levels up)
+import ForumPost from "../../../models/ForumPost"; // Corrected path
+import ForumReply from "../../../models/ForumReply"; // Corrected path
 
-export async function DELETE(req, context) {
+// POST a new reply to a post
+export async function POST(req) {
   try {
     await connectDB();
-    const { replyId } = context.params;
-    const { userId } = await req.json(); // Security check
+    const { postId, content, authorId, authorName } = await req.json();
 
-    const reply = await ForumReply.findById(replyId);
-    if (!reply) return new Response(JSON.stringify({ error: "Reply not found" }), { status: 404 });
-
-    // Verify Ownership
-    if (reply.authorId !== userId) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
+    if (!postId || !content || !authorId || !authorName) {
+      return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
     }
 
-    // 1. Remove reference from Parent Post
-    await ForumPost.findByIdAndUpdate(reply.postId, {
-        $pull: { replies: replyId }
+    // 1. Find the parent post
+    const post = await ForumPost.findById(postId);
+    if (!post) {
+      return new Response(JSON.stringify({ error: "Post not found" }), { status: 404 });
+    }
+
+    // 2. Create the new reply
+    const newReply = new ForumReply({
+      postId,
+      content,
+      authorId,
+      authorName
     });
+    await newReply.save();
 
-    // 2. Delete the Reply document
-    await ForumReply.findByIdAndDelete(replyId);
+    // 3. Add the reply's ID to the parent post's `replies` array
+    post.replies.push(newReply._id);
+    await post.save();
 
-    return new Response(JSON.stringify({ message: "Reply deleted" }), { status: 200 });
-
+    return new Response(JSON.stringify({ message: "Reply added!", reply: newReply }), { status: 201 });
   } catch (err) {
-    console.error("Delete Reply Error:", err);
-    return new Response(JSON.stringify({ error: "Failed to delete reply" }), { status: 500 });
+    console.error("Error adding reply:", err);
+    return new Response(JSON.stringify({ error: "Failed to add reply" }), { status: 500 });
   }
 }
