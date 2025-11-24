@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { auth, db } from "../../../app/lib/firebase"; 
-import { collection, query, orderBy, serverTimestamp } from "firebase/firestore"; 
+import { collection, query, orderBy } from "firebase/firestore"; 
 import { useCollection } from "react-firebase-hooks/firestore"; 
 
 export default function ChatSessionPage() {
@@ -35,7 +35,6 @@ export default function ChatSessionPage() {
 
     try {
       const timestamp = new Date().getTime();
-      // Use no-store AND timestamp to guarantee fresh data
       const res = await fetch(`/api/pet/${petIdStr}?t=${timestamp}`, { 
           cache: 'no-store',
           headers: { 'Pragma': 'no-cache' }
@@ -54,12 +53,8 @@ export default function ChatSessionPage() {
     if (user) fetchPetData();
   }, [conversationId, user, fetchPetData]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
   useEffect(() => {
-      scrollToBottom();
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]); 
 
   const sendReply = async (e) => {
@@ -80,34 +75,14 @@ export default function ChatSessionPage() {
           text: replyText,
         }),
       });
-
       if (res.ok) setReplyText("");
-      else alert("Failed to send reply.");
     } catch (err) { console.error(err); } 
     finally { setSending(false); }
   };
   
-  // --- FIXED HANDLE REQUEST ---
-  const handleRequestStatus = async (newStatus, requestId, requesterId) => {
+  const handleRequestStatus = async (newStatus, requestId, requesterId, type) => {
       if (!user || !pet) return;
-
-      const isAccepting = newStatus === 'accepted';
-      if(!window.confirm(isAccepting ? "Accept this request?" : "Reject this request?")) return;
-
-      // 1. Optimistic Update (Fast UI)
-      const previousPetState = { ...pet }; 
-      setPet(prev => ({
-        ...prev,
-        matingHistory: prev.matingHistory.map(req => {
-            if (
-                (requestId && (req._id === requestId || req.id === requestId)) || 
-                (req.requesterId === requesterId && req.status === 'pending')
-            ) {
-                return { ...req, status: newStatus }; 
-            }
-            return req;
-        })
-      }));
+      if(!window.confirm(newStatus === 'accepted' || newStatus === 'approved' ? "Accept this request?" : "Reject this request?")) return;
 
       try {
         const res = await fetch('/api/pet/requests', {
@@ -118,23 +93,20 @@ export default function ChatSessionPage() {
             petId: pet._id,
             requestId: requestId,
             requesterId: requesterId,
-            requestType: 'mating',
+            requestType: type, // 'mating' or 'adoption'
             newStatus: newStatus,    
           }),
         });
 
         if (!res.ok) {
-          // Revert on failure
-          setPet(previousPetState);
           const data = await res.json();
           alert(`Error: ${data.error}`);
+        } else {
+            // Success
+            fetchPetData(); // Refresh to hide banner
         }
-        // DO NOT call fetchPetData() here.
-        // We trust the optimistic update and the API call (which we fixed in step 1)
-        
       } catch (err) {
         console.error("Request update error:", err);
-        setPet(previousPetState); 
         alert("Failed to update request status.");
       }
   };
@@ -146,11 +118,15 @@ export default function ChatSessionPage() {
   const isOwner = user?.uid === pet.ownerId;
   const partnerId = conversationId.split("_").find(uid => uid !== pet._id && uid !== user.uid);
   
-  const latestPendingRequest = isOwner ? pet.matingHistory?.find(
+  // Check for Pending Mating
+  const pendingMating = isOwner ? pet.matingHistory?.find(
       (mh) => mh.status === "pending" && mh.requesterId === partnerId
   ) : null;
 
-  const pendingRequestId = latestPendingRequest ? (latestPendingRequest._id || latestPendingRequest.id) : null;
+  // Check for Pending Adoption
+  const pendingAdoption = isOwner ? pet.adoptionRequests?.find(
+      (ar) => ar.status === "pending" && ar.requesterId === partnerId
+  ) : null;
 
   return (
     <div className="h-screen w-screen bg-[#E2F4EF] flex justify-center items-stretch p-0">
@@ -162,21 +138,45 @@ export default function ChatSessionPage() {
             <div className="w-6"></div>
         </div>
         
-        {/* Banner */}
-        {isOwner && latestPendingRequest && (
+        {/* --- MATING BANNER --- */}
+        {isOwner && pendingMating && (
              <div className="bg-yellow-50 p-4 border-b-2 border-yellow-200 flex flex-col items-center text-sm font-semibold sticky top-14 z-10 shadow-sm">
                 <p className="text-[#333333] mb-3 text-center text-base">
-                    Mating request from <strong>{latestPendingRequest.requesterPetName || latestPendingRequest.requesterName}</strong>
+                    Mating request from <strong>{pendingMating.requesterPetName}</strong>
                 </p>
                 <div className="flex gap-4 w-full justify-center">
                     <button 
-                        onClick={() => handleRequestStatus('accepted', pendingRequestId, partnerId)}
+                        onClick={() => handleRequestStatus('accepted', pendingMating._id, partnerId, 'mating')}
                         className="bg-green-500 text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-green-600 shadow-md"
                     >
-                        Accept Request
+                        Accept
                     </button>
                     <button 
-                        onClick={() => handleRequestStatus('rejected', pendingRequestId, partnerId)}
+                        onClick={() => handleRequestStatus('rejected', pendingMating._id, partnerId, 'mating')}
+                        className="bg-red-500 text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-red-600 shadow-md"
+                    >
+                        Reject
+                    </button>
+                </div>
+            </div>
+        )}
+
+        {/* --- ADOPTION BANNER --- */}
+        {isOwner && pendingAdoption && (
+             <div className="bg-blue-50 p-4 border-b-2 border-blue-200 flex flex-col items-center text-sm font-semibold sticky top-14 z-10 shadow-sm">
+                <p className="text-[#333333] mb-1 text-center text-base">
+                    Adoption request from <strong>{pendingAdoption.requesterName}</strong>
+                </p>
+                <p className="text-gray-500 italic text-xs mb-3">"{pendingAdoption.message}"</p>
+                <div className="flex gap-4 w-full justify-center">
+                    <button 
+                        onClick={() => handleRequestStatus('approved', pendingAdoption._id, partnerId, 'adoption')}
+                        className="bg-green-500 text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-green-600 shadow-md"
+                    >
+                        Approve Adoption
+                    </button>
+                    <button 
+                        onClick={() => handleRequestStatus('rejected', pendingAdoption._id, partnerId, 'adoption')}
                         className="bg-red-500 text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-red-600 shadow-md"
                     >
                         Reject
@@ -186,17 +186,14 @@ export default function ChatSessionPage() {
         )}
         
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
-          {!messagesLoading && messages.length === 0 ? (
-            <p className="text-center text-gray-500 mt-4">Start the conversation!</p>
-          ) : (
-            messages.map((msg) => {
+          {messages.map((msg) => {
               const isSender = msg.senderId === user.uid;
               const isSystem = msg.senderId === "system";
               
               if (isSystem) {
                   return (
                     <div key={msg.id} className="flex justify-center my-4">
-                        <div className="bg-green-100 text-green-800 border border-green-300 px-4 py-2 rounded-full text-xs font-bold shadow-sm">
+                        <div className="bg-green-100 text-green-800 border border-green-300 px-4 py-2 rounded-full text-xs font-bold shadow-sm text-center">
                             {msg.text}
                         </div>
                     </div>
@@ -214,8 +211,7 @@ export default function ChatSessionPage() {
                   </div>
                 </div>
               );
-            })
-          )}
+          })}
           <div ref={messagesEndRef} />
         </div>
 

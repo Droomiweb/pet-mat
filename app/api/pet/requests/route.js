@@ -1,10 +1,10 @@
 // app/api/pet/requests/route.js
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
-import User from "../../../models/User"; // <-- Import User model
+import User from "../../../models/User"; 
 import { db } from "../../../lib/firebase"; 
 import { collection, addDoc, serverTimestamp, doc, setDoc } from "firebase/firestore";
-import { sendWhatsAppText } from "../../../lib/greenApi"; // <-- WhatsApp function
+import { sendWhatsAppText } from "../../../lib/greenApi"; 
 
 // Helper to create stable Conversation ID
 const createConversationId = (petId, uid1, uid2) => {
@@ -15,32 +15,27 @@ const createConversationId = (petId, uid1, uid2) => {
 export async function PATCH(req) {
   try {
     await connectDB();
-    const { ownerId, petId, requestId, requestType, newStatus, requesterId } = await req.json();
+    const { ownerId, petId, requestId, requestType, newStatus, requesterId, userId } = await req.json();
 
-    if (!ownerId || !petId || !requestType || !newStatus) {
+    if (!petId || !requestType) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
     }
 
-    const pet = await Pet.findById(petId); // This is User B's pet
+    const pet = await Pet.findById(petId);
     if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
-    if (pet.ownerId !== ownerId) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
-
-    let request;
-    
-    // --- MATING LOGIC ---
+    // ============================================================
+    // 1. MATING LOGIC
+    // ============================================================
     if (requestType === 'mating') {
-      // 1. Try finding by ID first
+      if (pet.ownerId !== ownerId) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
+
+      let request;
       if (requestId && typeof pet.matingHistory.id === 'function') {
         request = pet.matingHistory.id(requestId);
       }
-      
-      // 2. Fallback: Find by Requester ID and 'pending' status
       if (!request) {
-          // Try finding by ID manually in array if .id() failed
           request = pet.matingHistory.find(r => r._id?.toString() === requestId);
-          
-          // If still not found, use requesterId
           if (!request && requesterId) {
              request = pet.matingHistory.find(
                r => r.requesterId === requesterId && r.status === 'pending'
@@ -50,95 +45,148 @@ export async function PATCH(req) {
 
       if (!request) return new Response(JSON.stringify({ error: "Mating request not found" }), { status: 404 });
       
-      // UPDATE STATUS
       request.status = newStatus;
-      
-      // *** CRITICAL FIX: Tell Mongoose the array changed ***
       pet.markModified('matingHistory'); 
 
-      // Send System Message to Chat and WHATSAPP
       if (newStatus === 'accepted') {
           const targetRequesterId = request.requesterId; 
           const conversationId = createConversationId(petId, ownerId, targetRequesterId);
           
-          // A. Firestore Message (Real-time)
+          // Create Firestore Chat
           try {
               await addDoc(collection(db, "conversations", conversationId, "messages"), {
                   senderId: "system",
                   senderName: "PetMate System",
-                  text: `✅ Mating Request Accepted! You can now discuss details here.`,
+                  text: `✅ Mating Request Accepted!`,
                   createdAt: serverTimestamp(),
               });
-
               await setDoc(doc(db, "conversations", conversationId), {
                   petId: petId,
                   participants: [ownerId, targetRequesterId],
                   lastMessage: `✅ Mating Request Accepted!`,
                   updatedAt: serverTimestamp()
               }, { merge: true });
-              
           } catch (fsError) {
-              console.error("Error sending acceptance msg to Firestore:", fsError);
+              console.error("Firestore error:", fsError);
           }
 
-          // B. WHATSAPP NOTIFICATION TO REQUESTER (USER A)
+          // Send WhatsApp Notification
           try {
-            // Fetch the requester's phone number
             const requesterUser = await User.findOne({ firebaseUid: targetRequesterId }).select('phone name').lean();
             if (requesterUser && requesterUser.phone) {
                 const petProfileLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pet/${pet._id}`;
-                const whatsappMessage = `
-                    🎉 GREAT NEWS! Your mating request for ${pet.name} has been **ACCEPTED** by the owner!
-                    
-                    Start chatting now to finalize the details.
-                    
-                    View Pet Profile: ${petProfileLink}
-                `.trim();
-                
-                const fullPhoneNumber = `91${requesterUser.phone}`;
-                await sendWhatsAppText(fullPhoneNumber, whatsappMessage);
-                console.log(`[WhatsApp] Sent acceptance notification to Requester: ${requesterUser.phone}`);
+                const whatsappMessage = `🎉 Mating request for ${pet.name} ACCEPTED! Start chatting now: ${petProfileLink}`;
+                await sendWhatsAppText(`91${requesterUser.phone}`, whatsappMessage);
             }
           } catch (waError) {
-              console.error("Error sending WhatsApp acceptance notification:", waError);
+              console.error("WhatsApp error:", waError);
           }
-
       }
-      if (newStatus === 'rejected') {
-          // You could optionally send a rejection notification here as well
-          console.log(`Mating request for ${pet.name} rejected.`);
-      }
-
-    // --- ADOPTION LOGIC (UNCHANGED) ---
+    
+    // ============================================================
+    // 2. ADOPTION LOGIC
+    // ============================================================
     } else if (requestType === 'adoption') {
+      
+      let request;
       if (requestId && typeof pet.adoptionRequests.id === 'function') {
          request = pet.adoptionRequests.id(requestId);
       }
       if (!request) {
          request = pet.adoptionRequests.find(r => r._id?.toString() === requestId);
          if (!request && requesterId) {
-            request = pet.adoptionRequests.find(
-                r => r.requesterId === requesterId && r.status === 'pending'
-            );
+            request = pet.adoptionRequests.find(r => r.requesterId === requesterId && (r.status === 'pending' || r.status === 'approved'));
          }
       }
-
       if (!request) return new Response(JSON.stringify({ error: "Adoption request not found" }), { status: 404 });
-      
-      request.status = newStatus;
-      
-      if (newStatus === 'approved') {
-        pet.adoptionRequests.forEach(req => {
-          if (req._id?.toString() !== request._id?.toString() && req.status === 'pending') {
-              req.status = 'rejected';
+
+      // --- A. STATUS UPDATE (Approve/Reject) ---
+      if (newStatus === 'approved' || newStatus === 'rejected') {
+          if (pet.ownerId !== ownerId) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
+          
+          request.status = newStatus;
+          
+          if (newStatus === 'approved') {
+              // Send System Chat Message
+              const conversationId = createConversationId(petId, ownerId, request.requesterId);
+              try {
+                  await addDoc(collection(db, "conversations", conversationId, "messages"), {
+                      senderId: "system",
+                      senderName: "PetMate System",
+                      text: `🎉 Adoption Request Approved! Please confirm "Handover" in your profiles when the physical transfer is done.`,
+                      createdAt: serverTimestamp(),
+                  });
+                  await setDoc(doc(db, "conversations", conversationId), {
+                      petId: petId,
+                      participants: [ownerId, request.requesterId],
+                      lastMessage: `Adoption Approved! Pending Handover.`,
+                      updatedAt: serverTimestamp()
+                  }, { merge: true });
+              } catch (e) {}
+
+              // Send WhatsApp to Requester
+              try {
+                  const requesterUser = await User.findOne({ firebaseUid: request.requesterId }).select('phone name').lean();
+                  if (requesterUser && requesterUser.phone) {
+                      const chatLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/messages`;
+                      const whatsappMessage = `🎉 ADOPTION APPROVED! The owner has accepted your request for ${pet.name}. \n\nPlease coordinate the meetup in the chat: ${chatLink}`;
+                      await sendWhatsAppText(`91${requesterUser.phone}`, whatsappMessage);
+                  }
+              } catch (wa) { console.error(wa); }
           }
-        });
-        pet.ownerId = request.requesterId;
-        pet.listingType = 'Mating';
-        pet.adoptionRequests = []; // Clear requests on transfer
       }
-      
-      // *** CRITICAL FIX: Tell Mongoose the array changed ***
+
+      // --- B. HANDOVER CONFIRMATION LOGIC ---
+      else if (newStatus === 'confirmHandover') {
+          if (!userId) return new Response(JSON.stringify({ error: "User ID required for handover" }), { status: 400 });
+
+          // Determine role and update flag
+          if (userId === pet.ownerId) {
+              request.ownerConfirmedHandover = true;
+          } else if (userId === request.requesterId) {
+              request.requesterConfirmedHandover = true;
+          } else {
+              return new Response(JSON.stringify({ error: "Unauthorized to confirm handover" }), { status: 403 });
+          }
+
+          // Check if BOTH parties have confirmed
+          if (request.ownerConfirmedHandover && request.requesterConfirmedHandover) {
+              
+              // 1. Fetch Previous Owner Name (for the certificate)
+              const previousOwner = await User.findOne({ firebaseUid: pet.ownerId }).select('name').lean();
+              const previousOwnerName = previousOwner ? previousOwner.name : "Previous Owner";
+
+              // 2. Record Adoption Log (Permanent History)
+              pet.adoptionLog = {
+                  previousOwnerId: pet.ownerId,
+                  previousOwnerName: previousOwnerName,
+                  newOwnerId: request.requesterId,
+                  newOwnerName: request.requesterName,
+                  adoptionDate: new Date(),
+                  certificateId: `CERT-${pet._id.toString().slice(-6)}-${Date.now().toString().slice(-6)}`
+              };
+
+              // 3. Transfer Ownership
+              pet.ownerId = request.requesterId; // Transfer to requester
+              pet.listingType = 'None'; // Remove from market
+              
+              // 4. Reject other pending requests
+              pet.adoptionRequests.forEach(r => {
+                  if (r._id.toString() !== request._id.toString() && r.status === 'pending') {
+                      r.status = 'rejected';
+                  }
+              });
+              
+              // 5. Add completion message
+              pet.messages.push({
+                  senderId: "system",
+                  senderName: "System",
+                  text: `Adoption Handover Complete. Ownership transferred to ${request.requesterName}. You can now download the Adoption Certificate from the profile.`,
+                  sentAt: new Date()
+              });
+          }
+      }
+
       pet.markModified('adoptionRequests');
       
     } else {
@@ -146,8 +194,7 @@ export async function PATCH(req) {
     }
 
     await pet.save();
-
-    return new Response(JSON.stringify({ message: `${requestType} request ${newStatus}`, pet }), { status: 200 });
+    return new Response(JSON.stringify({ message: `Request updated`, pet }), { status: 200 });
 
   } catch (err) {
     console.error("Error updating request status:", err);

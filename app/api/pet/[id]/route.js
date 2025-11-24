@@ -1,11 +1,11 @@
 // app/api/pet/[id]/route.js
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
-import User from "../../../models/User"; // <-- Used for fetching phone number
+import User from "../../../models/User"; 
 import cloudinary from "../../../lib/cloudinary";
 import { db } from "../../../lib/firebase"; 
 import { collection, addDoc, serverTimestamp, doc, setDoc } from "firebase/firestore";
-import { sendWhatsAppText } from "../../../lib/greenApi"; // <-- WhatsApp function
+import { sendWhatsAppText } from "../../../lib/greenApi"; 
 
 // Helper to create stable Conversation ID
 const createConversationId = (petId, uid1, uid2) => {
@@ -37,7 +37,7 @@ export async function GET(req, context) {
 export async function PATCH(req, context) {
   try {
     await connectDB();
-    const { id } = await context.params; // ID of the Pet receiving the request
+    const { id } = await context.params;
     
     const { 
       action, 
@@ -46,6 +46,7 @@ export async function PATCH(req, context) {
       requesterPetId, 
       requesterPetName, 
       messageText,
+      answers, 
       requestId, 
       newStatus 
     } = await req.json();
@@ -57,26 +58,24 @@ export async function PATCH(req, context) {
     const pet = await Pet.findById(id);
     if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
-    // --- MATING REQUEST ACTION (Request Sent to Owner / User B) ---
+    // --- 1. MATING REQUEST ACTION ---
     if (action === "matingRequest") {
       if (!requesterPetId || !requesterPetName) {
          return new Response(JSON.stringify({ error: "Requester pet details are required." }), { status: 400 });
       }
 
-      // 1. Add to MongoDB Mating History
       const newMatingRequest = { 
         requesterId, 
         requesterName, 
-        requesterPetId,
+        requesterPetId, 
         requesterPetName,
         status: "pending", 
         requestedAt: new Date() 
       };
       pet.matingHistory.push(newMatingRequest);
 
-      // 2. Sync to MongoDB and Firestore
+      // Sync message to MongoDB & Firestore
       if (messageText) {
-        // A. MongoDB (Backup/Static View)
         pet.messages.push({ 
             senderId: requesterId, 
             senderName: requesterName, 
@@ -84,69 +83,58 @@ export async function PATCH(req, context) {
             sentAt: new Date() 
         });
 
-        // B. Firestore (Real-time Chat Visibility)
         try {
             const conversationId = createConversationId(pet._id.toString(), requesterId, pet.ownerId);
-            
             await addDoc(collection(db, "conversations", conversationId, "messages"), {
                 senderId: requesterId,
                 senderName: requesterName,
                 text: `Mating Request: ${messageText}`,
                 createdAt: serverTimestamp(),
             });
-
             await setDoc(doc(db, "conversations", conversationId), {
                 petId: pet._id.toString(),
                 participants: [requesterId, pet.ownerId],
                 lastMessage: `Mating Request: ${messageText}`,
                 updatedAt: serverTimestamp()
             }, { merge: true });
-
         } catch (fsError) {
             console.error("Error syncing request message to Firestore:", fsError);
         }
       }
       
-      // --- 3. WHATSAPP NOTIFICATION TO OWNER (USER B) ---
+      // WhatsApp Notification
       try {
         const ownerUser = await User.findOne({ firebaseUid: pet.ownerId }).select('phone name').lean();
         if (ownerUser && ownerUser.phone) {
             const petProfileLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pet/${pet._id}`;
-            
-            const whatsappMessage = `
-                🔔 NEW MATING REQUEST for ${pet.name}!
-                
-                Your pet ${pet.name} has received a mating request from ${requesterPetName} (Owner: ${requesterName}).
-                
-                View Request & Manage: ${petProfileLink}
-                
-                Log in to the PetLink app to chat with the owner!
-            `.trim();
-            
+            const whatsappMessage = `🔔 NEW MATING REQUEST for ${pet.name}! Check PetLink to respond. ${petProfileLink}`;
             const fullPhoneNumber = `91${ownerUser.phone}`;
             await sendWhatsAppText(fullPhoneNumber, whatsappMessage);
-            console.log(`[WhatsApp] Sent mating request notification to Owner: ${ownerUser.phone}`);
         }
-      } catch (waError) {
-          console.error("Error sending WhatsApp notification:", waError);
-      }
-      // --- END WHATSAPP NOTIFICATION ---
+      } catch (waError) { console.error("Error sending WhatsApp notification:", waError); }
 
       await pet.save();
-      return new Response(JSON.stringify({ message: "Mating request sent and chat started!" }), { status: 200 });
+      return new Response(JSON.stringify({ message: "Mating request sent!" }), { status: 200 });
     }
 
-    // --- ADD MESSAGE ACTION ---
+    // --- 2. ADD MESSAGE ACTION ---
     if (action === "addMessage") {
       if (!messageText) return new Response(JSON.stringify({ error: "Message text is required" }), { status: 400 });
-      pet.messages.push({ senderId: requesterId, senderName: requesterName, text: messageText, sentAt: new Date() });
+      
+      pet.messages.push({ 
+        senderId: requesterId, 
+        senderName: requesterName, 
+        text: messageText, 
+        sentAt: new Date() 
+      });
+      
       await pet.save();
       return new Response(JSON.stringify({ message: "Message added!" }), { status: 200 });
     }
-    
-    // --- ADOPTION REQUEST ACTION ---
+
+    // --- 3. ADOPTION REQUEST ACTION (UPDATED) ---
     if (action === "adoptionRequest") {
-      if (!messageText) return new Response(JSON.stringify({ error: "Message required." }), { status: 400 });
+      if (!messageText) return new Response(JSON.stringify({ error: "Reason for adoption required." }), { status: 400 });
 
       const existingRequest = pet.adoptionRequests.find(
         (req) => req.requesterId === requesterId && req.status === "pending"
@@ -156,21 +144,52 @@ export async function PATCH(req, context) {
       pet.adoptionRequests.push({
         requesterId,
         requesterName,
-        message: messageText,
+        message: messageText, 
+        answers: answers || [], 
         status: "pending",
         requestedAt: new Date()
       });
       
-      // Add system message for adoption too
+      // A. Add system message to MongoDB
       pet.messages.push({
         senderId: "system",
         senderName: "System",
-        text: `New adoption request from ${requesterName}: "${messageText}"`,
+        text: `New adoption application from ${requesterName}: "${messageText}"`,
         sentAt: new Date()
       });
 
+      // B. Initialize Firestore Chat & Send Message
+      try {
+        const conversationId = createConversationId(pet._id.toString(), requesterId, pet.ownerId);
+        await addDoc(collection(db, "conversations", conversationId, "messages"), {
+            senderId: requesterId,
+            senderName: requesterName,
+            text: `ADOPTION INQUIRY: ${messageText}`,
+            createdAt: serverTimestamp(),
+        });
+        await setDoc(doc(db, "conversations", conversationId), {
+            petId: pet._id.toString(),
+            participants: [requesterId, pet.ownerId],
+            lastMessage: `ADOPTION INQUIRY: ${messageText}`,
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+      } catch (fsError) {
+        console.error("Error creating adoption chat:", fsError);
+      }
+
+      // C. Send WhatsApp to Owner
+      try {
+        const ownerUser = await User.findOne({ firebaseUid: pet.ownerId }).select('phone name').lean();
+        if (ownerUser && ownerUser.phone) {
+            const chatLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/messages`;
+            const whatsappMessage = `🔔 NEW ADOPTION REQUEST for ${pet.name} from ${requesterName}!\n\nReason: "${messageText}"\n\nChat with them here: ${chatLink}`;
+            const fullPhoneNumber = `91${ownerUser.phone}`;
+            await sendWhatsAppText(fullPhoneNumber, whatsappMessage);
+        }
+      } catch (waError) { console.error("Error sending WhatsApp adoption notification:", waError); }
+
       await pet.save();
-      return new Response(JSON.stringify({ message: "Adoption request sent!" }), { status: 200 });
+      return new Response(JSON.stringify({ message: "Adoption application submitted!" }), { status: 200 });
     }
 
     return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400 });
@@ -181,18 +200,15 @@ export async function PATCH(req, context) {
 }
 
 export async function DELETE(req, context) {
-    // (Deletion logic remains the same)
     try {
         await connectDB();
         const { id } = await context.params;
+        
         const deleted = await Pet.findByIdAndDelete(id);
         if (!deleted) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
-        if (deleted.imageUrls?.length > 0) {
-            // ... (cloudinary deletion logic) ...
-        }
-        if (deleted.certificateUrl) {
-            // ... (cloudinary deletion logic) ...
-        }
+
+        // Delete Cloudinary Images logic (placeholder)
+        
         return new Response(JSON.stringify({ message: "Pet deleted successfully" }), { status: 200 });
     } catch (err) {
         console.error("Error deleting pet:", err);

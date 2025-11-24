@@ -2,42 +2,49 @@
 import connectDB from "./../../../../lib/mongodb";
 import Pet from "./../../../../models/PetModel";
 
-// Force dynamic to ensure fresh data on profile load
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(req, context) {
   try {
     await connectDB();
-
     const { uid } = await context.params;
 
     // 1. Fetch pets owned by the user
     const userPets = await Pet.find({ ownerId: uid }).lean();
 
-    // 2. Fetch pets NOT owned by user, but where user has an active accepted request
+    // 2. Fetch pets where user is the requester (Mating or Adoption)
     const partnerPets = await Pet.find({
       ownerId: { $ne: uid },
-      "matingHistory": {
-        $elemMatch: {
-          requesterId: uid,
-          status: { $in: ['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'] }
+      $or: [
+        {
+            "matingHistory": {
+                $elemMatch: {
+                    requesterId: uid,
+                    status: { $in: ['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'] }
+                }
+            }
+        },
+        {
+            "adoptionRequests": {
+                $elemMatch: {
+                    requesterId: uid,
+                    status: { $in: ['approved'] } // Only care if approved (pending handover)
+                }
+            }
         }
-      }
+      ]
     }).lean();
 
-    // 3. Create a map of userPets for easy data injection
+    // 3. Create a map
     const formattedPetsMap = {};
     
     userPets.forEach(pet => {
         if (pet._id) {
-            // Format matingHistory items
             const safeMatingHistory = (pet.matingHistory || []).map(item => ({
                 ...item,
                 _id: item._id ? item._id.toString() : null,
-                requesterPetId: item.requesterPetId ? item.requesterPetId.toString() : null
             }));
-            
             const safeAdoptionRequests = (pet.adoptionRequests || []).map(item => ({
                 ...item,
                 _id: item._id ? item._id.toString() : null
@@ -46,55 +53,71 @@ export async function GET(req, context) {
             formattedPetsMap[pet._id.toString()] = {
                 _id: pet._id.toString(),
                 name: pet.name,
-                age: pet.age,
-                breed: pet.breed,
-                type: pet.type,
-                gender: pet.gender,
-                listingType: pet.listingType,
-                temperament: pet.temperament,
-                energyLevel: pet.energyLevel,
-                imageUrls: pet.imageUrls || [],
-                certificateUrl: pet.certificateUrl || null,
-                messages: pet.messages || [],
+                age: pet.age, 
+                breed: pet.breed, 
+                type: pet.type, 
+                gender: pet.gender, 
+                listingType: pet.listingType, 
+                temperament: pet.temperament, 
+                energyLevel: pet.energyLevel, 
+                imageUrls: pet.imageUrls || [], 
+                certificateUrl: pet.certificateUrl || null, 
+                messages: pet.messages || [], 
+                verificationStatus: pet.verificationStatus, 
+                isBanned: pet.isBanned, 
+                isPregnant: pet.isPregnant, 
+                aiProfileString: pet.aiProfileString, 
+                vaccinationHistory: pet.vaccinationHistory || [],
+                
+                // --- CRITICAL ADDITION: Include adoptionLog ---
+                adoptionLog: pet.adoptionLog || null,
+                // -----------------------------------------------
+
                 matingHistory: safeMatingHistory, 
                 adoptionRequests: safeAdoptionRequests, 
-                verificationStatus: pet.verificationStatus,
-                isBanned: pet.isBanned,
-                isPregnant: pet.isPregnant,
-                aiProfileString: pet.aiProfileString, 
-                // --- CRITICAL FIX: ADD VACCINATION HISTORY HERE ---
-                vaccinationHistory: pet.vaccinationHistory || [],
-                // ---------------------------------------------------
                 outgoingRequests: [] 
             };
         }
     });
 
-    // 4. Find outgoing requests in Partner Pets and attach them to User Pets (unchanged)
+    // 4. Attach Outgoing Requests (User is requester)
     if (Array.isArray(partnerPets)) {
         partnerPets.forEach(partnerPet => {
-            if (!Array.isArray(partnerPet.matingHistory)) return;
-
-            partnerPet.matingHistory.forEach(req => {
-                if (!req || !req.requesterId) return;
-
-                if (req.requesterId === uid && 
-                   ['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'].includes(req.status)) {
-                    
-                    const requesterPetIdStr = req.requesterPetId ? req.requesterPetId.toString() : null;
-
-                    if (requesterPetIdStr && formattedPetsMap[requesterPetIdStr]) {
-                        formattedPetsMap[requesterPetIdStr].outgoingRequests.push({
-                            ...req,
-                            _id: req._id ? req._id.toString() : null,
-                            partnerId: partnerPet._id.toString(),
-                            partnerName: partnerPet.name,         
-                            partnerOwnerId: partnerPet.ownerId,
-                            isOutgoing: true 
-                        });
+            // Mating
+            if (partnerPet.matingHistory) {
+                partnerPet.matingHistory.forEach(req => {
+                    if (req.requesterId === uid && ['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'].includes(req.status)) {
+                        const requesterPetIdStr = req.requesterPetId ? req.requesterPetId.toString() : null;
+                        if (requesterPetIdStr && formattedPetsMap[requesterPetIdStr]) {
+                            formattedPetsMap[requesterPetIdStr].outgoingRequests.push({
+                                ...req,
+                                _id: req._id ? req._id.toString() : null,
+                                partnerId: partnerPet._id.toString(),
+                                partnerName: partnerPet.name,         
+                                requestType: 'mating',
+                                isOutgoing: true 
+                            });
+                        }
                     }
+                });
+            }
+            
+            // Adoption Incoming (The pet being adopted)
+            if (partnerPet.adoptionRequests) {
+                const adoptionReq = partnerPet.adoptionRequests.find(r => r.requesterId === uid && r.status === 'approved');
+                if (adoptionReq) {
+                    formattedPetsMap[partnerPet._id.toString()] = {
+                        _id: partnerPet._id.toString(),
+                        name: partnerPet.name,
+                        breed: partnerPet.breed,
+                        type: partnerPet.type,
+                        imageUrls: partnerPet.imageUrls || [],
+                        isIncomingAdoption: true, // Flag for UI
+                        adoptionRequests: [adoptionReq], // Include specific req
+                        ownerId: partnerPet.ownerId // Current owner
+                    };
                 }
-            });
+            }
         });
     }
 
@@ -104,16 +127,11 @@ export async function GET(req, context) {
       status: 200,
       headers: { 
           "Content-Type": "application/json",
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-          "Pragma": "no-cache",
-          "Expires": "0",
+          "Cache-Control": "no-store, no-cache",
       },
     });
   } catch (err) {
     console.error("Error in GET /api/pet/user/[uid]:", err);
-    return new Response(JSON.stringify({ error: "Internal Server Error", details: err.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ error: "Internal Server Error" }), { status: 500 });
   }
 }

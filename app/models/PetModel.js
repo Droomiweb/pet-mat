@@ -1,7 +1,7 @@
 // app/models/PetModel.js
 import mongoose from "mongoose";
 
-// --- Vaccination Sub-schema ---
+// ... (Keep existing VaccinationSchema and CertificateAnalysisSchema) ...
 const VaccinationSchema = new mongoose.Schema({
   vaccineName: { type: String, required: true },
   vaccinationDate: { type: Date, required: true }, 
@@ -9,7 +9,6 @@ const VaccinationSchema = new mongoose.Schema({
   status: { type: String, enum: ['active', 'expired', 'upcoming', 'needs-review'], default: 'active' }, 
 });
 
-// --- Certificate Analysis Sub-schema ---
 const CertificateAnalysisSchema = new mongoose.Schema({
   certificateUrl: String,
   extractedOwnerName: String,
@@ -24,7 +23,17 @@ const CertificateAnalysisSchema = new mongoose.Schema({
   reason: String, 
 });
 
-// --- NEW: Pregnancy Day Plan Schema ---
+// --- NEW: Adoption Log Schema ---
+const AdoptionLogSchema = new mongoose.Schema({
+  previousOwnerId: String,
+  previousOwnerName: String,
+  newOwnerId: String,
+  newOwnerName: String,
+  adoptionDate: { type: Date, default: Date.now },
+  certificateId: String // Unique ID for the certificate
+});
+
+// ... (Keep existing schemas: PregnancyDaySchema, MatingRequestSchema, MessageSchema, AdoptionRequestSchema) ...
 const PregnancyDaySchema = new mongoose.Schema({
   day: Number,
   food: String,
@@ -54,9 +63,15 @@ const MessageSchema = new mongoose.Schema({
 const AdoptionRequestSchema = new mongoose.Schema({
   requesterId: String,
   requesterName: String,
-  message: String,
+  message: String, 
+  answers: [{
+    question: String,
+    answer: String
+  }],
   status: { type: String, default: 'pending' },
-  requestedAt: { type: Date, default: Date.now }
+  requestedAt: { type: Date, default: Date.now },
+  ownerConfirmedHandover: { type: Boolean, default: false },
+  requesterConfirmedHandover: { type: Boolean, default: false }
 });
 
 const petSchema = new mongoose.Schema({
@@ -78,7 +93,7 @@ const petSchema = new mongoose.Schema({
   },
   listingType: {
     type: String,
-    enum: ['Mating', 'Adoption'],
+    enum: ['Mating', 'Adoption', 'None'], 
     default: 'Mating',
     required: true
   },
@@ -103,12 +118,10 @@ const petSchema = new mongoose.Schema({
   imageUrls: [String],
   ownerId: String,
   
-  // --- UPDATED PREGNANCY FIELDS ---
   isPregnant: { type: Boolean, default: false },
-  pregnancyStartDate: { type: Date, default: null }, // When user clicked "Confirm Pregnancy"
-  pregnancyPlan: [PregnancyDaySchema], // Stores the AI generated daily plan
-  // --------------------------------
-
+  pregnancyStartDate: { type: Date, default: null }, 
+  pregnancyPlan: [PregnancyDaySchema],
+  
   aiProfileString: { type: String, default: null, index: true },
   medicalHistoryLog: { type: String, default: "No medical history recorded yet." },
   
@@ -116,7 +129,10 @@ const petSchema = new mongoose.Schema({
 
   matingHistory: [MatingRequestSchema],
   messages: [MessageSchema],
-  adoptionRequests: [AdoptionRequestSchema]
+  adoptionRequests: [AdoptionRequestSchema],
+  
+  // --- NEW FIELD ---
+  adoptionLog: AdoptionLogSchema 
 });
 
 petSchema.index({ location: '2dsphere' });

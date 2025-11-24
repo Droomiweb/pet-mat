@@ -4,18 +4,20 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../auth-provider";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import Link from "next/link"; 
+import Link from "next/link";
 
 // --- IMPORTS ---
 import PetStatusBadge from "../components/PetStatusBadge";
 import RequestManager from "../components/RequestManager";
 import MatingConfirmation from "../components/MatingConfirmation";
+import AdoptionHandover from "../components/AdoptionHandover";
+import DownloadCertificate from "../components/DownloadCertificate"; 
 
 export default function Profile() {
   const { user, loading: authLoading, userData, signOut } = useAuth();
   const [pets, setPets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [confirmingPregnancy, setConfirmingPregnancy] = useState(null); // Stores pet ID being confirmed
+  const [confirmingPregnancy, setConfirmingPregnancy] = useState(null);
   const router = useRouter();
 
   const fetchUserPets = useCallback(async () => {
@@ -23,18 +25,17 @@ export default function Profile() {
       try {
         setLoading(true);
         const timestamp = new Date().getTime();
-        // Use no-store AND timestamp to guarantee fresh data
-        const res = await fetch(`/api/pet/user/${user.uid}?t=${timestamp}`, { 
-            cache: 'no-store',
-            headers: { 'Pragma': 'no-cache' }
+        const res = await fetch(`/api/pet/user/${user.uid}?t=${timestamp}`, {
+          cache: "no-store",
+          headers: { Pragma: "no-cache" },
         });
-        
+
         if (res.ok) {
           const data = await res.json();
           setPets(data);
           router.refresh();
         } else {
-          console.error(`Failed to fetch pets. Status: ${res.status} ${res.statusText}`);
+          console.error(`Failed to fetch pets. Status: ${res.status}`);
         }
       } catch (error) {
         console.error("Error fetching pets:", error);
@@ -42,15 +43,15 @@ export default function Profile() {
         setLoading(false);
       }
     }
-  }, [user, router]); 
+  }, [user, router]);
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/Login");
     } else if (user) {
-      fetchUserPets(); 
+      fetchUserPets();
     }
-  }, [authLoading, user, router, fetchUserPets]); 
+  }, [authLoading, user, router, fetchUserPets]);
 
   const handleSignOut = async () => {
     try {
@@ -61,44 +62,37 @@ export default function Profile() {
     }
   };
 
-  // --- HANDLE CONFIRM PREGNANCY ---
   const handleConfirmPregnancy = async (petId) => {
-    if(!confirm(`Are you sure you want to confirm pregnancy for this pet?\nThis will switch their profile to 'Pregnancy Mode' and generate a daily care plan.`)) return;
-    
+    if (!confirm(`Confirm pregnancy for this pet? This will start the Pregnancy Tracker.`)) return;
+
     setConfirmingPregnancy(petId);
     try {
-        const res = await fetch('/api/pet/confirm-pregnancy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ petId, userId: user.uid })
-        });
-        
-        if(res.ok) {
-            alert("Pregnancy confirmed! Redirecting to care tracker...");
-            router.push(`/pregnancy-tracker/${petId}`);
-        } else {
-            const data = await res.json();
-            alert(`Failed to confirm pregnancy: ${data.error || 'Unknown error'}`);
-        }
-    } catch(err) {
-        console.error(err);
-        alert("Error confirming pregnancy");
+      const res = await fetch("/api/pet/confirm-pregnancy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ petId, userId: user.uid }),
+      });
+
+      if (res.ok) {
+        alert("Pregnancy confirmed! Redirecting...");
+        router.push(`/pregnancy-tracker/${petId}`);
+      } else {
+        const data = await res.json();
+        alert(`Failed: ${data.error}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error confirming pregnancy");
     } finally {
-        setConfirmingPregnancy(null);
+      setConfirmingPregnancy(null);
     }
   };
 
   if (authLoading || loading) {
-    return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="loader">Loading...</div>
-      </div>
-    );
+    return <div className="flex justify-center items-center min-h-screen"><div className="loader">Loading...</div></div>;
   }
 
-  if (!user || !userData) {
-    return null; 
-  }
+  if (!user || !userData) return null;
 
   return (
     <div className="container mx-auto p-4 pt-20">
@@ -118,11 +112,11 @@ export default function Profile() {
               <p className="text-gray-600">@{userData.username}</p>
               <p className="text-gray-600 mt-2">{userData.phone}</p>
               <p className="text-gray-600 mt-1">{userData.location?.city || "Location not set"}</p>
-              
+
               <Link href="/forgot-password" className="mt-6 w-full max-w-[200px] text-center btn-fancy-primary text-sm">
                 Reset Password
               </Link>
-              
+
               <button onClick={handleSignOut} className="mt-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-full">
                 Sign Out
               </button>
@@ -138,100 +132,113 @@ export default function Profile() {
             {pets.length > 0 ? (
               <div className="space-y-6">
                 {pets.map((pet) => {
+                  const isMated = pet.matingHistory?.some(req => req.status === "mated") || 
+                                  pet.outgoingRequests?.some(req => req.status === "mated");
                   
-                  // --- FIX: Check BOTH incoming and outgoing requests for 'mated' status ---
-                  const isMated = 
-                    pet.matingHistory?.some(req => req.status === 'mated') || 
-                    pet.outgoingRequests?.some(req => req.status === 'mated');
+                  const isIncoming = pet.isIncomingAdoption;
+
+                  // --- LEGACY ADOPTION LOGIC (FIXED) ---
+                  // Check if adoption is technically complete (flags are true) but log is missing
+                  const completedReq = pet.adoptionRequests?.find(r => r.ownerConfirmedHandover && r.requesterConfirmedHandover);
+                  const isLegacyAdopted = !pet.adoptionLog && pet.listingType === 'None' && completedReq;
+
+                  // Prepare pet object for certificate (Use real log OR generate fake one for legacy)
+                  let effectivePet = pet;
+                  if (isLegacyAdopted) {
+                      effectivePet = {
+                          ...pet,
+                          adoptionLog: {
+                              adoptionDate: new Date(), // Fallback date
+                              newOwnerName: completedReq.requesterName,
+                              previousOwnerName: "Previous Owner", // Fallback name
+                              certificateId: `LEGACY-${pet._id}`
+                          }
+                      };
+                  }
                   
+                  // Show certificate if: (Has real log OR is legacy adopted) AND (Not currently incoming process)
+                  const showCertificate = (pet.adoptionLog || isLegacyAdopted) && !isIncoming;
+                  // -------------------------------------
+
                   return (
-                    <div key={pet._id} className={`p-4 rounded-lg shadow-md border ${pet.isPregnant ? 'bg-pink-50 border-pink-200' : 'bg-gray-50 border-gray-200'}`}>
+                    <div key={pet._id} className={`p-4 rounded-lg shadow-md border ${isIncoming ? "bg-purple-50 border-purple-200" : pet.isPregnant ? "bg-pink-50 border-pink-200" : "bg-gray-50 border-gray-200"}`}>
+                      
+                      {isIncoming && (
+                        <span className="bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded mb-2 inline-block">
+                          INCOMING ADOPTION
+                        </span>
+                      )}
+
                       <div className="flex items-center mb-4">
-                        <Image
-                          src={pet.imageUrls[0] || "/imgs/dog.jpg"}
-                          alt={pet.name}
-                          width={100}
-                          height={100}
-                          className="rounded-lg object-cover"
-                        />
+                        <Image src={pet.imageUrls[0] || "/imgs/dog.jpg"} alt={pet.name} width={100} height={100} className="rounded-lg object-cover" />
                         <div className="ml-4">
                           <h4 className="text-2xl font-semibold text-gray-900 flex items-center">
                             {pet.name}
-                            <PetStatusBadge status={pet.verificationStatus} />
-                            {pet.isPregnant && (
-                                <span className="ml-2 px-2 py-1 bg-pink-500 text-white text-xs font-bold rounded-full animate-pulse">PREGNANT</span>
-                            )}
+                            {!isIncoming && <PetStatusBadge status={pet.verificationStatus} />}
+                            {pet.isPregnant && <span className="ml-2 px-2 py-1 bg-pink-500 text-white text-xs font-bold rounded-full animate-pulse">PREGNANT</span>}
                           </h4>
                           <p className="text-gray-600">{pet.type} | {pet.breed} | {pet.age} years</p>
-                          <p className="text-sm text-gray-500 capitalize">Listing: {pet.listingType}</p>
+                          {!isIncoming && <p className="text-sm text-gray-500 capitalize">Listing: {pet.listingType}</p>}
                         </div>
                       </div>
 
-                      {/* --- BUTTONS FOR PREGNANCY WORKFLOW --- */}
-                      
-                      {/* 1. Pregnant: Show Tracker Link */}
-                      {pet.isPregnant && (
-                          <Link 
-                            href={`/pregnancy-tracker/${pet._id}`}
-                            className="block w-full text-center bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 px-4 rounded-xl mb-4 shadow-md transition"
-                          >
-                            View Pregnancy Day-by-Day Tracker
-                          </Link>
-                      )}
-
-                      {/* 2. Mated BUT Not Pregnant yet (Female Owner Only): Show Confirm Button */}
-                      {/* This checks the 'isMated' variable we fixed above */}
-                      {!pet.isPregnant && isMated && pet.gender === 'Female' && (
-                          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl text-center">
-                              <p className="text-blue-800 font-semibold mb-2">Mating is confirmed. Is {pet.name} pregnant?</p>
-                              <button 
-                                onClick={() => handleConfirmPregnancy(pet._id)}
-                                disabled={confirmingPregnancy === pet._id}
-                                className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-lg shadow-sm transition disabled:opacity-50"
-                              >
-                                {confirmingPregnancy === pet._id ? "Generating Care Plan..." : "Confirm Pregnancy ✅"}
-                              </button>
-                          </div>
-                      )}
-
-                      {/* Verification Status Messages */}
-                      {['pending', 'needs-review', 'rejected'].includes(pet.verificationStatus) && (
-                        <div className="p-3 my-2 text-sm bg-yellow-100 border border-yellow-300 rounded-md">
-                          <strong>Verification Status: </strong>
-                          {pet.verificationStatus === 'pending' && "Your pet's certificate is being reviewed by our AI."}
-                          {pet.verificationStatus === 'needs-review' && "Our AI couldn't verify all details. An admin will review your pet's certificate soon."}
-                          {pet.verificationStatus === 'rejected' && "This pet's verification was rejected. Please check your certificate and try re-uploading."}
+                      {/* --- CERTIFICATE BUTTON --- */}
+                      {showCertificate && (
+                        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                            <p className="text-green-800 font-bold text-sm mb-2 text-center">🎉 Adoption Complete</p>
+                            <DownloadCertificate pet={effectivePet} />
                         </div>
                       )}
 
-                      {/* Request Manager (For Pending Requests) */}
-                      <RequestManager pet={pet} onUpdate={fetchUserPets} />
+                      {/* --- PREGNANT / MATING ACTIONS --- */}
+                      {pet.isPregnant && (
+                        <Link href={`/pregnancy-tracker/${pet._id}`} className="block w-full text-center bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 px-4 rounded-xl mb-4 shadow-md transition">
+                          View Pregnancy Day-by-Day Tracker
+                        </Link>
+                      )}
 
-                      {/* Mating Confirmations (Incoming) */}
-                      {pet.matingHistory && pet.matingHistory.map((request, index) => {
-                        if (['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'].includes(request.status)) {
-                          return (
-                            <MatingConfirmation
-                              key={request._id || `inc-${index}`}
-                              pet={pet}
-                              request={request}
-                              onUpdate={fetchUserPets}
-                            />
-                          );
-                        }
-                        return null;
-                      })}
+                      {!pet.isPregnant && isMated && pet.gender === "Female" && !isIncoming && (
+                          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl text-center">
+                            <p className="text-blue-800 font-semibold mb-2">Mating is confirmed. Is {pet.name} pregnant?</p>
+                            <button onClick={() => handleConfirmPregnancy(pet._id)} disabled={confirmingPregnancy === pet._id} className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-lg shadow-sm transition disabled:opacity-50">
+                              {confirmingPregnancy === pet._id ? "Generating..." : "Confirm Pregnancy ✅"}
+                            </button>
+                          </div>
+                      )}
 
-                      {/* Mating Confirmations (Outgoing - Added by API) */}
-                      {pet.outgoingRequests && pet.outgoingRequests.map((request, index) => (
-                            <MatingConfirmation
-                              key={request._id || `out-${index}`}
-                              pet={pet}
-                              request={request}
-                              onUpdate={fetchUserPets}
-                            />
+                      {/* --- STATUS MESSAGES --- */}
+                      {["pending", "needs-review", "rejected"].includes(pet.verificationStatus) && !isIncoming && (
+                          <div className="p-3 my-2 text-sm bg-yellow-100 border border-yellow-300 rounded-md">
+                            <strong>Verification Status: </strong>
+                            {pet.verificationStatus === "pending" && "Your pet's certificate is being reviewed by our AI."}
+                            {pet.verificationStatus === "needs-review" && "Our AI couldn't verify all details. An admin will review soon."}
+                            {pet.verificationStatus === "rejected" && "Verification rejected. Please re-upload certificate."}
+                          </div>
+                      )}
+
+                      {!isIncoming && <RequestManager pet={pet} onUpdate={fetchUserPets} />}
+
+                      {/* --- MATING CONFIRMATIONS --- */}
+                      {!isIncoming && pet.matingHistory?.map((req, idx) => (
+                          ['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'].includes(req.status) && 
+                          <MatingConfirmation key={req._id || idx} pet={pet} request={req} onUpdate={fetchUserPets} />
                       ))}
-                      
+                      {!isIncoming && pet.outgoingRequests?.map((req, idx) => (
+                          req.requestType === "mating" && 
+                          <MatingConfirmation key={req._id || idx} pet={pet} request={req} onUpdate={fetchUserPets} />
+                      ))}
+
+                      {/* --- ADOPTION HANDOVER --- */}
+                      {/* FIX: Hide handover if adoption is already complete (including legacy) */}
+                      {!isIncoming && !isLegacyAdopted && pet.adoptionRequests?.map((req, idx) => (
+                          (req.status === "approved" || req.status === 'confirmHandover') && !(req.ownerConfirmedHandover && req.requesterConfirmedHandover) &&
+                          <AdoptionHandover key={`handover-owner-${idx}`} pet={pet} request={req} onUpdate={fetchUserPets} isIncoming={false} />
+                      ))}
+
+                      {isIncoming && pet.adoptionRequests?.map((req, idx) => (
+                          <AdoptionHandover key={`handover-req-${idx}`} pet={pet} request={req} onUpdate={fetchUserPets} isIncoming={true} />
+                      ))}
+
                     </div>
                   );
                 })}
