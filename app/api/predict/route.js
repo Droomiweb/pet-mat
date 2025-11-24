@@ -1,7 +1,7 @@
 // app/api/predict/route.js
 import connectDB from "../../lib/mongodb";
 import Pet from "../../models/PetModel";
-import model from "../../lib/gemini"; // Using your existing Gemini model import
+import { textModel } from "../../lib/gemini"; // <--- FIXED IMPORT
 
 // Helper function to fetch full pet details
 const getPetDetails = async (petId) => {
@@ -37,7 +37,6 @@ export async function POST(req) {
     }
 
     // --- AI Prompt Engineering ---
-    // This prompt is designed to meet your PDF requirements [cite: 217, 265, 266]
     const prompt = `
       You are a pet genetics and breeding expert. Based on the data for two parent pets, generate a prediction about their potential offspring.
       
@@ -57,7 +56,7 @@ export async function POST(req) {
     `;
 
     // Call the Gemini model
-    const result = await model.generateContent(prompt);
+    const result = await textModel.generateContent(prompt); // <--- FIXED USAGE
     const response = await result.response;
     const text = response.text();
 
