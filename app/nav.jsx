@@ -24,6 +24,13 @@ const MessageIcon = (props) => (
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
   </svg>
 );
+const VetMapIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+    <path d="M12 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />
+    <path d="M10 9h4" /><path d="M12 7v4" /> {/* Cross symbol inside pin */}
+  </svg>
+);
 const ChevronDownIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>);
 const CommunityIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 20h5v-2a3 3 0 00-5.356-2.37M11 20H2v-2a3 3 0 015.356-2.37M14 7a4 4 0 10-8 0 4 4 0 008 0z"/></svg>);
 const AIIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>);
@@ -58,26 +65,27 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
     { name: "Adoption", href: "/adoption" },
     { name: "Marketplace", href: "/marketplace" },
   ];
-  const featuresNavItems = [
+const featuresNavItems = [
     { name: "Community Hub", href: "/community", icon: CommunityIcon },
     { name: "Dr. Paws AI", href: "/AiDoc", icon: AIIcon },
     { name: "AI Predictor", href: "/AiPredict", icon: PredictIcon },
     { name: "Pregnancy Support", href: "/pregnancy-support", icon: SupportIcon },
+    { name: "Vet Locator", href: "/vet-locator", icon: VetMapIcon }, // <--- ADDED THIS
     { name: `Reminders (${reminderCount})`, href: "/reminders", icon: ReminderIcon },
   ];
-  const allMobileNavItems = [
+const allMobileNavItems = [
     { name: "Home", href: "/" },
     { name: "Adoption", href: "/adoption" },
     { name: "Community", href: "/community" },
     { name: "Marketplace", href: "/marketplace" },
     { name: "Dr. Paws AI", href: "/AiDoc" },
+    { name: "Vet Locator", href: "/vet-locator" }, // <--- ADDED THIS
     { name: "Pregnancy Support", href: "/pregnancy-support" },
     { name: "AI Predictor", href: "/AiPredict" },
     { name: `Reminders (${reminderCount})`, href: "/reminders" },
     { name: "Add New Pet", href: "/Addpet", isButton: true },
     { name: "Logout", onClick: handleLogout, isButton: true },
   ];
-
   // helpers for active route (handles exact and section matches)
   const isActive = (href) => {
     if (href === "/") return pathname === "/";
