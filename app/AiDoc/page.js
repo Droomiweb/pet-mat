@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { auth } from "../lib/firebase";
 import { useRouter } from "next/navigation";
+import ReactMarkdown from 'react-markdown'; // <--- NEW IMPORT
 
 // Simple icons
 const PaperclipIcon = () => (
@@ -53,6 +54,7 @@ export default function AIChat() {
 
         setMessages([{ sender: "ai", text: initialGreeting }]);
         
+        // Initial System Instruction for the Chat History
         const systemInstruction = `
           You are Dr. Paws, a virtual veterinarian assistant.
           1. Triage health concerns using text AND images.
@@ -117,7 +119,7 @@ export default function AIChat() {
     setInput("");
     clearImage();
     
-    // 1. Update UI
+    // 1. Update UI with User Message
     setMessages((prev) => [
       ...prev, 
       { 
@@ -159,8 +161,8 @@ export default function AIChat() {
       // 4. Update UI with AI Response
       setMessages((prev) => [...prev, { sender: "ai", text: aiResponseText }]);
 
-      // 5. Update History (Text only to save tokens/bandwidth for future turns)
-      // We describe the image action in text so the AI remembers it happened.
+      // 5. Update History
+      // We describe the image action in text so the AI remembers it happened in future turns
       const historyEntry = currentImage 
         ? `[User uploaded an image] ${userMsg}` 
         : userMsg;
@@ -233,8 +235,10 @@ export default function AIChat() {
             return (
               <div key={index} className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
                 <div 
-                  className={`relative max-w-[80%] px-4 py-2 rounded-xl shadow-md text-sm leading-relaxed whitespace-pre-wrap ${
-                    isUser ? "bg-[#50E3C2] text-gray-800 rounded-br-none" : "bg-white text-gray-800 rounded-bl-none border border-gray-200"
+                  className={`relative max-w-[80%] px-4 py-2 rounded-xl shadow-md text-sm leading-relaxed ${
+                    isUser 
+                      ? "bg-[#50E3C2] text-gray-800 rounded-br-none whitespace-pre-wrap" 
+                      : "bg-white text-gray-800 rounded-bl-none border border-gray-200"
                   }`}
                 >
                   {/* Render Image if present */}
@@ -244,7 +248,29 @@ export default function AIChat() {
                     </div>
                   )}
                   
-                  {msg.text}
+                  {/* --- MARKDOWN RENDERING LOGIC --- */}
+                  {isUser ? (
+                    msg.text
+                  ) : (
+                    <ReactMarkdown 
+                      components={{
+                        // This styles the **Bold** text
+                        strong: ({node, ...props}) => <span className="font-bold text-gray-900" {...props} />,
+                        // This styles the bullet points
+                        ul: ({node, ...props}) => <ul className="list-disc pl-5 my-2 space-y-1" {...props} />,
+                        ol: ({node, ...props}) => <ol className="list-decimal pl-5 my-2 space-y-1" {...props} />,
+                        li: ({node, ...props}) => <li className="" {...props} />,
+                        // This handles paragraphs to ensure proper spacing
+                        p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                        // Headings just in case AI sends them
+                        h1: ({node, ...props}) => <h1 className="text-lg font-bold mt-2 mb-1" {...props} />,
+                        h2: ({node, ...props}) => <h2 className="text-base font-bold mt-2 mb-1" {...props} />,
+                      }}
+                    >
+                      {msg.text}
+                    </ReactMarkdown>
+                  )}
+                  
                 </div>
               </div>
             );

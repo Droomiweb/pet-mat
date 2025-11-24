@@ -29,6 +29,7 @@
     "react-dom": "19.1.0",
     "react-firebase-hooks": "^5.1.1",
     "react-leaflet": "^5.0.0",
+    "react-markdown": "^10.1.0",
     "sharp": "^0.34.5",
     "tesseract.js": "^5.1.1"
   },

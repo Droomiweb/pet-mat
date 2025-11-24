@@ -6,13 +6,13 @@ import Pet from "../../models/PetModel";
 export async function POST(req) {
   try {
     await connectDB();
-    // Destructure the new 'image' and 'mimeType' fields
+    // Destructure the 'image' and 'mimeType' fields from the request
     const { history, message, petId, image, mimeType } = await req.json();
 
     let contextPrompt = "";
     let currentMemory = "No history recorded.";
 
-    // 1. Fetch Pet Memory if petId is provided
+    // 1. Fetch Pet Memory if petId is provided (for context-aware answers)
     if (petId) {
         const pet = await Pet.findById(petId);
         if (pet) {
@@ -29,6 +29,7 @@ export async function POST(req) {
     }
 
     // 2. Start Chat Session (Text Context)
+    // We include the Pet Memory context at the start of the history
     const chat = textModel.startChat({
       history: [
         ...history,
@@ -36,19 +37,30 @@ export async function POST(req) {
       ],
     });
 
-    // 3. Prepare the Message Payload
+    // 3. Prepare the STRICT System Instructions
     const systemInstruction = `
-      [SYSTEM INSTRUCTION]:
-      1. Answer as Dr. Paws (Vet).
-      2. IF AN IMAGE IS PROVIDED: 
-         - Analyze it strictly for pet health issues (skin, eyes, injuries, posture).
-         - If the image is NOT a pet or related to veterinary care, politely refuse to analyze it.
-      3. IF the user mentioned a new medical event (surgery, fever, symptoms, medication) to be remembered, append a summary at the very end like this:
-      ||MEMORY_UPDATE||: [Concise summary]
+      [SYSTEM INSTRUCTION - STRICT]:
+      1. You are Dr. Paws, a helpful AI Veterinary Assistant.
+      
+      2. **IMAGE ANALYSIS RULES**:
+         - If the user sends an image, you MUST first check if it contains a pet (dog, cat, bird, etc.) or a pet-related item (medical report, medication, pet food label, poop/vomit for diagnosis).
+         - **IF THE IMAGE IS NOT RELATED TO PETS OR VETERINARY CARE (e.g., a selfie, a car, a building, random object), YOU MUST REFUSE TO ANALYZE IT.**
+         - Polite refusal example: "I'm Dr. Paws, a vet assistant. I can only analyze images related to your pet's health or care. That looks like something else!"
+         - If the image IS valid, analyze it strictly for health issues (skin, eyes, injuries, posture) or care advice.
+
+      3. **TEXT RULES**:
+         - Answer only questions related to pet health, behavior, nutrition, or care. 
+         - If the user asks about general topics (coding, math, news), politely redirect them to pet care.
+
+      4. **MEMORY UPDATE**:
+         - IF the user mentioned a new medical event (surgery, fever, symptoms, medication) to be remembered, append a summary at the very end of your response like this:
+         ||MEMORY_UPDATE||: [Concise summary of the event]
     `;
 
+    // Combine user message with instructions
     const textPart = `
       ${message}
+      
       ${systemInstruction}
     `;
 
@@ -56,7 +68,7 @@ export async function POST(req) {
 
     // 4. Send Message (Multimodal if image exists)
     if (image) {
-        // Remove the header string (e.g., "data:image/jpeg;base64,") if present
+        // Remove the header string (e.g., "data:image/jpeg;base64,") if present to get raw base64
         const base64Data = image.split(",")[1] || image;
         
         const imagePart = {
@@ -66,7 +78,7 @@ export async function POST(req) {
             }
         };
         
-        // Send text + image
+        // Send text + image to Gemini
         result = await chat.sendMessage([textPart, imagePart]);
     } else {
         // Send text only
@@ -76,20 +88,21 @@ export async function POST(req) {
     const response = await result.response;
     let fullText = response.text();
 
-    // 5. Extract and Save Memory
+    // 5. Extract and Save Memory (if the AI generated a memory update)
     let finalText = fullText;
     
     if (fullText.includes("||MEMORY_UPDATE||:")) {
         const parts = fullText.split("||MEMORY_UPDATE||:");
-        finalText = parts[0].trim(); 
+        finalText = parts[0].trim(); // The actual chat response to show user
         const newMemoryFragment = parts[1].trim();
 
+        // Update the database silently
         if (petId && newMemoryFragment) {
             const pet = await Pet.findById(petId);
             const timestamp = new Date().toLocaleDateString();
             const updatedLog = `${pet.medicalHistoryLog || ''}\n- [${timestamp}]: ${newMemoryFragment}`;
             
-            pet.medicalHistoryLog = updatedLog.slice(-3000); 
+            pet.medicalHistoryLog = updatedLog.slice(-3000); // Keep log size manageable
             await pet.save();
             console.log(`[PetDoc] Memory updated for ${pet.name}`);
         }
@@ -102,6 +115,6 @@ export async function POST(req) {
 
   } catch (error) {
     console.error("AI Chat Error:", error);
-    return new Response(JSON.stringify({ error: "Failed to generate response. If uploading an image, ensure it is a supported format (JPG/PNG)." }), { status: 500 });
+    return new Response(JSON.stringify({ error: "Failed to generate response. Please try again." }), { status: 500 });
   }
 }

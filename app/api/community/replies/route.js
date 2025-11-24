@@ -1,40 +1,33 @@
-// app/api/community/replies/route.js
-import connectDB from "../../../lib/mongodb";
-import ForumPost from "../../../models/ForumPost";
-import ForumReply from "../../../models/ForumReply";
+import connectDB from "../../../../lib/mongodb";
+import ForumPost from "../../../../models/ForumPost";
+import ForumReply from "../../../../models/ForumReply";
 
-// POST a new reply to a post
-export async function POST(req) {
+export async function DELETE(req, context) {
   try {
     await connectDB();
-    const { postId, content, authorId, authorName } = await req.json();
+    const { replyId } = context.params;
+    const { userId } = await req.json(); // Security check
 
-    if (!postId || !content || !authorId || !authorName) {
-      return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
+    const reply = await ForumReply.findById(replyId);
+    if (!reply) return new Response(JSON.stringify({ error: "Reply not found" }), { status: 404 });
+
+    // Verify Ownership
+    if (reply.authorId !== userId) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
     }
 
-    // 1. Find the parent post
-    const post = await ForumPost.findById(postId);
-    if (!post) {
-      return new Response(JSON.stringify({ error: "Post not found" }), { status: 404 });
-    }
-
-    // 2. Create the new reply
-    const newReply = new ForumReply({
-      postId,
-      content,
-      authorId,
-      authorName
+    // 1. Remove reference from Parent Post
+    await ForumPost.findByIdAndUpdate(reply.postId, {
+        $pull: { replies: replyId }
     });
-    await newReply.save();
 
-    // 3. Add the reply's ID to the parent post's `replies` array
-    post.replies.push(newReply._id);
-    await post.save();
+    // 2. Delete the Reply document
+    await ForumReply.findByIdAndDelete(replyId);
 
-    return new Response(JSON.stringify({ message: "Reply added!", reply: newReply }), { status: 201 });
+    return new Response(JSON.stringify({ message: "Reply deleted" }), { status: 200 });
+
   } catch (err) {
-    console.error("Error adding reply:", err);
-    return new Response(JSON.stringify({ error: "Failed to add reply" }), { status: 500 });
+    console.error("Delete Reply Error:", err);
+    return new Response(JSON.stringify({ error: "Failed to delete reply" }), { status: 500 });
   }
 }
