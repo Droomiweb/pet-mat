@@ -3,31 +3,54 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { auth, db } from "../../../app/lib/firebase"; 
-import { collection, query, orderBy } from "firebase/firestore"; 
-import { useCollection } from "react-firebase-hooks/firestore"; 
+import { collection, query, orderBy, doc, updateDoc, onSnapshot, limit } from "firebase/firestore"; 
+import Image from "next/image";
+
+// --- ICONS ---
+const PaperClipIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" /></svg>;
+const SendIcon = () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>;
+const XMarkIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>;
+const ChevronLeftIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>;
+
+// --- READ RECEIPT COMPONENT ---
+const MessageStatus = ({ isRead }) => (
+    <span className={`ml-1 -mb-0.5 ${isRead ? 'text-blue-200' : 'text-gray-300'} inline-block align-bottom`}>
+        {/* Double Tick SVG */}
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+            <path d="M17.293 6.293a1 1 0 0 1 1.414 1.414l-9 9a1 1 0 0 1-1.414 0l-4-4a1 1 0 1 1 1.414-1.414L9 14.586l8.293-8.293Z" />
+            <path d="M21.707 6.293a1 1 0 0 1 0 1.414l-9 9a1 1 0 0 1-1.414 0l-1.293-1.293 1.414-1.414 1.293 1.293 8-8a1 1 0 0 1 1.414 0Z" />
+        </svg>
+    </span>
+);
 
 export default function ChatSessionPage() {
   const [pet, setPet] = useState(null); 
+  const [messages, setMessages] = useState([]);
+  
+  // Input State
   const [replyText, setReplyText] = useState("");
+  const [mediaFile, setMediaFile] = useState(null);
+  const [mediaPreview, setMediaPreview] = useState(null);
+  
+  // UI State
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  
+  // --- NEW FEATURES STATE ---
+  const [isTyping, setIsTyping] = useState(false);
+  const [partnerTyping, setPartnerTyping] = useState(false);
+  const typingTimeoutRef = useRef(null);
+  
   const params = useParams();
   const router = useRouter();
   const user = auth.currentUser;
+  
   const messagesEndRef = useRef(null);
-
+  const fileInputRef = useRef(null);
   const conversationId = params.petId;
 
-  const [messagesSnapshot, messagesLoading] = useCollection(
-    conversationId && user ? 
-    query(
-      collection(db, "conversations", conversationId, "messages"),
-      orderBy("createdAt", "asc")
-    ) : null
-  );
-
-  const messages = messagesSnapshot?.docs.map(doc => ({ ...doc.data(), id: doc.id })) || [];
-
+  // --- 1. DATA FETCHING & LISTENERS ---
+  
   const fetchPetData = useCallback(async () => {
     if (!conversationId) return;
     const petIdStr = conversationId.split("_")[0];
@@ -36,34 +59,163 @@ export default function ChatSessionPage() {
     try {
       const timestamp = new Date().getTime();
       const res = await fetch(`/api/pet/${petIdStr}?t=${timestamp}`, { 
-          cache: 'no-store',
-          headers: { 'Pragma': 'no-cache' }
+          cache: 'no-store', headers: { 'Pragma': 'no-cache' }
       }); 
       if (!res.ok) return;
       const data = await res.json();
       setPet(data);
-    } catch (err) {
-      console.error("Error fetching chat data:", err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error(err); } 
+    finally { setLoading(false); }
   }, [conversationId]);
 
   useEffect(() => {
-    if (user) fetchPetData();
+    if (!user || !conversationId) return;
+
+    // Request Notification Permission
+    if ("Notification" in window && Notification.permission !== "granted") {
+        Notification.requestPermission();
+    }
+
+    fetchPetData();
+
+    // A. Listen to Messages & Mark as Read
+    const q = query(
+      collection(db, "conversations", conversationId, "messages"),
+      orderBy("createdAt", "asc")
+    );
+
+    const unsubscribeMessages = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+      setMessages(msgs);
+      setLoading(false);
+
+      // 1. Mark incoming unread messages as Read
+      const unreadMsgs = snapshot.docs.filter(doc => {
+          const data = doc.data();
+          return data.senderId !== user.uid && !data.read;
+      });
+
+      if (unreadMsgs.length > 0) {
+          unreadMsgs.forEach(docSnap => {
+              updateDoc(doc(db, "conversations", conversationId, "messages", docSnap.id), { read: true });
+          });
+          
+          // Reset unread counter for ME
+          updateDoc(doc(db, "conversations", conversationId), {
+              [`unreadCounts.${user.uid}`]: 0
+          });
+      }
+
+      // 2. Trigger Browser Notification (if backgrounded)
+      const lastMsg = msgs[msgs.length - 1];
+      if (lastMsg && lastMsg.senderId !== user.uid && document.visibilityState === 'hidden') {
+          const now = new Date().getTime();
+          // Only notify if message is recent (within 2 seconds) to prevent spam on load
+          if (lastMsg.createdAt && (now - lastMsg.createdAt.toMillis()) < 2000) {
+              if (Notification.permission === "granted") {
+                  new Notification(`New message from ${lastMsg.senderName}`, {
+                      body: lastMsg.text || "Sent a photo",
+                      icon: "/icon.svg"
+                  });
+              }
+          }
+      }
+    });
+
+    // B. Listen to Conversation Doc (for Typing Status)
+    const unsubscribeConv = onSnapshot(doc(db, "conversations", conversationId), (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            // Check if *anyone other than me* is typing
+            const othersTyping = data.typing 
+                ? Object.entries(data.typing).some(([uid, isTyping]) => uid !== user.uid && isTyping)
+                : false;
+            setPartnerTyping(othersTyping);
+        }
+    });
+
+    return () => {
+        unsubscribeMessages();
+        unsubscribeConv();
+    };
   }, [conversationId, user, fetchPetData]);
 
+  // Auto-scroll
   useEffect(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]); 
+  }, [messages, partnerTyping, mediaPreview]);
+
+
+  // --- 2. HANDLERS ---
+
+  // Input Change with Typing Indicator Logic
+  const handleInputChange = (e) => {
+      setReplyText(e.target.value);
+
+      if (!user || !conversationId) return;
+
+      // If not already marked as typing, update DB
+      if (!isTyping) {
+          setIsTyping(true);
+          updateDoc(doc(db, "conversations", conversationId), {
+              [`typing.${user.uid}`]: true
+          });
+      }
+
+      // Debounce stop typing
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      
+      typingTimeoutRef.current = setTimeout(() => {
+          setIsTyping(false);
+          updateDoc(doc(db, "conversations", conversationId), {
+              [`typing.${user.uid}`]: false
+          });
+      }, 2000); // Stop typing 2s after last keystroke
+  };
+
+  const handleFileSelect = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+          setMediaFile(file);
+          setMediaPreview(URL.createObjectURL(file));
+      }
+  };
+
+  const clearMedia = () => {
+      setMediaFile(null);
+      setMediaPreview(null);
+      if(fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = error => reject(error);
+  });
 
   const sendReply = async (e) => {
     e.preventDefault();
-    if (!replyText.trim() || sending || !user || !conversationId) return;
+    if ((!replyText.trim() && !mediaFile) || sending || !user || !conversationId) return;
+    
     setSending(true);
+    
+    // Clear typing status immediately
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    setIsTyping(false);
+    updateDoc(doc(db, "conversations", conversationId), { [`typing.${user.uid}`]: false });
+
     const petId = conversationId.split("_")[0];
 
     try {
+      let mediaBase64 = null;
+      let mediaType = null;
+
+      if (mediaFile) {
+          mediaBase64 = await fileToBase64(mediaFile);
+          mediaType = mediaFile.type; 
+      }
+
       const res = await fetch(`/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -73,119 +225,71 @@ export default function ChatSessionPage() {
           senderId: user.uid,
           senderName: user.displayName || user.email.split("@")[0],
           text: replyText,
+          mediaBase64, 
+          mediaType     
         }),
       });
-      if (res.ok) setReplyText("");
-    } catch (err) { console.error(err); } 
-    finally { setSending(false); }
-  };
-  
-  const handleRequestStatus = async (newStatus, requestId, requesterId, type) => {
-      if (!user || !pet) return;
-      if(!window.confirm(newStatus === 'accepted' || newStatus === 'approved' ? "Accept this request?" : "Reject this request?")) return;
 
-      try {
-        const res = await fetch('/api/pet/requests', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ownerId: user.uid,
-            petId: pet._id,
-            requestId: requestId,
-            requesterId: requesterId,
-            requestType: type, // 'mating' or 'adoption'
-            newStatus: newStatus,    
-          }),
-        });
-
-        if (!res.ok) {
-          const data = await res.json();
-          alert(`Error: ${data.error}`);
-        } else {
-            // Success
-            fetchPetData(); // Refresh to hide banner
-        }
-      } catch (err) {
-        console.error("Request update error:", err);
-        alert("Failed to update request status.");
+      if (res.ok) {
+          setReplyText("");
+          clearMedia();
       }
+    } catch (err) { 
+        console.error(err); 
+        alert("Failed to send.");
+    } 
+    finally { 
+        setSending(false); 
+    }
   };
 
-  if (loading || !pet) {
-    return <p className="text-[#333333] text-center mt-20 text-xl">Loading chat session...</p>;
+  if (loading) {
+    return (
+        <div className="h-screen w-screen bg-[#F4F7F9] flex items-center justify-center">
+            <div className="w-10 h-10 border-4 border-[#4A90E2] border-t-transparent rounded-full animate-spin"></div>
+        </div>
+    );
   }
-  
-  const isOwner = user?.uid === pet.ownerId;
-  const partnerId = conversationId.split("_").find(uid => uid !== pet._id && uid !== user.uid);
-  
-  // Check for Pending Mating
-  const pendingMating = isOwner ? pet.matingHistory?.find(
-      (mh) => mh.status === "pending" && mh.requesterId === partnerId
-  ) : null;
-
-  // Check for Pending Adoption
-  const pendingAdoption = isOwner ? pet.adoptionRequests?.find(
-      (ar) => ar.status === "pending" && ar.requesterId === partnerId
-  ) : null;
 
   return (
-    <div className="h-screen w-screen bg-[#E2F4EF] flex justify-center items-stretch p-0">
-      <div className="w-full max-w-xl glass-container rounded-none sm:rounded-2xl shadow-2xl flex flex-col h-full sm:h-[95vh] border-t-8 border-[#4A90E2] sm:my-4 p-0">
-        
-        <div className="sticky top-0 bg-[#4A90E2] p-4 text-white shadow-md flex items-center justify-between z-20">
-            <button onClick={() => router.push("/messages")} className="text-xl hover:text-gray-200">&larr;</button>
-            <h1 className="text-xl font-bold truncate">Chat about {pet.name}</h1>
-            <div className="w-6"></div>
-        </div>
-        
-        {/* --- MATING BANNER --- */}
-        {isOwner && pendingMating && (
-             <div className="bg-yellow-50 p-4 border-b-2 border-yellow-200 flex flex-col items-center text-sm font-semibold sticky top-14 z-10 shadow-sm">
-                <p className="text-[#333333] mb-3 text-center text-base">
-                    Mating request from <strong>{pendingMating.requesterPetName}</strong>
-                </p>
-                <div className="flex gap-4 w-full justify-center">
-                    <button 
-                        onClick={() => handleRequestStatus('accepted', pendingMating._id, partnerId, 'mating')}
-                        className="bg-green-500 text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-green-600 shadow-md"
-                    >
-                        Accept
-                    </button>
-                    <button 
-                        onClick={() => handleRequestStatus('rejected', pendingMating._id, partnerId, 'mating')}
-                        className="bg-red-500 text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-red-600 shadow-md"
-                    >
-                        Reject
-                    </button>
-                </div>
+    <div className="fixed inset-0 h-[100dvh] w-full bg-[#F4F7F9] z-50 flex flex-col">
+      
+      {/* --- HEADER --- */}
+      <div className="bg-white/90 backdrop-blur-md border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm shrink-0 z-20 safe-area-top">
+        <div className="flex items-center gap-3">
+            <button 
+                onClick={() => router.push("/messages")} 
+                className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600 active:bg-gray-200"
+            >
+                <ChevronLeftIcon />
+            </button>
+            
+            <div className="relative">
+                {pet?.imageUrls?.[0] ? (
+                    <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-200 shadow-sm">
+                        <img src={pet.imageUrls[0]} alt="Pet" className="w-full h-full object-cover" />
+                    </div>
+                ) : (
+                    <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-lg">🐾</div>
+                )}
+                <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
             </div>
-        )}
 
-        {/* --- ADOPTION BANNER --- */}
-        {isOwner && pendingAdoption && (
-             <div className="bg-blue-50 p-4 border-b-2 border-blue-200 flex flex-col items-center text-sm font-semibold sticky top-14 z-10 shadow-sm">
-                <p className="text-[#333333] mb-1 text-center text-base">
-                    Adoption request from <strong>{pendingAdoption.requesterName}</strong>
+            <div className="flex flex-col">
+                <h1 className="font-bold text-gray-800 text-sm leading-tight">{pet?.name || "Unknown Pet"}</h1>
+                <p className="text-[10px] text-gray-500 font-medium flex items-center gap-1">
+                    {partnerTyping ? (
+                        <span className="text-[#4A90E2] font-bold animate-pulse">Typing...</span>
+                    ) : (
+                        pet?.breed || "Chat"
+                    )}
                 </p>
-                <p className="text-gray-500 italic text-xs mb-3">"{pendingAdoption.message}"</p>
-                <div className="flex gap-4 w-full justify-center">
-                    <button 
-                        onClick={() => handleRequestStatus('approved', pendingAdoption._id, partnerId, 'adoption')}
-                        className="bg-green-500 text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-green-600 shadow-md"
-                    >
-                        Approve Adoption
-                    </button>
-                    <button 
-                        onClick={() => handleRequestStatus('rejected', pendingAdoption._id, partnerId, 'adoption')}
-                        className="bg-red-500 text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-red-600 shadow-md"
-                    >
-                        Reject
-                    </button>
-                </div>
             </div>
-        )}
-        
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
+        </div>
+      </div>
+
+      {/* --- MESSAGES --- */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F4F7F9] scroll-smooth">
           {messages.map((msg) => {
               const isSender = msg.senderId === user.uid;
               const isSystem = msg.senderId === "system";
@@ -193,7 +297,7 @@ export default function ChatSessionPage() {
               if (isSystem) {
                   return (
                     <div key={msg.id} className="flex justify-center my-4">
-                        <div className="bg-green-100 text-green-800 border border-green-300 px-4 py-2 rounded-full text-xs font-bold shadow-sm text-center">
+                        <div className="bg-green-100 text-green-800 border border-green-200 px-4 py-1.5 rounded-full text-[10px] font-bold shadow-sm text-center max-w-[90%]">
                             {msg.text}
                         </div>
                     </div>
@@ -201,34 +305,135 @@ export default function ChatSessionPage() {
               }
 
               return (
-                <div key={msg.id} className={`flex ${isSender ? "justify-end" : "justify-start"}`}>
-                  <div className={`p-3 rounded-2xl max-w-[85%] shadow-md text-sm ${isSender ? "bg-[#50E3C2] text-[#333333] rounded-br-none" : "bg-white border border-gray-200 text-[#333333] rounded-tl-none"}`}>
-                    <p className="font-semibold text-xs mb-1 opacity-70">{isSender ? "You" : (msg.senderName || "Friend")}</p>
-                    <p>{msg.text}</p>
-                    <span className="block text-right text-[10px] text-gray-500 mt-1 opacity-70">
-                        {msg.createdAt ? new Date(msg.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "..."}
-                    </span>
+                <div key={msg.id} className={`flex w-full ${isSender ? "justify-end" : "justify-start"}`}>
+                  <div className={`flex flex-col max-w-[80%] md:max-w-[60%] ${isSender ? "items-end" : "items-start"}`}>
+                    
+                    {!isSender && <span className="text-[10px] text-gray-400 ml-1 mb-1 font-medium">{msg.senderName}</span>}
+
+                    <div 
+                        className={`relative px-4 py-2.5 rounded-2xl text-sm shadow-sm break-words ${
+                            isSender 
+                            ? "bg-[#4A90E2] text-white rounded-br-none" 
+                            : "bg-white text-gray-800 border border-gray-200 rounded-bl-none"
+                        }`}
+                    >
+                        {/* MEDIA */}
+                        {msg.mediaUrl && (
+                            <div className="mb-2 rounded-lg overflow-hidden bg-black/5 border border-black/10">
+                                {msg.mediaType === 'video' ? (
+                                    <video src={msg.mediaUrl} controls className="max-w-full max-h-60 object-contain" />
+                                ) : (
+                                    <img src={msg.mediaUrl} alt="Attachment" className="max-w-full h-auto object-cover rounded-lg" />
+                                )}
+                            </div>
+                        )}
+
+                        {/* TEXT */}
+                        {msg.text && <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>}
+                        
+                        {/* METADATA ROW (Time + Ticks) */}
+                        <div className={`flex items-center justify-end mt-1 gap-1 ${isSender ? "opacity-90" : "opacity-50"}`}>
+                            <span className={`text-[9px] font-medium ${isSender ? "text-blue-50" : "text-gray-400"}`}>
+                                {msg.createdAt ? new Date(msg.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "..."}
+                            </span>
+                            {isSender && <MessageStatus isRead={msg.read} />}
+                        </div>
+                    </div>
                   </div>
                 </div>
               );
           })}
-          <div ref={messagesEndRef} />
-        </div>
+          
+          {/* TYPING BUBBLE */}
+          {partnerTyping && (
+              <div className="flex w-full justify-start animate-in fade-in slide-in-from-bottom-2">
+                  <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm flex items-center gap-1">
+                      <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>
+                      <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-75"></div>
+                      <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-150"></div>
+                  </div>
+              </div>
+          )}
 
-        <form onSubmit={sendReply} className="sticky bottom-0 flex p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-          <input
-            type="text"
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            className="flex-1 p-3 rounded-l-xl border-2 border-gray-300 focus:border-[#4A90E2] focus:ring-0 outline-none transition-colors text-[#333333]"
-            placeholder="Type your reply..."
+          <div ref={messagesEndRef} className="pb-2" />
+      </div>
+
+      {/* --- INPUT AREA --- */}
+      <div className="bg-white px-3 py-3 border-t border-gray-200 shrink-0 safe-area-bottom">
+        
+        {/* PREVIEW */}
+        {mediaPreview && (
+            <div className="flex items-center gap-4 mb-3 px-2 animate-in slide-in-from-bottom-2">
+                <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-gray-200 shadow-md group">
+                    {mediaFile?.type.startsWith('video') ? (
+                        <video src={mediaPreview} className="w-full h-full object-cover" />
+                    ) : (
+                        <img src={mediaPreview} alt="Preview" className="w-full h-full object-cover" />
+                    )}
+                    <button 
+                        onClick={clearMedia}
+                        className="absolute top-0.5 right-0.5 bg-black/60 hover:bg-red-500 text-white rounded-full p-1 transition-colors"
+                    >
+                        <XMarkIcon />
+                    </button>
+                </div>
+                <span className="text-xs font-bold text-gray-500">Ready to send...</span>
+            </div>
+        )}
+
+        <form onSubmit={sendReply} className="flex items-end gap-2 max-w-4xl mx-auto">
+          
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="p-3 text-gray-400 hover:text-[#4A90E2] bg-gray-50 hover:bg-blue-50 rounded-full transition-all active:scale-95"
             disabled={sending}
+          >
+            <PaperClipIcon />
+          </button>
+          <input 
+            type="file" 
+            accept="image/*,video/*" 
+            ref={fileInputRef} 
+            onChange={handleFileSelect} 
+            className="hidden" 
           />
-          <button type="submit" className="bg-[#4A90E2] text-white p-3 rounded-r-xl font-bold hover:bg-[#3A75B9] transition shadow-md px-6" disabled={sending || !replyText.trim()}>
-            {sending ? "..." : "Send"}
+
+          <div className="flex-1 bg-gray-100 rounded-[1.5rem] border border-transparent focus-within:border-[#4A90E2] focus-within:bg-white transition-all flex items-center">
+            <textarea
+                value={replyText}
+                onChange={handleInputChange} 
+                placeholder="Type a message..."
+                className="w-full bg-transparent border-none focus:ring-0 text-gray-800 text-base px-4 py-3 max-h-32 resize-none placeholder-gray-400"
+                rows={1}
+                disabled={sending}
+                onKeyDown={(e) => {
+                    if(e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendReply(e);
+                    }
+                }}
+            />
+          </div>
+
+          <button 
+            type="submit" 
+            disabled={sending || (!replyText.trim() && !mediaFile)}
+            className={`p-3 rounded-full text-white shadow-md transition-all active:scale-95 flex items-center justify-center ${
+                (sending || (!replyText.trim() && !mediaFile))
+                ? "bg-gray-300 cursor-not-allowed" 
+                : "bg-[#4A90E2] hover:bg-[#3A75B9]"
+            }`}
+          >
+            {sending ? (
+                <div className="w-5 h-5 border-2 border-white/50 border-t-white rounded-full animate-spin"></div>
+            ) : (
+                <SendIcon />
+            )}
           </button>
         </form>
       </div>
+
     </div>
   );
 }

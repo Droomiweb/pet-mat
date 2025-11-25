@@ -5,125 +5,91 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../auth-provider";
 import Link from "next/link";
-import Image from "next/image";
 
-// --- Litter Confirmation Modal Component ---
-// (This component is unchanged from your file)
+// --- ICONS ---
+const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M19.916 4.626a.75.75 0 01.208 1.04l-9 13.5a.75.75 0 01-1.154.114l-6-6a.75.75 0 011.06-1.06l5.353 5.353 8.493-12.739a.75.75 0 011.04-.208z" clipRule="evenodd" /></svg>;
+const XMarkIcon = () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M5.47 5.47a.75.75 0 011.06 0L12 10.94l5.47-5.47a.75.75 0 111.06 1.06L13.06 12l5.47 5.47a.75.75 0 11-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 01-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 010-1.06z" clipRule="evenodd" /></svg>;
+const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M16.5 4.478v.227a48.816 48.816 0 013.878.512.75.75 0 11-.49 1.478l-.565 2.21a1.75 1.75 0 01-1.7 1.417H6.377a1.75 1.75 0 01-1.7-1.417l-.565-2.21a48.83 48.83 0 01-1.132-1.485 48.83 48.83 0 01-.357-.504.75.75 0 01.49-1.478A48.567 48.567 0 017.5 4.705v-.227c0-1.564 1.213-2.9 2.816-2.951a52.662 52.662 0 013.369 0c1.603.051 2.815 1.387 2.815 2.951zm-6.136-1.452a51.196 51.196 0 013.273 0C14.39 3.05 15 3.684 15 4.478v.113a49.488 49.488 0 00-6 0v-.113c0-.794.609-1.428 1.364-1.452zm-.355 5.945a.75.75 0 10-1.5.058l.347 9a.75.75 0 101.499-.058l-.346-9zm5.48.058a.75.75 0 10-1.498-.058l-.347 9a.75.75 0 001.5.058l.345-9z" clipRule="evenodd" /></svg>;
+
+// --- Litter Confirmation Modal ---
 const LitterConfirmationModal = ({ data, onClose, onSubmit }) => {
-  const { damPet, sirePet, matingRequest } = data;
+  const { damPet, sirePet } = data;
   const [litter, setLitter] = useState([{ name: '', gender: 'Male' }]);
   const [loading, setLoading] = useState(false);
 
-  // Handle changes to a specific pet in the litter form
   const handleLitterChange = (index, field, value) => {
     const updatedLitter = [...litter];
     updatedLitter[index][field] = value;
     setLitter(updatedLitter);
   };
 
-  // Add a new empty pet form to the litter
-  const addPetToLitter = () => {
-    setLitter([...litter, { name: '', gender: 'Male' }]);
-  };
+  const addPetToLitter = () => setLitter([...litter, { name: '', gender: 'Male' }]);
+  const removePetFromLitter = (index) => setLitter(litter.filter((_, i) => i !== index));
 
-  // Remove a pet from the litter form
-  const removePetFromLitter = (index) => {
-    setLitter(litter.filter((_, i) => i !== index));
-  };
-
-  // Handle final submission to the API
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    // Filter out any empty name fields
     const validLitterData = litter.filter(p => p.name.trim() !== '');
     if (validLitterData.length === 0) {
       alert("Please enter details for at least one pet.");
       setLoading(false);
       return;
     }
-
-    await onSubmit({
-      damPet,
-      sirePet,
-      matingRequest,
-      litterData: validLitterData
-    });
+    await onSubmit({ ...data, litterData: validLitterData });
     setLoading(false);
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex justify-center items-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-6 md:p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-[#4A90E2]">Confirm New Litter</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex justify-center items-center p-4 animate-in fade-in">
+      <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-white/20">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-extrabold text-[#4A90E2]">Confirm New Litter</h2>
+          <button onClick={onClose} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"><XMarkIcon /></button>
         </div>
         
         <div className="grid grid-cols-2 gap-4 mb-6 text-center">
-          <div className="p-4 bg-pink-50 border border-pink-200 rounded-lg">
-            <h3 className="font-bold text-lg text-pink-700">Dam (Mother)</h3>
-            <p className="text-primary">{damPet.name}</p>
+          <div className="p-4 bg-pink-50 border border-pink-200 rounded-2xl">
+            <h3 className="font-bold text-sm text-pink-700 uppercase tracking-wider">Mother</h3>
+            <p className="text-gray-800 font-bold">{damPet.name}</p>
           </div>
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h3 className="font-bold text-lg text-blue-700">Sire (Father)</h3>
-            <p className="text-primary">{sirePet.name}</p>
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl">
+            <h3 className="font-bold text-sm text-blue-700 uppercase tracking-wider">Father</h3>
+            <p className="text-gray-800 font-bold">{sirePet.name}</p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <h3 className="text-xl font-semibold text-[#333333] mb-3">Register Offspring:</h3>
-          <div className="space-y-4 max-h-64 overflow-y-auto pr-2">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <h3 className="font-bold text-gray-700">Register Offspring</h3>
+          <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
             {litter.map((pet, index) => (
-              <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border">
+              <div key={index} className="flex items-center gap-3">
+                <span className="text-sm font-bold text-gray-400 w-6">{index + 1}.</span>
                 <input
                   type="text"
                   placeholder="Pet Name"
                   value={pet.name}
                   onChange={(e) => handleLitterChange(index, 'name', e.target.value)}
-                  className="input-style mb-0 flex-1"
+                  className="input-field mb-0 flex-1"
                 />
                 <select
                   value={pet.gender}
                   onChange={(e) => handleLitterChange(index, 'gender', e.target.value)}
-                  className="input-style mb-0 w-32"
+                  className="input-field mb-0 w-32"
                 >
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                 </select>
-                <button
-                  type="button"
-                  onClick={() => removePetFromLitter(index)}
-                  className="bg-red-500 text-white rounded-full w-8 h-8 flex-shrink-0 font-bold hover:bg-red-700"
-                >
-                  &ndash;
-                </button>
+                <button type="button" onClick={() => removePetFromLitter(index)} className="text-red-500 hover:bg-red-50 p-2 rounded-full"><TrashIcon /></button>
               </div>
             ))}
           </div>
           
-          <button
-            type="button"
-            onClick={addPetToLitter}
-            className="mt-4 text-sm bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300"
-          >
-            + Add Another Pet
-          </button>
+          <button type="button" onClick={addPetToLitter} className="w-full py-2 border-2 border-dashed border-gray-300 text-gray-500 rounded-xl font-bold hover:border-[#4A90E2] hover:text-[#4A90E2] transition">+ Add Another</button>
           
-          <div className="mt-8 pt-4 border-t flex justify-end gap-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded-xl transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-primary py-2 px-6"
-            >
-              {loading ? "Confirming..." : "Confirm & Create Pets"}
+          <div className="pt-4 flex gap-3">
+            <button type="button" onClick={onClose} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200">Cancel</button>
+            <button type="submit" disabled={loading} className="flex-1 py-3 bg-[#4A90E2] text-white rounded-xl font-bold hover:bg-[#3A75B9] shadow-lg">
+              {loading ? "Processing..." : "Confirm Litter"}
             </button>
           </div>
         </form>
@@ -131,38 +97,28 @@ const LitterConfirmationModal = ({ data, onClose, onSubmit }) => {
     </div>
   );
 };
-// --- END: Litter Confirmation Modal Component ---
 
-
-export default function AdminPanel(){
-
-  const { user, isAdmin, loading: authLoading, userData } = useAuth();
+export default function AdminPanel() {
+  const { user, isAdmin, loading: authLoading } = useAuth();
   
-  // --- UPDATED: Kept your original state structure ---
   const [pets, setPets] = useState([]);
   const [users, setUsers] = useState([]);
   const [products, setProducts] = useState([]);
   const [acceptedRequests, setAcceptedRequests] = useState([]);
-  // --- NEW: Replaced 'pendingAdoptionRequests' with 'pendingVerificationPets' ---
   const [pendingVerificationPets, setPendingVerificationPets] = useState([]);
   
   const [ocrLoading, setOcrLoading] = useState(null); 
   const [modalData, setModalData] = useState(null); 
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
   const [panelLoading, setPanelLoading] = useState(true);
-  const [error, setError] = useState(null); // --- NEW: Added Error State
-  const [activeTab, setActiveTab] = useState("users"); // --- NEW: Added Tab State
+  const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState("verification"); 
   const router = useRouter();
 
-  useEffect(() => {
-    if (!authLoading && (!user || !isAdmin)) {
-      router.push('/Login');
-    }
-  }, [user, isAdmin, authLoading, router]);
-
+  // --- DATA FETCHING ---
   const fetchAllData = async () => {
     setPanelLoading(true);
-    setError(null); // --- NEW: Clear error on fetch
+    setError(null);
     try {
       const [dataRes, maintenanceRes] = await Promise.all([
         fetch("/api/admin"),
@@ -177,198 +133,94 @@ export default function AdminPanel(){
       setUsers(data.users || []);
       setProducts(data.products || []);
       setAcceptedRequests(data.acceptedMatingRequests || []); 
-      // --- NEW: Set new verification data
       setPendingVerificationPets(data.pendingVerificationPets || []);
-      // --- REMOVED: Old adoption data
-      // setPendingAdoptionRequests(data.pendingAdoptionRequests || []);
       setIsMaintenanceMode(maintenanceData.isMaintenanceMode);
     } catch (err) {
-      console.error("Error fetching admin data:", err);
-      setError(err.message); // --- NEW: Set error message
-      // Reset all states on error
-      setPets([]);
-      setUsers([]);
-      setProducts([]);
-      setAcceptedRequests([]);
-      setPendingVerificationPets([]); // --- NEW: Reset new state
-      setIsMaintenanceMode(false);
+      console.error(err);
+      setError(err.message);
     } finally {
       setPanelLoading(false);
     }
   };
-  
+
+  useEffect(() => {
+    if (!authLoading) {
+        if (!user || !isAdmin) router.push('/Login');
+        else fetchAllData();
+    }
+  }, [user, isAdmin, authLoading, router]);
+
+  // --- HANDLERS ---
   const handleStatusUpdate = async (petId, status) => {
+    if(!confirm(`Mark pet as ${status}?`)) return;
     try {
       const res = await fetch("/api/admin", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "updatePetStatus", petId, status }),
       });
-      if (res.ok) {
-        alert(`Pet status set to ${status}.`);
-        fetchAllData(); // Refresh data
-      } else { 
-        const data = await res.json();
-        alert(`Failed to update status: ${data.error}`); 
-      }
-    } catch (err) { console.error("Error updating status:", err); }
-  };
-  
-  // This is kept, as your /api/pet/[id] route might still have this
-  const handleDeletePet = async (petId) => {
-    if (window.confirm("Are you sure you want to delete this pet? This action cannot be undone.")) {
-      try {
-        const res = await fetch(`/api/pet/${petId}`, { method: "DELETE" });
-        if (res.ok) {
-          alert("Pet deleted successfully!");
-          fetchAllData(); // Refresh data
-        } else { alert("Failed to delete pet."); }
-      } catch (err) { console.error("Error deleting pet:", err); }
-    }
+      if (res.ok) fetchAllData();
+      else alert("Failed to update");
+    } catch (err) { console.error(err); }
   };
 
-  // --- REMOVED: handleUserBan ---
-  // This is replaced by handleRemoveUser, which is more powerful.
-  // If you still want a *separate* ban function, you can keep it,
-  // but "Remove User" is the one you requested.
+  const handleDeletePet = async (petId) => {
+    if (!confirm("Delete this pet permanently?")) return;
+    try {
+      const res = await fetch(`/api/pet/${petId}`, { method: "DELETE" });
+      if (res.ok) fetchAllData();
+    } catch (err) { console.error(err); }
+  };
 
   const handleToggleAdminStatus = async (userId, makeAdmin) => {
-    if (window.confirm(`Are you sure you want to ${makeAdmin ? 'make this user an admin' : 'remove admin status from this user'}?`)) {
-      try {
-        const res = await fetch("/api/admin", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "toggleAdminStatus", userId, makeAdmin }),
-        });
-        if (res.ok) {
-          alert(`Admin status for user updated successfully.`);
-          fetchAllData(); // Refresh data
-        } else { alert("Failed to update admin status."); }
-      } catch (err) { console.error("Error toggling admin status:", err); }
-    }
+    if (!confirm(`Change admin status for this user?`)) return;
+    try {
+      const res = await fetch("/api/admin", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggleAdminStatus", userId, makeAdmin }),
+      });
+      if (res.ok) fetchAllData();
+    } catch (err) { console.error(err); }
   };
 
-  // --- NEW: FEATURE 4 - Handle Remove User ---
   const handleRemoveUser = async (targetUid, targetName) => {
-    if (!confirm(`Are you sure you want to PERMANENTLY remove ${targetName}?\nThis will delete the user and ALL their pets. This action cannot be undone.`)) {
-      return;
-    }
+    if (!confirm(`PERMANENTLY remove ${targetName}? This deletes the user and ALL their pets.`)) return;
     try {
       const res = await fetch('/api/admin', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'removeUser',
-          targetUid: targetUid,
-        }),
+        body: JSON.stringify({ action: 'removeUser', targetUid }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to remove user');
-      alert(data.message);
-      fetchAllData(); // Refresh all data
-    } catch (err) {
-      console.error(err);
-      alert(`Error: ${err.message}`);
-    }
+      if (res.ok) fetchAllData();
+      else alert("Failed to remove user");
+    } catch (err) { console.error(err); }
   };
 
   const handleProductDelete = async (productId) => {
-    if (window.confirm("Are you sure you want to delete this product?")) {
-      try {
-        const res = await fetch("/api/admin", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productId }),
-        });
-        if (res.ok) {
-          alert("Product deleted successfully!");
-          fetchAllData(); // Refresh data
-        } else { alert("Failed to delete product."); }
-      } catch (err) { console.error("Error deleting product:", err); }
-    }
+    if (!confirm("Delete this product?")) return;
+    try {
+      const res = await fetch("/api/admin", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId }),
+      });
+      if (res.ok) fetchAllData();
+    } catch (err) { console.error(err); }
   };
 
   const handleMaintenanceToggle = async () => {
     const newStatus = !isMaintenanceMode;
+    if(!confirm(`Turn Maintenance Mode ${newStatus ? "ON" : "OFF"}?`)) return;
     try {
-      const res = await fetch("/api/maintenance", {
+      await fetch("/api/maintenance", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isMaintenanceMode: newStatus }),
       });
-      if (res.ok) {
-        setIsMaintenanceMode(newStatus);
-        alert(`Maintenance mode turned ${newStatus ? 'ON' : 'OFF'}`);
-      } else { alert("Failed to change maintenance status."); }
-    } catch (err) { console.error("Error toggling maintenance mode:", err); }
+      setIsMaintenanceMode(newStatus);
+    } catch (err) { console.error(err); }
   };
-  
-  // --- UPDATED: AI Analysis now sends OCR text if available ---
-  const fetchAIAnalysis = async (pet) => {
-    if (!pet.certificateUrl) return alert("Pet has no certificate to analyze.");
-    const { name, age, breed, certificateUrl } = pet;
-    
-    try {
-      alert("Sending request to Gemini AI for analysis. This may take a moment...");
-      const res = await fetch("/api/verify-certificate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          certificateUrl, 
-          petName: name, 
-          petAge: age, 
-          petBreed: breed,
-          // Send OCR text if we have it from the pet's record
-          ocrText: pet.verificationAnalysis?.ocrText || '' 
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        // The response is now structured JSON
-        const analysis = data.aiAnalysis;
-        const analysisString = `
-              AI Analysis Complete:
-              - Is Valid Certificate: ${analysis.isCertificateValid}
-              - Reason: ${analysis.validityReason}
-              - Name Match: ${analysis.nameMatch}
-              - Age Match: ${analysis.ageMatch}
-              - Breed Match: ${analysis.breedMatch}
-              - Discrepancy: ${analysis.matchDiscrepancy || 'N/A'}
-            `;
-        alert(analysisString);
-      } else {
-        alert(`AI Analysis Failed: ${data.error}`);
-      }
-    } catch (err) {
-      console.error("Error calling AI verification API:", err);
-    }
-  }
-
-  const fetchTesseractOcr = async (pet) => {
-    if (!pet.certificateUrl) return alert("Pet has no certificate to scan.");
-    setOcrLoading(pet._id);
-    try {
-      const res = await fetch("/api/ocr-tesseract", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ certificateUrl: pet.certificateUrl }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        alert(`--- Tesseract OCR Result ---\n\n${data.ocrText}`);
-        // TODO: You could save this OCR text to the pet
-        // and re-run the AI analysis
-      } else {
-        alert(`Tesseract OCR Failed: ${data.error}`);
-      }
-    } catch (err) {
-      console.error("Error calling Tesseract API:", err);
-      alert("A client-side error occurred during OCR.");
-    } finally {
-      setOcrLoading(null);
-    }
-  }
 
   const handleLitterSubmit = async (formData) => {
     try {
@@ -377,447 +229,238 @@ export default function AdminPanel(){
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-      const data = await res.json();
       if (res.ok) {
-        alert("Success! Litter has been confirmed and new pets created.");
         setModalData(null); 
         fetchAllData(); 
-      } else {
-        alert(`Error: ${data.error || 'Failed to confirm litter.'}`);
-      }
-    } catch (err) {
-      console.error("Error submitting litter:", err);
-      alert("A client-side error occurred.");
-    }
+      } else alert('Failed to confirm litter.');
+    } catch (err) { console.error(err); }
   };
-  
-  // --- REMOVED: handleAdoptionUpdate ---
-  // This logic is now handled by pet owners via '/api/pet/requests'
-  // The 'Pending Adoption Requests' section is also removed from the JSX.
 
-  useEffect(() => {
-    if (user && isAdmin) {
-      fetchAllData();
-    }
-  }, [user, isAdmin]); // This is correct
+  const fetchAIAnalysis = async (pet) => {
+    if (!pet.certificateUrl) return alert("No certificate.");
+    alert("Running AI Analysis...");
+    try {
+      const res = await fetch("/api/verify-certificate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          certificateUrl: pet.certificateUrl, 
+          petName: pet.name, 
+          petAge: pet.age, 
+          petBreed: pet.breed,
+          ocrText: pet.verificationAnalysis?.ocrText || '' 
+        }),
+      });
+      const data = await res.json();
+      if(res.ok) {
+          const ai = data.aiAnalysis;
+          alert(`AI Verdict: ${ai.isCertificateValid ? "VALID" : "INVALID"}\n\nReason: ${ai.validityReason}\nMatches: Name(${ai.nameMatch}), Age(${ai.ageMatch}), Breed(${ai.breedMatch})`);
+      }
+    } catch (e) { alert("AI Error"); }
+  };
 
+  const fetchTesseractOcr = async (pet) => {
+    if (!pet.certificateUrl) return alert("No certificate.");
+    setOcrLoading(pet._id);
+    try {
+      const res = await fetch("/api/ocr-tesseract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ certificateUrl: pet.certificateUrl }),
+      });
+      const data = await res.json();
+      if (res.ok) alert(`OCR Result:\n${data.ocrText}`);
+      else alert("OCR Failed");
+    } catch (e) { alert("OCR Error"); }
+    finally { setOcrLoading(null); }
+  };
 
-  // --- NEW: FIXED LOADING LOGIC ---
-  
-  // 1. Handle auth loading
-  if (authLoading) {
-    return <p className="text-center text-[#333333] mt-20 text-xl">Loading authentication...</p>;
-  }
-
-  // 2. Handle non-admin or unauthenticated user
-  if (!isAdmin) {
-    // The useEffect redirect is fine, but this is a good fallback.
-    return <p className="text-center text-[#333333] mt-20 text-xl">Access Denied. Redirecting...</p>;
-  }
-
-  // 3. Handle panel data loading
-  if (panelLoading) {
-    return <p className="text-center text-[#333333] mt-20 text-xl">Loading admin panel data...</p>;
-  }
-
-  // 4. Handle data loading failure
-  if (error) {
+  if (authLoading || panelLoading) {
     return (
-      <div className="flex flex-col justify-center items-center min-h-screen text-center">
-        <h1 className="text-2xl font-bold text-red-600">Failed to load admin data</h1>
-        <p className="text-gray-500 mb-4">{error}</p>
-        <button onClick={fetchAllData} className="btn-primary py-2 px-6">
-          Try Again
-        </button>
-      </div>
+        <div className="min-h-screen flex items-center justify-center bg-[#E2F4EF]">
+            <div className="w-12 h-12 border-4 border-[#4A90E2] border-t-transparent rounded-full animate-spin"></div>
+        </div>
     );
   }
-  // --- END: FIXED LOADING LOGIC ---
 
+  if (!isAdmin) return null;
+
+  // --- RENDER HELPERS ---
+  const TabButton = ({ id, label, count }) => (
+    <button
+      onClick={() => setActiveTab(id)}
+      className={`px-5 py-3 rounded-full font-bold text-sm transition-all whitespace-nowrap ${
+        activeTab === id 
+        ? "bg-[#333333] text-white shadow-lg" 
+        : "bg-white text-gray-500 hover:bg-gray-100 border border-gray-200"
+      }`}
+    >
+      {label} {count !== undefined && <span className="ml-1 opacity-70 text-xs">({count})</span>}
+    </button>
+  );
 
   return (
-    <> 
-      {/* --- Render Modal --- */}
-      {modalData && (
-        <LitterConfirmationModal
-          data={modalData}
-          onClose={() => setModalData(null)}
-          onSubmit={handleLitterSubmit}
-        />
-      )}
-      {/* --- END MODAL --- */}
+    <div className="min-h-screen bg-[#E2F4EF] p-4 md:p-8 pb-24 relative">
+      {modalData && <LitterConfirmationModal data={modalData} onClose={() => setModalData(null)} onSubmit={handleLitterSubmit} />}
 
-      <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-10">
-        <div className="max-w-7xl mx-auto bg-white rounded-3xl shadow-2xl p-6 md:p-10 border-t-8 border-[#4A90E2]">
-          <h1 className="text-4xl font-extrabold text-[#333333] mb-8 text-center border-b pb-4 border-gray-100">
-            PetMate Admin Dashboard
-          </h1>
+      {/* --- BACKGROUND --- */}
+      <div className="fixed inset-0 pointer-events-none opacity-30">
+         <div className="absolute top-[-10%] right-[-5%] w-96 h-96 bg-purple-200 rounded-full blur-3xl"></div>
+         <div className="absolute bottom-[-10%] left-[-5%] w-96 h-96 bg-blue-200 rounded-full blur-3xl"></div>
+      </div>
 
-          {/* Maintenance Switch */}
-          <div className="mb-10 p-5 bg-gray-50 rounded-xl shadow-inner border-l-4 border-[#50E3C2]">
-            <h2 className="text-2xl font-bold text-[#4A90E2] mb-3">Website Maintenance</h2>
-            <div className="flex items-center space-x-6">
-              <span className="font-bold text-lg text-[#333333]">
-                Status: 
-                <span className={`ml-2 px-3 py-1 rounded-full text-white ${isMaintenanceMode ? 'bg-red-600' : 'bg-green-600'}`}>
-                  {isMaintenanceMode ? 'ON' : 'OFF'}
-                </span>
-              </span>
-              <button
-                onClick={handleMaintenanceToggle}
-                className={`px-6 py-2 rounded-xl text-white font-bold transition-colors shadow-md hover:shadow-lg ${
-                  isMaintenanceMode ? 'bg-red-500 hover:bg-red-700' : 'bg-green-500 hover:bg-green-700'
-                }`}
-              >
-                Turn {isMaintenanceMode ? 'Off' : 'On'}
-              </button>
+      <div className="max-w-7xl mx-auto relative z-10">
+        
+        {/* --- HEADER --- */}
+        <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+            <div>
+                <h1 className="text-3xl font-extrabold text-[#333333]">Admin Dashboard</h1>
+                <p className="text-gray-500 text-sm">Manage users, verifications, and system status.</p>
             </div>
-          </div>
-
-          {/* --- NEW: Tab Navigation --- */}
-          <div className="flex border-b mb-6 flex-wrap">
-            <button
-              className={`py-2 px-4 ${activeTab === "users" ? "border-b-2 border-blue-500 font-semibold" : "text-gray-500"}`}
-              onClick={() => setActiveTab("users")}
-            >
-              Users ({users.length})
-            </button>
-            <button
-              className={`py-2 px-4 ${activeTab === "verification" ? "border-b-2 border-blue-500 font-semibold" : "text-gray-500"}`}
-              onClick={() => setActiveTab("verification")}
-            >
-              Verification Queue ({pendingVerificationPets.length})
-            </button>
-            <button
-              className={`py-2 px-4 ${activeTab === "mating" ? "border-b-2 border-blue-500 font-semibold" : "text-gray-500"}`}
-              onClick={() => setActiveTab("mating")}
-            >
-              Pending Litters ({acceptedRequests.length})
-            </button>
-            <button
-              className={`py-2 px-4 ${activeTab === "pets" ? "border-b-2 border-blue-500 font-semibold" : "text-gray-500"}`}
-              onClick={() => setActiveTab("pets")}
-            >
-              All Pets ({pets.length})
-            </button>
-            <button
-              className={`py-2 px-4 ${activeTab === "products" ? "border-b-2 border-blue-500 font-semibold" : "text-gray-500"}`}
-              onClick={() => setActiveTab("products")}
-            >
-              Products ({products.length})
-            </button>
-          </div>
-          {/* --- END: Tab Navigation --- */}
-
-
-          {/* --- Tab Content --- */}
-          <div className="bg-white rounded-lg">
-
-            {/* --- Users Tab --- */}
-            {activeTab === "users" && (
-              <div>
-                <h2 className="text-3xl font-bold text-[#333333] mb-6 border-l-4 border-[#4A90E2] pl-3">User Management ({users.length})</h2>
-                <div className="overflow-x-auto shadow-lg rounded-xl mb-10">
-                  <table className="min-w-full bg-white">
-                    <thead className="bg-[#4A90E2] text-white">
-                      <tr>
-                        <th className="py-3 px-6 text-left">Name / Username</th>
-                        <th className="py-3 px-6 text-left">User ID (FID)</th>
-                        <th className="py-3 px-6 text-left">Status</th>
-                        <th className="py-3 px-6 text-left">Role</th>
-                        <th className="py-3 px-6 text-center">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users.map((user) => (
-                        <tr key={user._id} className={`border-b last:border-b-0 hover:bg-gray-50 transition-colors ${user.isBanned ? 'bg-red-50/50' : ''}`}>
-                          <td className="py-4 px-6 text-[#333333]">
-                            <span className="font-semibold block">{user.name}</span>
-                            <span className="text-sm text-gray-500 italic">{user.username}</span>
-                          </td>
-                          <td className="py-4 px-6 text-[#333333] text-sm">{user.firebaseUid}</td>
-                          <td className="py-4 px-6">
-                            <span className={`py-1 px-3 rounded-full text-xs font-bold text-white uppercase ${user.isBanned ? 'bg-red-600' : 'bg-green-600'}`}>
-                              {user.isBanned ? 'BANNED' : 'ACTIVE'}
-                            </span>
-                          </td>
-                          <td className="py-4 px-6">
-                            <span className={`py-1 px-3 rounded-full text-xs font-bold text-white uppercase ${user.isAdmin ? 'bg-purple-600' : 'bg-gray-400'}`}>
-                              {user.isAdmin ? 'ADMIN' : 'USER'}
-                            </span>
-                          </td>
-                          <td className="py-4 px-6 text-center flex justify-center items-center gap-2">
-                            <button
-                              onClick={() => handleToggleAdminStatus(user._id, !user.isAdmin)}
-                              className="bg-purple-500 text-white px-3 py-1 rounded-lg text-sm font-semibold hover:bg-purple-600 transition-colors"
-                            >
-                              {user.isAdmin ? 'Remove Admin' : 'Make Admin'}
-                            </button>
-                            {/* --- NEW: FEATURE 4 - REMOVE USER BUTTON --- */}
-                            <button
-                              onClick={() => handleRemoveUser(user.firebaseUid, user.name)}
-                              className="bg-red-600 text-white px-3 py-1 rounded-lg text-sm font-semibold hover:bg-red-800 transition-colors"
-                            >
-                              Remove User
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
             
-            {/* --- NEW: Verification Queue Tab --- */}
+            {/* Maintenance Toggle */}
+            <div className="bg-white/80 backdrop-blur-sm p-2 pl-4 rounded-full shadow-sm flex items-center gap-3 border border-white">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Maintenance</span>
+                <button
+                    onClick={handleMaintenanceToggle}
+                    className={`px-4 py-1.5 rounded-full text-xs font-bold text-white shadow-md transition-colors ${
+                        isMaintenanceMode ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
+                    }`}
+                >
+                    {isMaintenanceMode ? 'ACTIVE' : 'INACTIVE'}
+                </button>
+            </div>
+        </div>
+
+        {/* --- TABS --- */}
+        <div className="flex gap-3 overflow-x-auto pb-4 mb-4 no-scrollbar">
+            <TabButton id="verification" label="Verification" count={pendingVerificationPets.length} />
+            <TabButton id="users" label="Users" count={users.length} />
+            <TabButton id="mating" label="Litters" count={acceptedRequests.length} />
+            <TabButton id="pets" label="All Pets" count={pets.length} />
+            <TabButton id="products" label="Products" count={products.length} />
+        </div>
+
+        {/* --- CONTENT AREA --- */}
+        <div className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-xl border border-white overflow-hidden min-h-[500px] p-1">
+            
+            {/* 1. VERIFICATION QUEUE */}
             {activeTab === "verification" && (
-              <div>
-                <h2 className="text-3xl font-bold text-[#333333] mb-6 border-l-4 border-[#50E3C2] pl-3">Pet Verification Queue ({pendingVerificationPets.length})</h2>
-                {pendingVerificationPets.length === 0 ? (
-                  <p className="text-[#333333] text-center p-4 bg-gray-50 rounded-lg">No pets found requiring attention.</p>
-                ) : (
-                  <div className="overflow-x-auto mb-10 shadow-lg rounded-xl">
-                    <table className="min-w-full bg-white">
-                      <thead className="bg-[#4A90E2] text-white">
-                        <tr>
-                          <th className="py-3 px-6 text-left">Pet Name</th>
-                          <th className="py-3 px-6 text-left">Owner ID</th>
-                          <th className="py-3 px-6 text-left">Status</th>
-                          <th className="py-3 px-6 text-center">Certificate</th>
-                          <th className="py-3 px-6 text-center">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pendingVerificationPets.map((pet) => (
-                          <tr key={pet._id} className="border-b last:border-b-0 hover:bg-gray-50 transition-colors">
-                            <td className="py-4 px-6 text-[#333333] font-semibold">{pet.name}</td>
-                            <td className="py-4 px-6 text-[#333333] text-sm">{pet.ownerId}</td>
-                            <td className="py-4 px-6">
-                              <span className={`py-1 px-3 rounded-full text-xs font-bold text-white uppercase ${pet.verificationStatus === 'pending' ? 'bg-yellow-500' : 'bg-orange-500'}`}>
-                                {pet.verificationStatus}
-                              </span>
-                            </td>
-                            <td className="py-4 px-6 text-center">
-                              {pet.certificateUrl ? (
-                                <div className="flex flex-col items-center gap-1">
-                                  <a href={pet.certificateUrl} target="_blank" rel="noopener noreferrer" className="text-[#4A90E2] underline hover:text-[#50E3C2] font-medium">
-                                    View Doc
-                                  </a>
-                                  <button
-                                    onClick={() => fetchAIAnalysis(pet)}
-                                    className="text-xs text-blue-600 hover:text-blue-800 underline mt-1"
-                                  >
-                                    Run Gemini AI Check
-                                  </button>
-                                  <button
-                                    onClick={() => fetchTesseractOcr(pet)}
-                                    className="text-xs text-gray-600 hover:text-black underline mt-1"
-                                    disabled={ocrLoading === pet._id}
-                                  >
-                                    {ocrLoading === pet._id ? "Scanning..." : "Run Tesseract OCR"}
-                                  </button>
+                <div className="p-6">
+                    <h2 className="text-xl font-bold text-gray-700 mb-6 flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-yellow-500 animate-pulse"></span> Pending Verification
+                    </h2>
+                    {pendingVerificationPets.length === 0 ? (
+                        <div className="text-center py-20 text-gray-400">All caught up! No pets pending.</div>
+                    ) : (
+                        <div className="grid gap-4">
+                            {pendingVerificationPets.map(pet => (
+                                <div key={pet._id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row items-center gap-6">
+                                    <div className="flex-1">
+                                        <h3 className="font-bold text-lg text-gray-800">{pet.name}</h3>
+                                        <p className="text-sm text-gray-500">ID: {pet._id} • Owner: {pet.ownerId}</p>
+                                        <div className="flex gap-2 mt-2">
+                                            {pet.certificateUrl && (
+                                                <a href={pet.certificateUrl} target="_blank" className="text-xs font-bold text-[#4A90E2] bg-blue-50 px-3 py-1 rounded-lg hover:bg-blue-100">View Cert</a>
+                                            )}
+                                            <button onClick={() => fetchAIAnalysis(pet)} className="text-xs font-bold text-purple-600 bg-purple-50 px-3 py-1 rounded-lg hover:bg-purple-100">AI Check</button>
+                                            <button 
+                                                onClick={() => fetchTesseractOcr(pet)} 
+                                                className="text-xs font-bold text-gray-600 bg-gray-50 px-3 py-1 rounded-lg hover:bg-gray-100"
+                                                disabled={ocrLoading === pet._id}
+                                            >
+                                                {ocrLoading === pet._id ? "Scanning..." : "OCR"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => handleStatusUpdate(pet._id, 'verified')} className="p-3 bg-green-100 text-green-600 rounded-xl hover:bg-green-200 transition"><CheckIcon /></button>
+                                        <button onClick={() => handleStatusUpdate(pet._id, 'rejected')} className="p-3 bg-red-100 text-red-600 rounded-xl hover:bg-red-200 transition"><XMarkIcon /></button>
+                                    </div>
                                 </div>
-                              ) : (
-                                <span className="text-gray-400">N/A</span>
-                              )}
-                            </td>
-                            <td className="py-4 px-6 text-center flex justify-center items-center gap-3">
-                              <button
-                                onClick={() => handleStatusUpdate(pet._id, 'verified')}
-                                className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-green-600 transition-colors"
-                              >Approve</button>
-                              <button
-                                onClick={() => handleStatusUpdate(pet._1, 'rejected')}
-                                className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-red-600 transition-colors"
-                              >Reject</button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
             )}
 
-            {/* --- Mating Tab --- */}
+            {/* 2. USERS LIST (Responsive Card View) */}
+            {activeTab === "users" && (
+                <div className="p-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {users.map(user => (
+                            <div key={user._id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition">
+                                <div className="flex justify-between items-start mb-3">
+                                    <div>
+                                        <h4 className="font-bold text-gray-800">{user.name}</h4>
+                                        <p className="text-xs text-gray-400">@{user.username}</p>
+                                    </div>
+                                    <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${user.isAdmin ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-500'}`}>
+                                        {user.isAdmin ? 'Admin' : 'User'}
+                                    </span>
+                                </div>
+                                <div className="flex gap-2 mt-4 pt-4 border-t border-gray-50">
+                                    <button onClick={() => handleToggleAdminStatus(user._id, !user.isAdmin)} className="text-xs font-bold text-purple-500 hover:bg-purple-50 px-3 py-1.5 rounded-lg transition flex-1 bg-purple-50/50">
+                                        {user.isAdmin ? 'Demote' : 'Promote'}
+                                    </button>
+                                    <button onClick={() => handleRemoveUser(user.firebaseUid, user.name)} className="text-xs font-bold text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg transition flex-1 bg-red-50/50">
+                                        Remove
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* 3. LITTER REQUESTS */}
             {activeTab === "mating" && (
-              <div>
-                <h2 className="text-3xl font-bold text-[#333333] mb-6 border-l-4 border-[#4A90E2] pl-3">Pending Breeding Confirmation ({acceptedRequests.length})</h2>
-                {acceptedRequests.length === 0 ? (
-                  <p className="text-[#333333] text-center p-4 bg-gray-50 rounded-lg">No accepted mating requests awaiting confirmation.</p>
-                ) : (
-                  <div className="overflow-x-auto mb-10 shadow-lg rounded-xl">
-                    <table className="min-w-full bg-white">
-                      <thead className="bg-[#4A90E2] text-white">
-                        <tr>
-                          <th className="py-3 px-6 text-left">Dam (Mother)</th>
-                          <th className="py-3 px-6 text-left">Sire (Father)</th>
-                          <th className="py-3 px-6 text-left">Request Date</th>
-                          <th className="py-3 px-6 text-center">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {acceptedRequests.map((req, index) => (
-                          <tr key={index} className="border-b last:border-b-0 hover:bg-gray-50 transition-colors">
-                            <td className="py-4 px-6 text-[#333333] font-semibold">
-                              <Link href={`/pet/${req.damPet._id}`} className="hover:underline">{req.damPet.name}</Link>
-                            </td>
-                            <td className="py-4 px-6 text-[#333333] font-semibold">
-                              <Link href={`/pet/${req.sirePet._id}`} className="hover:underline">{req.sirePet.name}</Link>
-                            </td>
-                            <td className="py-4 px-6 text-[#333333] text-sm">
-                              {new Date(req.matingRequest.requestedAt).toLocaleDateString()}
-                            </td>
-                            <td className="py-4 px-6 text-center">
-                              <button
-                                onClick={() => setModalData(req)} 
-                                className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-600 transition-colors"
-                              >
-                                Confirm Litter
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+                <div className="p-6">
+                    {acceptedRequests.length === 0 ? <div className="text-center py-20 text-gray-400">No pending litters.</div> : (
+                        <div className="space-y-4">
+                            {acceptedRequests.map((req, idx) => (
+                                <div key={idx} className="bg-white p-5 rounded-2xl border border-gray-100 flex justify-between items-center">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="font-bold text-gray-800">{req.damPet.name}</span>
+                                            <span className="text-gray-400 text-xs">x</span>
+                                            <span className="font-bold text-gray-800">{req.sirePet.name}</span>
+                                        </div>
+                                        <p className="text-xs text-gray-400">{new Date(req.matingRequest.requestedAt).toLocaleDateString()}</p>
+                                    </div>
+                                    <button onClick={() => setModalData(req)} className="bg-[#4A90E2] text-white px-5 py-2 rounded-xl font-bold text-sm shadow-md hover:bg-[#3A75B9]">
+                                        Register Litter
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
             )}
 
-            {/* --- All Pets Tab --- */}
-            {activeTab === "pets" && (
-              <div>
-                <h2 className="text-3xl font-bold text-[#333333] mb-6 border-l-4 border-[#50E3C2] pl-3">All Pets ({pets.length})</h2>
-                <div className="overflow-x-auto mb-10 shadow-lg rounded-xl">
-                  <table className="min-w-full bg-white">
-                    <thead className="bg-[#4A90E2] text-white">
-                      <tr>
-                        <th className="py-3 px-6 text-left">Pet Name</th>
-                        <th className="py-3 px-6 text-left">Owner ID</th>
-                        <th className="py-3 px-6 text-left">Status</th>
-                        <th className="py-3 px-6 text-center">Certificate</th>
-                        <th className="py-3 px-6 text-center">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pets.map((pet) => (
-                        <tr 
-                          key={pet._id} 
-                          className={`border-b last:border-b-0 hover:bg-gray-50 transition-colors ${
-                            pet.isBanned ? 'bg-red-50/50' : pet.verificationStatus === 'verified' ? 'bg-green-50/50' : ''
-                          }`}
-                        >
-                          <td className="py-4 px-6 text-[#333333] font-semibold">{pet.name}</td>
-                          <td className="py-4 px-6 text-[#333333] text-sm">{pet.ownerId}</td>
-                          <td className="py-4 px-6">
-                            <span className={`py-1 px-3 rounded-full text-xs font-bold text-white uppercase ${
-                              pet.isBanned ? 'bg-red-600' :
-                              pet.verificationStatus === 'pending' ? 'bg-orange-500' :
-                              pet.verificationStatus === 'needs-review' ? 'bg-yellow-600' :
-                              pet.verificationStatus === 'verified' ? 'bg-green-600' :
-                              'bg-red-600' // for 'rejected'
-                            }`}>
-                              {pet.isBanned ? 'BANNED' : pet.verificationStatus}
-                            </span>
-                          </td>
-                          <td className="py-4 px-6 text-center">
-                            {pet.certificateUrl ? (
-                              <a href={pet.certificateUrl} target="_blank" rel="noopener noreferrer" className="text-[#4A90E2] underline hover:text-[#50E3C2] font-medium">
-                                View Doc
-                              </a>
-                            ) : (
-                              <span className="text-gray-400">N/A</span>
-                            )}
-                          </td>
-                          <td className="py-4 px-6 text-center flex justify-center items-center gap-3">
-                            {pet.verificationStatus !== 'verified' && (
-                              <button
-                                onClick={() => handleStatusUpdate(pet._id, 'verified')}
-                                disabled={pet.isBanned}
-                                className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-green-600 transition-colors"
-                              >Approve</button>
-                            )}
-                            {pet.verificationStatus !== 'rejected' && (
-                              <button
-                                onClick={() => handleStatusUpdate(pet._id, 'rejected')}
-                                disabled={pet.isBanned}
-                                className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-red-600 transition-colors"
-                              >Reject</button>
-                            )}
-                            <button
-                              onClick={() => handleDeletePet(pet._id)}
-                              className="bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-900 transition-colors"
-                            >Delete</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-            
-            {/* --- Products Tab --- */}
-            {activeTab === "products" && (
-              <div>
-                <h2 className="text-3xl font-bold text-[#333333] mb-6 border-l-4 border-[#4A90E2] pl-3">Product Management ({products.length})</h2>
-                <div className="mb-6">
-                  <button
-                    onClick={() => router.push("/Add-product")}
-                    className="bg-[#50E3C2] hover:bg-[#3FCCB4] text-[#333333] font-bold py-3 px-6 rounded-xl shadow-lg transition-all duration-200 hover:scale-105"
-                  >
-                    + Add Product
-                  </button>
-                </div>
-                {products.length === 0 ? (
-                  <p className="text-[#333333] text-center p-4 bg-gray-50 rounded-lg">No products found.</p>
-                ) : (
-                  <div className="overflow-x-auto shadow-lg rounded-xl">
-                    <table className="min-w-full bg-white">
-                      <thead className="bg-[#4A90E2] text-white">
-                        <tr>
-                          <th className="py-3 px-6 text-left">Product Name</th>
-                          <th className="py-3 px-6 text-left">Owner</th>
-                          <th className="py-3 px-6 text-left">Category</th>
-                          <th className="py-3 px-6 text-left">Price</th>
-                          <th className="py-3 px-6 text-center">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {products.map((product) => (
-                          <tr key={product._id} className="border-b last:border-b-0 hover:bg-gray-50 transition-colors">
-                            <td className="py-4 px-6 text-[#333333] font-semibold">{product.name}</td>
-                            <td className="py-4 px-6 text-[#333333]">{product.ownerName}</td>
-                            <td className="py-4 px-6 text-[#333333]">{product.category}</td>
-                            <td className="py-4 px-6 text-[#333333]">₹ {product.price}</td>
-                            <td className="py-4 px-6 text-center">
-                              <button
-                                onClick={() => handleProductDelete(product._id)}
-                                className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition-colors"
-                              >
-                                Delete
-                              </button>
-                            </td>
-                          </tr>
+            {/* 4. ALL PETS & 5. PRODUCTS (Responsive Cards) */}
+            {(activeTab === "pets" || activeTab === "products") && (
+                <div className="p-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {(activeTab === "pets" ? pets : products).map((item) => (
+                            <div key={item._id} className="bg-white p-4 rounded-2xl border border-gray-100 flex justify-between items-center">
+                                <div>
+                                    <h4 className="font-bold text-gray-700 text-sm">{item.name}</h4>
+                                    <p className="text-xs text-gray-400">{item._id}</p>
+                                </div>
+                                {activeTab === "pets" ? (
+                                    <button onClick={() => handleDeletePet(item._id)} className="text-red-400 hover:text-red-600 p-2"><TrashIcon /></button>
+                                ) : (
+                                    <button onClick={() => handleProductDelete(item._id)} className="text-red-400 hover:text-red-600 p-2"><TrashIcon /></button>
+                                )}
+                            </div>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+                    </div>
+                </div>
             )}
 
-          </div>
-          
-          {/* --- ALL OLD SECTIONS ARE REMOVED --- */}
-          {/* The sections for Breeding, Adoption, Pet Mgmt, User Mgmt, and Product Mgmt
-              are now all handled inside the tabs above, so we remove the old, non-tabbed
-              versions from the end of the file. */} 
-      
         </div>
       </div>
-    </>
+    </div>
   );
 }

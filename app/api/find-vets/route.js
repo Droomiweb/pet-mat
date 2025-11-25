@@ -23,38 +23,27 @@ export async function POST(req) {
       out center;
     `;
 
-    // List of Overpass API instances (Main + Backup)
     const servers = [
-      "https://overpass-api.de/api/interpreter",       // Primary (Germany)
-      "https://interpret.openstreetmap.fr/overpass/api/interpreter" // Backup (France)
+      "https://overpass-api.de/api/interpreter",
+      "https://interpret.openstreetmap.fr/overpass/api/interpreter"
     ];
 
     let data = null;
-    let fetchError = null;
 
-    // Try servers one by one
     for (const endpoint of servers) {
       try {
-        console.log(`Attempting fetch from: ${endpoint}`);
         const response = await fetch(endpoint, {
           method: "POST",
-          body: `data=${encodeURIComponent(query)}`, // Form-encoded body is safer for some endpoints
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded"
-          }
+          body: `data=${encodeURIComponent(query)}`,
+          headers: { "Content-Type": "application/x-www-form-urlencoded" }
         });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.warn(`Server ${endpoint} failed: ${response.status} - ${errorText}`);
-          continue; // Try next server
+        if (response.ok) {
+          data = await response.json();
+          break;
         }
-
-        data = await response.json();
-        break; // Success! Exit loop
       } catch (err) {
         console.error(`Connection error with ${endpoint}:`, err.message);
-        fetchError = err;
       }
     }
 
@@ -62,20 +51,37 @@ export async function POST(req) {
       throw new Error("All mapping servers failed. Please try again later.");
     }
 
-    // Transform Data
+    // Transform Data with INTELLIGENT ADDRESS FALLBACK
     const hospitals = data.elements.map((place) => {
         const pLat = place.lat || place.center?.lat;
         const pLng = place.lon || place.center?.lon;
+        const tags = place.tags || {};
+
+        // 1. Try specific address tags
+        let displayAddress = tags['addr:street'] 
+            ? `${tags['addr:street']} ${tags['addr:housenumber'] || ''}`
+            : null;
+
+        // 2. If no street, try "place" or "city" or "village"
+        if (!displayAddress) {
+            const area = tags['addr:city'] || tags['addr:town'] || tags['addr:village'] || tags['addr:hamlet'];
+            if (area) displayAddress = `${area} (Exact street not listed)`;
+        }
+
+        // 3. If still nothing, use a generic fallback based on coordinates
+        if (!displayAddress) {
+             displayAddress = "View map for exact location";
+        }
         
         return {
             id: place.id,
-            name: place.tags.name || "Unnamed Vet Clinic",
-            address: place.tags['addr:street'] || place.tags['addr:city'] || "Address not listed",
-            phone: place.tags.phone || place.tags['contact:phone'] || "N/A",
+            name: tags.name || "Unnamed Vet Clinic",
+            address: displayAddress,
+            phone: tags.phone || tags['contact:phone'] || "No Phone",
             lat: pLat,
             lng: pLng,
-            website: place.tags.website || null,
-            opening_hours: place.tags.opening_hours || null
+            website: tags.website || null,
+            opening_hours: tags.opening_hours || null
         };
     }).filter(h => h.lat && h.lng);
 
@@ -83,7 +89,6 @@ export async function POST(req) {
 
   } catch (error) {
     console.error("Vet Search Final Error:", error);
-    // Return a user-friendly error so the frontend doesn't crash
     return NextResponse.json({ error: "Could not fetch vet data.", details: error.message }, { status: 500 });
   }
 }

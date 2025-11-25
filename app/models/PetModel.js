@@ -1,7 +1,6 @@
 // app/models/PetModel.js
 import mongoose from "mongoose";
 
-// ... (Keep existing VaccinationSchema and CertificateAnalysisSchema) ...
 const VaccinationSchema = new mongoose.Schema({
   vaccineName: { type: String, required: true },
   vaccinationDate: { type: Date, required: true }, 
@@ -23,17 +22,15 @@ const CertificateAnalysisSchema = new mongoose.Schema({
   reason: String, 
 });
 
-// --- NEW: Adoption Log Schema ---
 const AdoptionLogSchema = new mongoose.Schema({
   previousOwnerId: String,
   previousOwnerName: String,
   newOwnerId: String,
   newOwnerName: String,
   adoptionDate: { type: Date, default: Date.now },
-  certificateId: String // Unique ID for the certificate
+  certificateId: String 
 });
 
-// ... (Keep existing schemas: PregnancyDaySchema, MatingRequestSchema, MessageSchema, AdoptionRequestSchema) ...
 const PregnancyDaySchema = new mongoose.Schema({
   day: Number,
   food: String,
@@ -98,8 +95,14 @@ const petSchema = new mongoose.Schema({
     required: true
   },
   
+  // --- UPDATED LINEAGE FIELDS ---
+  // Links to registered pets (if available)
   damId: { type: mongoose.Schema.Types.ObjectId, ref: 'Pet', default: null },
   sireId: { type: mongoose.Schema.Types.ObjectId, ref: 'Pet', default: null },
+  // Text fallback extracted from certificate (NEW)
+  damName: { type: String, default: null },
+  sireName: { type: String, default: null },
+  // ------------------------------
   
   nftTokenId: { type: Number, default: null, index: true },
   nftContractAddress: { type: String, default: null },
@@ -131,7 +134,6 @@ const petSchema = new mongoose.Schema({
   messages: [MessageSchema],
   adoptionRequests: [AdoptionRequestSchema],
   
-  // --- NEW FIELD ---
   adoptionLog: AdoptionLogSchema 
 });
 

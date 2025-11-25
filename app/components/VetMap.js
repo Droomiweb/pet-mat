@@ -10,7 +10,7 @@ import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
 import iconUrl from 'leaflet/dist/images/marker-icon.png';
 import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
 
-// Define Icons INSIDE the component or module scope (safe here because this file is client-only)
+// Define Icons
 const vetIcon = new L.Icon({
     iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
     shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -37,13 +37,11 @@ export default function VetMap({ coords, radius, hospitals, userDataName, usingL
     // Handle Flying to Selected Hospital
     useEffect(() => {
         if (selectedHospital && mapRef.current) {
-            // 1. Fly to location
             mapRef.current.flyTo([selectedHospital.lat, selectedHospital.lng], 16, {
                 animate: true,
                 duration: 1.2
             });
 
-            // 2. Open Popup
             const marker = markerRefs.current[selectedHospital.id];
             if (marker) {
                 marker.openPopup();
@@ -51,7 +49,7 @@ export default function VetMap({ coords, radius, hospitals, userDataName, usingL
         }
     }, [selectedHospital]);
 
-    // Handle Flying to User Location when it changes
+    // Handle Flying to User Location
     useEffect(() => {
         if (coords && mapRef.current) {
              mapRef.current.flyTo([coords.lat, coords.lng], 13, { animate: true, duration: 1.5 });
@@ -78,7 +76,7 @@ export default function VetMap({ coords, radius, hospitals, userDataName, usingL
                     <div className="text-center">
                         <strong>You are here</strong><br/>
                         <span className="text-xs text-gray-500">
-                            {usingLiveLocation ? "Live GPS Location" : `${userDataName}'s Saved Address`}
+                            {usingLiveLocation ? "Live GPS Location" : `${userDataName || 'User'}'s Location`}
                         </span>
                     </div>
                 </Popup>
@@ -106,8 +104,9 @@ export default function VetMap({ coords, radius, hospitals, userDataName, usingL
                             <p className="text-xs text-gray-600 mb-2 text-left">{vet.address}</p>
                             {vet.phone !== "N/A" && <p className="text-xs font-semibold text-green-600 mb-2">📞 {vet.phone}</p>}
                             
+                            {/* --- FIX IS HERE: CORRECT GOOGLE MAPS URL --- */}
                             <a 
-                                href={`http://googleusercontent.com/maps.google.com/?q=${vet.lat},${vet.lng}`}
+                                href={`https://www.google.com/maps/search/?api=1&query=${vet.lat},${vet.lng}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="block w-full text-center bg-[#4A90E2] text-white text-xs py-2 rounded-md font-bold hover:bg-[#3A75B9] transition-colors shadow-sm mt-2"

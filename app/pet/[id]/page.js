@@ -4,12 +4,18 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { auth } from "../../lib/firebase";
 import Link from "next/link";
-import Image from "next/image"; // Added Image optimization
+import Image from "next/image"; 
 import { createConversationId } from "../../lib/chatUtils";
 import DownloadCertificate from "../../components/DownloadCertificate"; 
+import ReactMarkdown from 'react-markdown'; // <--- ADDED: For rendering AI text
+
+// --- ICONS ---
+const MessageIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg>;
+const HeartIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>;
+const LocationIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>;
+const DnaIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.327 24.327 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" /></svg>;
 
 // --- UI SUB-COMPONENTS ---
-
 const DNALoading = () => (
   <div className="flex flex-col items-center justify-center py-4">
     <div className="flex space-x-2 animate-pulse mb-2">
@@ -17,39 +23,48 @@ const DNALoading = () => (
       <div className="w-3 h-3 rounded-full animate-bounce delay-75 bg-purple-500"></div>
       <div className="w-3 h-3 rounded-full animate-bounce delay-150 bg-blue-500"></div>
     </div>
-    <p className="text-xs font-bold text-purple-600 animate-pulse">Mixing Genes...</p>
+    <p className="text-xs font-bold text-purple-600 animate-pulse">Analyzing Genes...</p>
   </div>
 );
 
 const FeaturePill = ({ icon, label, value, color }) => (
-    <div className={`flex items-center gap-2 px-4 py-3 rounded-2xl border shadow-sm transition-transform hover:scale-105 ${color ? color : 'bg-white border-gray-100 text-gray-600'}`}>
-        <span className="text-xl">{icon}</span>
+    <div className={`flex items-center gap-3 px-5 py-4 rounded-2xl border shadow-sm transition-all hover:scale-105 bg-white border-gray-100`}>
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${color || 'bg-gray-100 text-gray-600'}`}>
+            {icon}
+        </div>
         <div className="flex flex-col leading-none">
-            <span className="text-[10px] font-bold uppercase opacity-60 tracking-wider mb-1">{label}</span>
-            <span className="font-bold text-sm">{value || 'N/A'}</span>
+            <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider mb-1">{label}</span>
+            <span className="font-bold text-gray-800 text-sm">{value || 'N/A'}</span>
         </div>
     </div>
 );
 
-const PedigreeCard = ({ pet, title }) => (
-    <Link href={pet ? `/pet/${pet._id}` : '#'} className={`block p-4 rounded-2xl border transition-all duration-300 ${pet ? 'bg-white border-gray-100 hover:border-[#4A90E2] hover:shadow-lg hover:-translate-y-1 cursor-pointer' : 'bg-gray-50 border-transparent cursor-default opacity-60'}`}>
-        <p className="text-xs font-bold text-[#4A90E2] uppercase tracking-wider mb-3">{title}</p>
-        <div className="flex items-center gap-3">
-            <div className="relative w-12 h-12 rounded-full bg-gray-200 overflow-hidden shrink-0 border-2 border-gray-100 shadow-sm">
-                {pet ? <Image src={pet.imageUrls?.[0] || "/imgs/profile.jpg"} alt={pet.name} fill className="object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">?</div>}
-            </div>
+const VaccineRow = ({ name, date, status }) => {
+    const statusColors = {
+        active: "text-green-600 bg-green-50 border-green-200",
+        upcoming: "text-yellow-600 bg-yellow-50 border-yellow-200",
+        expired: "text-red-600 bg-red-50 border-red-200",
+        "needs-review": "text-gray-600 bg-gray-50 border-gray-200"
+    };
+    return (
+        <div className="flex justify-between items-center p-3 rounded-xl border border-dashed border-gray-200 hover:bg-gray-50 transition-colors">
             <div>
-                <p className="font-extrabold text-sm text-gray-800 leading-tight">{pet ? pet.name : "Unknown"}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{pet ? pet.breed : "-"}</p>
+                <p className="font-bold text-gray-700 text-sm">{name}</p>
+                <p className="text-[10px] text-gray-400">Given: {new Date(date).toLocaleDateString()}</p>
             </div>
+            <span className={`text-[10px] font-extrabold px-2 py-1 rounded-lg border uppercase ${statusColors[status] || statusColors['needs-review']}`}>
+                {status}
+            </span>
         </div>
-    </Link>
-);
+    );
+};
 
 export default function PetDetailPage() {
   const [pet, setPet] = useState(null);
-  const [pedigree, setPedigree] = useState(null);
-  const [newMessage, setNewMessage] = useState(""); 
+  
+  // --- MESSAGE STATES ---
+  const [newMessage, setNewMessage] = useState(""); // For Mating Proposals
+  const [quickMessage, setQuickMessage] = useState(""); // For General Chat
 
   // --- ADOPTION FORM STATES ---
   const [showAdoptionModal, setShowAdoptionModal] = useState(false);
@@ -61,7 +76,7 @@ export default function PetDetailPage() {
     vetContact: "",
     reason: "",
   });
-  const [adoptLoading, setAdoptLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
   // --- AI ADVISOR STATES ---
   const [requesterPets, setRequesterPets] = useState([]);
@@ -74,7 +89,7 @@ export default function PetDetailPage() {
   const [generatedImage, setGeneratedImage] = useState(null);
   const [imageLoading, setImageLoading] = useState(false);
 
-  // --- NEW: IMAGE MODAL STATE ---
+  // --- IMAGE MODAL STATE ---
   const [showImageModal, setShowImageModal] = useState(false);
 
   const chatEndRef = useRef(null);
@@ -94,7 +109,7 @@ export default function PetDetailPage() {
   const handleViewLocation = () => {
     if (!pet.ownerLocation?.coordinates) return alert("Location unavailable.");
     const [lng, lat] = pet.ownerLocation.coordinates;
-    window.open(`https://www.google.com/maps?q=${lat},${lng}`, "_blank");
+    window.open(`http://googleusercontent.com/maps.google.com/?q=${lat},${lng}`, "_blank");
   };
 
   // --- DATA FETCHING ---
@@ -108,16 +123,6 @@ export default function PetDetailPage() {
       if (user && data.listingType === "Mating") {
         await fetchRequesterPets(user.uid, data.type, data.gender);
       }
-      await fetchPedigree(params.id);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchPedigree = async (petId) => {
-    try {
-      const res = await fetch(`/api/pedigree/${petId}`);
-      if (res.ok) setPedigree(await res.json());
     } catch (err) {
       console.error(err);
     }
@@ -144,6 +149,36 @@ export default function PetDetailPage() {
   };
 
   // --- ACTION HANDLERS ---
+
+  // 1. START GENERAL CHAT
+  const handleStartChat = async () => {
+      if (!user) return router.push("/Login");
+      setActionLoading(true);
+      try {
+          const conversationId = createConversationId(pet._id, user.uid, pet.ownerId);
+          
+          // Send initial message
+          await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  petId: pet._id,
+                  conversationId: conversationId,
+                  senderId: user.uid,
+                  senderName: user.displayName || user.email.split('@')[0],
+                  text: quickMessage || "👋 Hi! I'd like to know more about your pet."
+              })
+          });
+          router.push(`/messages/${conversationId}`);
+      } catch (error) {
+          console.error("Chat error", error);
+          alert("Could not start chat.");
+      } finally {
+          setActionLoading(false);
+      }
+  };
+
+  // 2. MATING REQUEST
   const sendMatingRequest = async () => {
     if (!user) return alert("Login first");
     if (user.uid === pet.ownerId) return alert("Cannot request your own pet.");
@@ -177,10 +212,11 @@ export default function PetDetailPage() {
     }
   };
 
+  // 3. ADOPTION REQUEST
   const handleAdoptionSubmit = async (e) => {
     e.preventDefault();
     if (!user) return router.push("/Login");
-    setAdoptLoading(true);
+    setActionLoading(true);
 
     const answers = [
       { question: "Housing Type", answer: adoptForm.housing },
@@ -214,7 +250,7 @@ export default function PetDetailPage() {
     } catch (err) {
       console.error(err);
     } finally {
-      setAdoptLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -287,7 +323,6 @@ export default function PetDetailPage() {
   // --- VIEW LOGIC ---
   const isOwner = user && user.uid === pet.ownerId;
   const isAdoptionListing = pet.listingType === "Adoption";
-  const canSendRequest = pet.verificationStatus === "verified" && requesterPets.length > 0;
   const hasPendingAdoptionRequest = pet.adoptionRequests?.some(
     (req) => req.requesterId === user?.uid && req.status === "pending"
   );
@@ -300,11 +335,11 @@ export default function PetDetailPage() {
   return (
     <div className="min-h-screen bg-[#E2F4EF] pb-20">
         
-      {/* --- MODAL: FULLSCREEN IMAGE (LIGHTBOX) --- */}
+      {/* --- IMAGE MODAL --- */}
       {showImageModal && pet.imageUrls?.[0] && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-200" onClick={() => setShowImageModal(false)}>
             <button onClick={() => setShowImageModal(false)} className="absolute top-6 right-6 text-white/80 hover:text-white text-4xl font-bold z-10 transition-colors">
-                &times;
+                ×
             </button>
             <div className="relative w-full h-full max-w-6xl max-h-[90vh] p-4">
                 <Image 
@@ -318,7 +353,7 @@ export default function PetDetailPage() {
         </div>
       )}
         
-      {/* --- MODAL: ADOPTION APPLICATION --- */}
+      {/* --- ADOPTION MODAL --- */}
       {showAdoptionModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl animate-in fade-in zoom-in max-h-[90vh] overflow-y-auto border border-white/20">
@@ -355,18 +390,18 @@ export default function PetDetailPage() {
                 <label className="block mb-1 text-xs font-bold text-gray-500 uppercase tracking-wider">Vet Contact (Optional)</label>
                 <input type="text" className="input-field" placeholder="Name & Phone" value={adoptForm.vetContact} onChange={(e) => setAdoptForm({...adoptForm, vetContact: e.target.value})} />
               </div>
-              <button type="submit" disabled={adoptLoading} className="auth-btn mt-4 shadow-lg">{adoptLoading ? "Sending..." : "Submit Application"}</button>
+              <button type="submit" disabled={actionLoading} className="auth-btn mt-4 shadow-lg">{actionLoading ? "Sending..." : "Submit Application"}</button>
             </form>
           </div>
         </div>
       )}
 
-      {/* --- MODAL: AI ADVISOR --- */}
+      {/* --- AI ADVISOR MODAL (Updated with Markdown) --- */}
       {showAdvisorModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-white rounded-[2rem] w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden border-4 border-purple-50">
+            <div className="bg-white rounded-[2rem] w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden border-4 border-purple-50 animate-in zoom-in-95">
                 <div className="p-5 bg-gradient-to-r from-purple-600 to-indigo-600 flex justify-between items-center text-white shadow-md shrink-0">
-                    <h2 className="font-bold text-lg flex items-center gap-2"><span>🧬</span> Genetic Advisor</h2>
+                    <h2 className="font-bold text-lg flex items-center gap-2"><span>🧬</span> AI Genetic Advisor</h2>
                     <button onClick={() => setShowAdvisorModal(false)} className="text-2xl hover:text-gray-200 transition-colors">×</button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50/50">
@@ -388,7 +423,23 @@ export default function PetDetailPage() {
                     <div className="space-y-4">
                         {chatHistory.map((msg, i) => (
                             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-purple-600 text-white rounded-br-none' : 'bg-white border border-gray-200 rounded-bl-none text-gray-700'}`}>{msg.text}</div>
+                                <div className={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-purple-600 text-white rounded-br-none' : 'bg-white border border-gray-200 rounded-bl-none text-gray-700'}`}>
+                                    {/* Use ReactMarkdown for AI responses to parse bold text properly */}
+                                    {msg.role === 'model' ? (
+                                        <ReactMarkdown 
+                                            components={{
+                                                strong: ({node, ...props}) => <span className="font-bold text-gray-900" {...props} />,
+                                                ul: ({node, ...props}) => <ul className="list-disc pl-5 my-2" {...props} />,
+                                                li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                                                p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />
+                                            }}
+                                        >
+                                            {msg.text}
+                                        </ReactMarkdown>
+                                    ) : (
+                                        msg.text
+                                    )}
+                                </div>
                             </div>
                         ))}
                         {chatLoading && (
@@ -487,32 +538,6 @@ export default function PetDetailPage() {
                             <span className="text-2xl">✨</span> Personality Profile
                         </h3>
                         <p className="text-lg text-gray-600 italic leading-relaxed">"{pet.aiProfileString}"</p>
-                    </div>
-                )}
-
-                {/* Pedigree Tree */}
-                {pedigree && (
-                    <div className="bg-white/80 backdrop-blur-xl p-8 rounded-[2.5rem] shadow-sm border border-white animate-in fade-in duration-700 delay-100">
-                        <h3 className="text-xl font-extrabold text-[#333333] mb-8">Family Tree 🌳</h3>
-                        <div className="grid grid-cols-2 gap-8 relative">
-                            {/* Connector Line */}
-                            <div className="absolute left-1/2 top-12 bottom-12 w-px bg-gray-300 -ml-px border-l border-dashed border-gray-300"></div>
-                            
-                            <div className="space-y-8">
-                                <PedigreeCard pet={pedigree.sire} title="Father" />
-                                <div className="pl-6 border-l-2 border-dashed border-gray-200 space-y-4">
-                                    <PedigreeCard pet={pedigree.sire?.sire} title="Grand-Father" />
-                                    <PedigreeCard pet={pedigree.sire?.dam} title="Grand-Mother" />
-                                </div>
-                            </div>
-                            <div className="space-y-8">
-                                <PedigreeCard pet={pedigree.dam} title="Mother" />
-                                <div className="pl-6 border-l-2 border-dashed border-gray-200 space-y-4">
-                                    <PedigreeCard pet={pedigree.dam?.sire} title="Grand-Father" />
-                                    <PedigreeCard pet={pedigree.dam?.dam} title="Grand-Mother" />
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 )}
 
@@ -638,6 +663,29 @@ export default function PetDetailPage() {
                             </div>
                         )}
                     </div>
+
+                    {/* --- NEW: CONTACT OWNER SECTION --- */}
+                    {!isOwner && (
+                        <div className="bg-white/90 backdrop-blur-sm p-6 rounded-[2.5rem] shadow-md border border-gray-100">
+                            <h3 className="font-extrabold text-gray-800 mb-4 flex items-center gap-2">
+                                <span>💬</span> Contact Owner
+                            </h3>
+                            <textarea
+                                value={quickMessage}
+                                onChange={(e) => setQuickMessage(e.target.value)}
+                                placeholder={`Say hi to ${pet.name}'s owner...`}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm mb-3 resize-none outline-none focus:border-[#4A90E2] focus:bg-white transition-all"
+                                rows={2}
+                            />
+                            <button 
+                                onClick={handleStartChat}
+                                disabled={actionLoading}
+                                className="w-full py-3 bg-[#333333] text-white font-bold rounded-xl shadow-lg hover:bg-black transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95"
+                            >
+                                {actionLoading ? "Connecting..." : "Send Message & Chat"}
+                            </button>
+                        </div>
+                    )}
 
                     {/* Certificate Download (If Adopted) */}
                     {isAdopted && amINewOwner && (

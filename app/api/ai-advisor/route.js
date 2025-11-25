@@ -3,69 +3,69 @@ import { textModel } from "../../lib/gemini";
 import connectDB from "../../lib/mongodb";
 import Pet from "../../models/PetModel";
 
+// Helper to resolve lineage name
+const getParentName = async (id, nameStr) => {
+    if (id) {
+        const p = await Pet.findById(id).select('name').lean();
+        return p ? p.name : (nameStr || "Unknown");
+    }
+    return nameStr || "Unknown";
+};
+
 export async function POST(req) {
   try {
     await connectDB();
-    // petA = User's Pet (The requester)
-    // petB = Target Pet (The profile being viewed)
     const { petAId, petBId } = await req.json();
 
-    if (!petAId || !petBId) {
-      return new Response(JSON.stringify({ error: "Both pet IDs are required" }), { status: 400 });
-    }
+    if (!petAId || !petBId) return new Response(JSON.stringify({ error: "IDs required" }), { status: 400 });
 
     const petA = await Pet.findById(petAId);
     const petB = await Pet.findById(petBId);
 
-    if (!petA || !petB) {
-      return new Response(JSON.stringify({ error: "Pets not found" }), { status: 404 });
-    }
+    if (!petA || !petB) return new Response(JSON.stringify({ error: "Pets not found" }), { status: 404 });
 
-    // --- 1. Construct Data for AI ---
+    // --- RESOLVE LINEAGE ---
+    const petASire = await getParentName(petA.sireId, petA.sireName);
+    const petADam = await getParentName(petA.damId, petA.damName);
+    
+    const petBSire = await getParentName(petB.sireId, petB.sireName);
+    const petBDam = await getParentName(petB.damId, petB.damName);
+
+    // --- CONSTRUCT DATA ---
     const inputData = `
-      **Pet A (Potential Parent 1):**
-      - Name: ${petA.name}
-      - Breed: ${petA.breed}
-      - Temperament: ${petA.temperament}
-      - Energy: ${petA.energyLevel}
-      - Profile Description: "${petA.aiProfileString || 'N/A'}"
-      - MEDICAL HISTORY: "${petA.medicalHistoryLog || 'None recorded'}"
+      **Pet A (Your Pet):**
+      - Name: ${petA.name} (${petA.breed})
+      - Lineage: Sire: ${petASire}, Dam: ${petADam}
+      - Medical History: "${petA.medicalHistoryLog || 'None'}"
 
-      **Pet B (Potential Parent 2):**
-      - Name: ${petB.name}
-      - Breed: ${petB.breed}
-      - Temperament: ${petB.temperament}
-      - Energy: ${petB.energyLevel}
-      - Profile Description: "${petB.aiProfileString || 'N/A'}"
-      - MEDICAL HISTORY: "${petB.medicalHistoryLog || 'None recorded'}"
+      **Pet B (Potential Mate):**
+      - Name: ${petB.name} (${petB.breed})
+      - Lineage: Sire: ${petBSire}, Dam: ${petBDam}
+      - Medical History: "${petB.medicalHistoryLog || 'None'}"
     `;
 
-    // --- 2. Ask AI for Mating Advice + Image Prompt ---
     const prompt = `
-      Analyze the compatibility of these two pets for mating.
-      Consider their breeds, temperaments, AND explicitly check their **Medical History** for any red flags or positive notes (e.g. past surgeries, recurring issues).
-
-      Tasks:
-      1. Write a "Mating Compatibility Report" (3-4 sentences). Mention specific medical history if relevant.
-      2. Generate a detailed "Image Prompt" to visualize their potential puppy/kitten using an AI image generator. Describe the fur color, ears, and size.
-
-      Respond ONLY in JSON:
-      {
-        "analysis": "...",
-        "imagePrompt": "..."
-      }
+      Analyze mating compatibility.
       
-      Input Data:
-      ${inputData}
+      **CRITICAL: LINEAGE CHECK**
+      - Check the Sire and Dam names for both pets.
+      - If names are "Unknown", explicitly state this as a risk factor for genetic history.
+      - If names are present, mention that lineage is tracked.
+      
+      Tasks:
+      1. Write a "Mating Compatibility Report" (3-4 sentences). 
+      2. Generate an "Image Prompt" for the offspring.
+
+      Respond ONLY in JSON: { "analysis": "...", "imagePrompt": "..." }
+      
+      Input: ${inputData}
     `;
 
     const result = await textModel.generateContent(prompt);
     const responseText = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
     const aiData = JSON.parse(responseText);
 
-    // --- 3. Generate Image URL (Pollinations.ai - Free) ---
-    // We encode the prompt to be URL safe
-    const encodedPrompt = encodeURIComponent(aiData.imagePrompt + " photorealistic, cute, 8k, cinematic lighting");
+    const encodedPrompt = encodeURIComponent(aiData.imagePrompt + " photorealistic, cute, 8k");
     const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true`;
 
     return new Response(JSON.stringify({
