@@ -9,39 +9,37 @@ export async function POST(req) {
     const base64Data = imageUrl.split(",")[1]; 
     const imagePart = { inlineData: { data: base64Data, mimeType: mimeType || "image/jpeg" } };
 
-    // --- IMPROVED PROMPT START ---
+    // --- STRICT PROMPT FOR HUMAN DETECTION ---
     const prompt = `
-      Analyze this image and identify the pet.
-      
-      Your Goal: Return a valid JSON object describing the pet.
-      
-      Fields:
-      1. "type": Strictly choose one of these values: ["Dog", "Cat", "Rabbit", "Bird", "Other"]. 
-      2. "breed": Identify the specific breed (e.g., "Pug", "Persian", "Parrot"). 
-         - If it looks like a mixed breed, just return the dominant breed or "Mixed".
-         - If the type is "Other" (e.g. Hamster, Turtle), put the animal name here (e.g. "Hamster").
+      Analyze this image carefully.
 
-      Format:
-      Respond ONLY with the JSON object. Do not include Markdown formatting (like \`\`\`json).
+      **STEP 1: SAFETY CHECK (CRITICAL)**
+      - Does this image contain a human being (face, body, selfie, or person holding the pet)?
+      - If YES, return ONLY: { "isHuman": true }
       
-      Example Response:
-      { "type": "Dog", "breed": "Golden Retriever" }
+      **STEP 2: PET IDENTIFICATION**
+      - If NO humans are present, identify the pet.
+      - "type": Choose from ["Dog", "Cat", "Rabbit", "Bird", "Other"].
+      - "breed": Identify the specific breed (e.g., "Pug", "Persian").
+
+      **Response Format**:
+      Return ONLY a valid JSON object. Do not use Markdown code blocks.
+      
+      Examples:
+      - Human detected: { "isHuman": true }
+      - Valid Pet: { "isHuman": false, "type": "Dog", "breed": "Golden Retriever" }
     `;
-    // --- IMPROVED PROMPT END ---
 
     const result = await visionModel.generateContent([prompt, imagePart]);
     const response = await result.response;
     
-    // Clean up any potential markdown formatting the AI might still add
     let text = response.text().replace(/```json/g, "").replace(/```/g, "").trim();
+    const data = JSON.parse(text);
     
-    // Ensure it parses as JSON; if not, throw error to catch block
-    JSON.parse(text); 
-    
-    return new Response(text, { status: 200 });
+    return new Response(JSON.stringify(data), { status: 200 });
+
   } catch (err) {
     console.error("Gemini Analysis Error:", err);
-    // Fallback JSON if AI fails
     return new Response(JSON.stringify({ type: "Other", breed: "Unknown" }), { status: 200 });
   }
 }

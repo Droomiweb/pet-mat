@@ -3,25 +3,29 @@ import { textModel } from "../../lib/gemini";
 
 export async function POST(req) {
   try {
-    // 1. Accept petBreed from the request
     const { petName, petType, petBreed } = await req.json();
 
     if (!petName || !petType) {
       return new Response(JSON.stringify({ error: "Pet name and type are required" }), { status: 400 });
     }
 
-    // 2. Update prompt to include the breed for better context
-    const prompt = `Generate a list of exactly 10 engaging, open-ended questions for a pet owner to build a personality profile for their ${petBreed || ''} ${petType} named '${petName}' for a pet matrimony app. 
-    
-    The questions should be specific to the behavior and traits common to a ${petBreed || petType}. Cover temperament, energy, social habits, quirks, and preferences. 
-    
-    Respond *only* with a valid JSON object in the format: {"questions": ["..."]}`;
+    const prompt = `
+      Generate exactly 10 short, simple, and engaging questions for a pet owner to build a profile for their ${petBreed || ''} ${petType} named '${petName}'.
+      
+      **Structure:**
+      1. **Questions 1-5**: Focus on **Nature & Personality** (e.g., "Is ${petName} shy or bold?", "How does ${petName} greet strangers?").
+      2. **Questions 6-10**: Focus on **Toys, Fun & Food** (e.g., "What is ${petName}'s absolute favorite treat?", "Does ${petName} destroy toys or cuddle them?").
+      
+      **Tone**: Friendly, easy to answer, and conversational.
+      
+      **Output Format**:
+      Respond *only* with a valid JSON object:
+      { "questions": ["Question 1", "Question 2", ..., "Question 10"] }
+    `;
 
     const result = await textModel.generateContent(prompt);
     const response = await result.response;
-    let text = response.text();
-    
-    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    let text = response.text().replace(/```json/g, "").replace(/```/g, "").trim();
     
     const data = JSON.parse(text);
 
@@ -33,21 +37,21 @@ export async function POST(req) {
 
   } catch (err) {
     console.error("Error generating questions:", err);
-    // Fallback questions (Generic)
+    // Fallback questions
     const fallback = {
         questions: [
-            `What is ${petName}'s favorite toy or activity?`,
-            `How does ${petName} react to new people?`,
-            `Describe ${petName}'s energy level: are they very active or mostly calm?`,
-            `How does ${petName} behave around other animals?`,
+            `How would you describe ${petName}'s personality in one sentence?`,
+            `Is ${petName} usually calm or very energetic?`,
+            `How does ${petName} react to meeting new people?`,
+            `Does ${petName} get along well with other animals?`,
             `What is a funny quirk or habit ${petName} has?`,
-            `Does ${petName} enjoy cuddling or prefer personal space?`,
-            `What is ${petName}'s daily routine like?`,
-            `Is ${petName} more of an indoor or outdoor pet?`,
-            `What's ${petName}'s favorite snack?`,
-            `How would you describe ${petName}'s personality in three words?`
+            `What is ${petName}'s favorite toy?`,
+            `What game does ${petName} love playing the most?`,
+            `What is the one treat ${petName} would do anything for?`,
+            `Does ${petName} have a favorite sleeping spot?`,
+            `What kind of food does ${petName} enjoy the most?`
         ]
     };
-    return new Response(JSON.stringify(fallback), { status: 500 });
+    return new Response(JSON.stringify(fallback), { status: 200 }); 
   }
 }

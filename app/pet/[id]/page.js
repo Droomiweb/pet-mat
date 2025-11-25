@@ -4,10 +4,12 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { auth } from "../../lib/firebase";
 import Link from "next/link";
+import Image from "next/image"; // Added Image optimization
 import { createConversationId } from "../../lib/chatUtils";
-import DownloadCertificate from "../../components/DownloadCertificate"; // <-- NEW IMPORT
+import DownloadCertificate from "../../components/DownloadCertificate"; 
 
-// --- Helper Component: DNA Loading ---
+// --- UI SUB-COMPONENTS ---
+
 const DNALoading = () => (
   <div className="flex flex-col items-center justify-center py-4">
     <div className="flex space-x-2 animate-pulse mb-2">
@@ -19,43 +21,37 @@ const DNALoading = () => (
   </div>
 );
 
-// --- Helper Component: Pedigree Card ---
-function PedigreeCard({ pet, title }) {
-  if (!pet) {
-    return (
-      <div className="p-3 text-center bg-gray-50 rounded-lg shadow-inner">
-        <p className="font-bold text-gray-500">{title}</p>
-        <p className="text-sm text-gray-400">Unknown</p>
-      </div>
-    );
-  }
-  return (
-    <Link
-      href={`/pet/${pet._id}`}
-      className="block p-3 bg-white rounded-lg shadow-md hover:shadow-lg hover:scale-105 transition-transform"
-    >
-      <p className="font-bold text-[#4A90E2]">{title}</p>
-      <div className="flex items-center gap-3 mt-2">
-        <img
-          src={pet.imageUrls?.[0] || "/imgs/profile.jpg"}
-          alt={pet.name}
-          className="w-12 h-12 border-2 border-[#50E3C2] rounded-full object-cover"
-        />
-        <div>
-          <p className="font-semibold text-primary">{pet.name}</p>
-          <p className="text-sm text-gray-600">{pet.breed}</p>
+const FeaturePill = ({ icon, label, value, color }) => (
+    <div className={`flex items-center gap-2 px-4 py-3 rounded-2xl border shadow-sm transition-transform hover:scale-105 ${color ? color : 'bg-white border-gray-100 text-gray-600'}`}>
+        <span className="text-xl">{icon}</span>
+        <div className="flex flex-col leading-none">
+            <span className="text-[10px] font-bold uppercase opacity-60 tracking-wider mb-1">{label}</span>
+            <span className="font-bold text-sm">{value || 'N/A'}</span>
         </div>
-      </div>
+    </div>
+);
+
+const PedigreeCard = ({ pet, title }) => (
+    <Link href={pet ? `/pet/${pet._id}` : '#'} className={`block p-4 rounded-2xl border transition-all duration-300 ${pet ? 'bg-white border-gray-100 hover:border-[#4A90E2] hover:shadow-lg hover:-translate-y-1 cursor-pointer' : 'bg-gray-50 border-transparent cursor-default opacity-60'}`}>
+        <p className="text-xs font-bold text-[#4A90E2] uppercase tracking-wider mb-3">{title}</p>
+        <div className="flex items-center gap-3">
+            <div className="relative w-12 h-12 rounded-full bg-gray-200 overflow-hidden shrink-0 border-2 border-gray-100 shadow-sm">
+                {pet ? <Image src={pet.imageUrls?.[0] || "/imgs/profile.jpg"} alt={pet.name} fill className="object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">?</div>}
+            </div>
+            <div>
+                <p className="font-extrabold text-sm text-gray-800 leading-tight">{pet ? pet.name : "Unknown"}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{pet ? pet.breed : "-"}</p>
+            </div>
+        </div>
     </Link>
-  );
-}
+);
 
 export default function PetDetailPage() {
   const [pet, setPet] = useState(null);
   const [pedigree, setPedigree] = useState(null);
-  const [newMessage, setNewMessage] = useState(""); // Used for mating message
+  const [newMessage, setNewMessage] = useState(""); 
 
-  // --- NEW: ADOPTION FORM STATES ---
+  // --- ADOPTION FORM STATES ---
   const [showAdoptionModal, setShowAdoptionModal] = useState(false);
   const [adoptForm, setAdoptForm] = useState({
     housing: "Apartment",
@@ -67,7 +63,7 @@ export default function PetDetailPage() {
   });
   const [adoptLoading, setAdoptLoading] = useState(false);
 
-  // --- AI CHAT ADVISOR STATES ---
+  // --- AI ADVISOR STATES ---
   const [requesterPets, setRequesterPets] = useState([]);
   const [requesterPetId, setRequesterPetId] = useState("");
   const [showAdvisorModal, setShowAdvisorModal] = useState(false);
@@ -78,31 +74,30 @@ export default function PetDetailPage() {
   const [generatedImage, setGeneratedImage] = useState(null);
   const [imageLoading, setImageLoading] = useState(false);
 
+  // --- NEW: IMAGE MODAL STATE ---
+  const [showImageModal, setShowImageModal] = useState(false);
+
   const chatEndRef = useRef(null);
   const params = useParams();
   const router = useRouter();
   const user = auth.currentUser;
 
-  // --- Helpers ---
-  const handleStartChat = () => {
-    if (!user) return router.push("/Login");
-    if (!pet) return;
-    const conversationId = createConversationId(pet._id, user.uid, pet.ownerId);
-    router.push(`/messages/${conversationId}`);
-  };
-
+  // --- HELPERS ---
   const getStatusBadge = (status) => {
     switch (status) {
-      case "verified":
-        return "bg-green-100 text-green-700 border-green-400";
-      case "rejected":
-        return "bg-red-100 text-red-700 border-red-400";
-      default:
-        return "bg-yellow-100 text-yellow-700 border-yellow-400";
+      case "verified": return "bg-green-100 text-green-700 border-green-200";
+      case "rejected": return "bg-red-100 text-red-700 border-red-200";
+      default: return "bg-yellow-100 text-yellow-700 border-yellow-200";
     }
   };
 
-  // --- Data Fetching ---
+  const handleViewLocation = () => {
+    if (!pet.ownerLocation?.coordinates) return alert("Location unavailable.");
+    const [lng, lat] = pet.ownerLocation.coordinates;
+    window.open(`https://www.google.com/maps?q=${lat},${lng}`, "_blank");
+  };
+
+  // --- DATA FETCHING ---
   const fetchPet = async () => {
     try {
       const res = await fetch(`/api/pet/${params.id}`);
@@ -137,7 +132,8 @@ export default function PetDetailPage() {
           (p) =>
             p.type === petType &&
             p.gender !== petGender &&
-            p.listingType === "Mating"
+            p.listingType === "Mating" &&
+            !p.isPregnant
         );
         setRequesterPets(compatiblePets);
         if (compatiblePets.length === 1) setRequesterPetId(compatiblePets[0]._id);
@@ -147,15 +143,13 @@ export default function PetDetailPage() {
     }
   };
 
-  // --- Actions ---
+  // --- ACTION HANDLERS ---
   const sendMatingRequest = async () => {
     if (!user) return alert("Login first");
     if (user.uid === pet.ownerId) return alert("Cannot request your own pet.");
-    if (pet.verificationStatus !== "verified")
-      return alert("This pet's certificate is not yet verified.");
+    if (pet.verificationStatus !== "verified") return alert("This pet's certificate is not verified.");
 
-    const selectedRequesterPetId =
-      requesterPets.length === 1 ? requesterPets[0]._id : requesterPetId;
+    const selectedRequesterPetId = requesterPets.length === 1 ? requesterPets[0]._id : requesterPetId;
     if (!selectedRequesterPetId) return alert("Please select your pet.");
 
     const selectedPet = requesterPets.find((p) => p._id === selectedRequesterPetId);
@@ -188,7 +182,6 @@ export default function PetDetailPage() {
     if (!user) return router.push("/Login");
     setAdoptLoading(true);
 
-    // Prepare the QA array
     const answers = [
       { question: "Housing Type", answer: adoptForm.housing },
       { question: "Has Yard/Outdoor Space?", answer: adoptForm.yard },
@@ -205,8 +198,8 @@ export default function PetDetailPage() {
           action: "adoptionRequest",
           requesterId: user.uid,
           requesterName: user.email.split("@")[0],
-          messageText: adoptForm.reason, // Main reason is the 'message'
-          answers: answers, // Send structured data
+          messageText: adoptForm.reason,
+          answers: answers,
         }),
       });
 
@@ -225,25 +218,15 @@ export default function PetDetailPage() {
     }
   };
 
-  const handleViewLocation = () => {
-    if (!pet.ownerLocation?.coordinates)
-      return alert("Location unavailable.");
-    const [lng, lat] = pet.ownerLocation.coordinates;
-    window.open(`https://www.google.com/maps?q=${lat},${lng}`, "_blank");
-  };
-
-  // --- AI Advisor Handlers ---
+  // --- AI ADVISOR HANDLERS ---
   const openAiAdvisor = () => {
-    if (!requesterPetId && requesterPets.length !== 1)
-      return alert("Select your pet first.");
+    if (!requesterPetId && requesterPets.length !== 1) return alert("Select your pet first.");
     setShowAdvisorModal(true);
     if (chatHistory.length === 0) {
-      setChatHistory([
-        {
+      setChatHistory([{
           role: "model",
           text: `Hello! I'm Dr. Paws. How can I help compare ${pet.name} with your pet?`,
-        },
-      ]);
+        }]);
     }
   };
 
@@ -268,21 +251,15 @@ export default function PetDetailPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setChatHistory((prev) => [
-          ...prev,
-          { role: "model", text: data.text },
-        ]);
+        setChatHistory((prev) => [...prev, { role: "model", text: data.text }]);
         setGeminiHistory((prev) => [
           ...prev.slice(-10),
           { role: "user", parts: [{ text: userMsg }] },
           { role: "model", parts: [{ text: data.text }] },
         ]);
       }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setChatLoading(false);
-    }
+    } catch (err) { console.error(err); } 
+    finally { setChatLoading(false); }
   };
 
   const generateOffspringImage = async () => {
@@ -297,681 +274,384 @@ export default function PetDetailPage() {
       });
       const data = await res.json();
       if (res.ok) setGeneratedImage(data.imageUrl);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setImageLoading(false);
-    }
+    } catch (err) { console.error(err); } 
+    finally { setImageLoading(false); }
   };
 
-  useEffect(() => {
-    fetchPet();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.id, user?.uid]);
+  // --- EFFECTS ---
+  useEffect(() => { fetchPet(); }, [params.id, user?.uid]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory]);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatHistory]);
+  if (!pet) return <div className="min-h-screen flex items-center justify-center bg-[#E2F4EF]"><div className="w-12 h-12 border-4 border-[#4A90E2] border-t-transparent rounded-full animate-spin"></div></div>;
 
-  if (!pet) return <p className="mt-20 text-center">Loading...</p>;
-
+  // --- VIEW LOGIC ---
   const isOwner = user && user.uid === pet.ownerId;
-  const genderColor =
-    pet.gender === "Male"
-      ? "bg-blue-200 text-blue-800"
-      : "bg-pink-200 text-pink-800";
   const isAdoptionListing = pet.listingType === "Adoption";
-  const canSendRequest =
-    pet.verificationStatus === "verified" && requesterPets.length > 0;
+  const canSendRequest = pet.verificationStatus === "verified" && requesterPets.length > 0;
   const hasPendingAdoptionRequest = pet.adoptionRequests?.some(
     (req) => req.requesterId === user?.uid && req.status === "pending"
   );
-
-  // --- NEW: Adoption status + new owner check ---
   const isAdopted = !!pet.adoptionLog?.newOwnerId;
-  const amINewOwner =
-    isAdopted && user && user.uid === pet.adoptionLog?.newOwnerId;
+  const amINewOwner = isAdopted && user && user.uid === pet.adoptionLog?.newOwnerId;
+  const showAdvisorButton = !isOwner && !isAdoptionListing && requesterPets.length > 0;
 
-  // Determine if advisor button should be shown
-  const showAdvisorButton =
-    !isOwner && !isAdoptionListing && requesterPets.length > 0;
+  const genderColor = pet.gender === "Male" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-pink-50 text-pink-700 border-pink-200";
 
   return (
-    <div className="relative min-h-screen p-4 bg-[#F4F7F9] md:p-10">
-      {/* --- ADOPTION APPLICATION MODAL (NEW) --- */}
-      {showAdoptionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl animate-in fade-in zoom-in overflow-y-auto max-h-[90vh]">
-            <div className="flex items-center justify-between mb-6 border-b pb-2">
-              <h2 className="text-2xl font-bold text-[#333333]">
-                Adoption Application
-              </h2>
-              <button
-                onClick={() => setShowAdoptionModal(false)}
-                className="text-3xl text-gray-400"
-              >
-                ×
-              </button>
+    <div className="min-h-screen bg-[#E2F4EF] pb-20">
+        
+      {/* --- MODAL: FULLSCREEN IMAGE (LIGHTBOX) --- */}
+      {showImageModal && pet.imageUrls?.[0] && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-200" onClick={() => setShowImageModal(false)}>
+            <button onClick={() => setShowImageModal(false)} className="absolute top-6 right-6 text-white/80 hover:text-white text-4xl font-bold z-10 transition-colors">
+                &times;
+            </button>
+            <div className="relative w-full h-full max-w-6xl max-h-[90vh] p-4">
+                <Image 
+                    src={pet.imageUrls[0]} 
+                    alt={pet.name} 
+                    fill 
+                    className="object-contain" 
+                    priority
+                />
             </div>
-
+        </div>
+      )}
+        
+      {/* --- MODAL: ADOPTION APPLICATION --- */}
+      {showAdoptionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl animate-in fade-in zoom-in max-h-[90vh] overflow-y-auto border border-white/20">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-extrabold text-gray-800">Adoption Form</h2>
+              <button onClick={() => setShowAdoptionModal(false)} className="text-2xl text-gray-400 hover:text-gray-600 transition-colors">×</button>
+            </div>
             <form onSubmit={handleAdoptionSubmit} className="space-y-4">
               <div>
-                <label className="block mb-1 text-sm font-bold text-gray-700">
-                  Why do you want to adopt {pet.name}?
-                </label>
-                <textarea
-                  required
-                  className="input-style w-full h-24"
-                  placeholder="Tell us about yourself and why you are a good match..."
-                  value={adoptForm.reason}
-                  onChange={(e) =>
-                    setAdoptForm({ ...adoptForm, reason: e.target.value })
-                  }
-                />
+                <label className="block mb-1 text-xs font-bold text-gray-500 uppercase tracking-wider">Why do you want to adopt?</label>
+                <textarea required className="input-field h-32 resize-none" placeholder="Tell us about your home..." value={adoptForm.reason} onChange={(e) => setAdoptForm({...adoptForm, reason: e.target.value})} />
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block mb-1 text-sm font-bold text-gray-700">
-                    Housing
-                  </label>
-                  <select
-                    className="input-style w-full"
-                    value={adoptForm.housing}
-                    onChange={(e) =>
-                      setAdoptForm({ ...adoptForm, housing: e.target.value })
-                    }
-                  >
-                    <option>Apartment</option>
-                    <option>House</option>
-                    <option>Farm</option>
-                  </select>
+                    <label className="block mb-1 text-xs font-bold text-gray-500 uppercase tracking-wider">Housing</label>
+                    <select className="input-field" value={adoptForm.housing} onChange={(e) => setAdoptForm({...adoptForm, housing: e.target.value})}><option>Apartment</option><option>House</option><option>Farm</option></select>
                 </div>
                 <div>
-                  <label className="block mb-1 text-sm font-bold text-gray-700">
-                    Has Yard?
-                  </label>
-                  <select
-                    className="input-style w-full"
-                    value={adoptForm.yard}
-                    onChange={(e) =>
-                      setAdoptForm({ ...adoptForm, yard: e.target.value })
-                    }
-                  >
-                    <option>No</option>
-                    <option>Yes, Fenced</option>
-                    <option>Yes, Unfenced</option>
-                  </select>
+                    <label className="block mb-1 text-xs font-bold text-gray-500 uppercase tracking-wider">Yard?</label>
+                    <select className="input-field" value={adoptForm.yard} onChange={(e) => setAdoptForm({...adoptForm, yard: e.target.value})}><option>No</option><option>Yes, Fenced</option><option>Yes, Unfenced</option></select>
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block mb-1 text-sm font-bold text-gray-700">
-                    Other Pets?
-                  </label>
-                  <select
-                    className="input-style w-full"
-                    value={adoptForm.otherPets}
-                    onChange={(e) =>
-                      setAdoptForm({ ...adoptForm, otherPets: e.target.value })
-                    }
-                  >
-                    <option>No</option>
-                    <option>Yes</option>
-                  </select>
+                    <label className="block mb-1 text-xs font-bold text-gray-500 uppercase tracking-wider">Other Pets?</label>
+                    <select className="input-field" value={adoptForm.otherPets} onChange={(e) => setAdoptForm({...adoptForm, otherPets: e.target.value})}><option>No</option><option>Yes</option></select>
                 </div>
                 <div>
-                  <label className="block mb-1 text-sm font-bold text-gray-700">
-                    Hours Alone (Daily)
-                  </label>
-                  <input
-                    type="number"
-                    className="input-style w-full"
-                    required
-                    placeholder="e.g. 4"
-                    value={adoptForm.hoursAlone}
-                    onChange={(e) =>
-                      setAdoptForm({ ...adoptForm, hoursAlone: e.target.value })
-                    }
-                  />
+                    <label className="block mb-1 text-xs font-bold text-gray-500 uppercase tracking-wider">Hours Alone</label>
+                    <input type="number" className="input-field" required placeholder="e.g. 4" value={adoptForm.hoursAlone} onChange={(e) => setAdoptForm({...adoptForm, hoursAlone: e.target.value})} />
                 </div>
               </div>
-
               <div>
-                <label className="block mb-1 text-sm font-bold text-gray-700">
-                  Veterinarian Contact (Optional)
-                </label>
-                <input
-                  type="text"
-                  className="input-style w-full"
-                  placeholder="Name & Phone of Vet"
-                  value={adoptForm.vetContact}
-                  onChange={(e) =>
-                    setAdoptForm({ ...adoptForm, vetContact: e.target.value })
-                  }
-                />
+                <label className="block mb-1 text-xs font-bold text-gray-500 uppercase tracking-wider">Vet Contact (Optional)</label>
+                <input type="text" className="input-field" placeholder="Name & Phone" value={adoptForm.vetContact} onChange={(e) => setAdoptForm({...adoptForm, vetContact: e.target.value})} />
               </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowAdoptionModal(false)}
-                  className="flex-1 py-3 font-bold text-gray-700 bg-gray-200 rounded-xl hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={adoptLoading}
-                  className="flex-1 py-3 font-bold text-white bg-[#4A90E2] rounded-xl hover:bg-[#3A75B9] shadow-lg"
-                >
-                  {adoptLoading ? "Submitting..." : "Submit Application"}
-                </button>
-              </div>
+              <button type="submit" disabled={adoptLoading} className="auth-btn mt-4 shadow-lg">{adoptLoading ? "Sending..." : "Submit Application"}</button>
             </form>
           </div>
         </div>
       )}
 
-      {/* --- AI ADVISOR MODAL --- */}
+      {/* --- MODAL: AI ADVISOR --- */}
       {showAdvisorModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl max-w-2xl w-full h-[85vh] flex flex-col shadow-2xl overflow-hidden border-4 border-purple-100">
-            <div className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-600 to-indigo-600 shrink-0">
-              <h2 className="flex items-center gap-2 text-xl font-bold text-white">
-                🧬 Genetic Mating Advisor
-              </h2>
-              <button
-                onClick={() => setShowAdvisorModal(false)}
-                className="text-2xl text-white"
-              >
-                ×
-              </button>
-            </div>
-            <div className="flex-1 p-4 space-y-4 overflow-y-auto bg-gray-50">
-              <div className="p-4 text-center bg-white rounded-xl shadow-sm border border-purple-100">
-                <h3 className="mb-3 text-sm font-bold text-gray-700">
-                  Predicted Offspring Look
-                </h3>
-                {generatedImage ? (
-                  <div className="relative w-full h-64 overflow-hidden rounded-lg shadow-md group">
-                    <img
-                      src={generatedImage}
-                      alt="Offspring"
-                      className="object-cover w-full h-full transition-transform duration-700 group-hover:scale-105"
-                    />
-                    <button
-                      onClick={generateOffspringImage}
-                      className="absolute bottom-2 right-2 p-2 text-xs font-bold bg-white/90 rounded-full hover:bg-white"
-                    >
-                      🔄 Regenerate
-                    </button>
-                  </div>
-                ) : imageLoading ? (
-                  <DNALoading />
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-32 bg-purple-50 rounded-lg border-2 border-dashed border-purple-200">
-                    <button
-                      onClick={generateOffspringImage}
-                      className="flex items-center gap-2 px-6 py-2 font-bold text-white bg-gradient-to-r from-pink-500 to-purple-600 rounded-full shadow-lg hover:scale-105 transition transform"
-                    >
-                      <span>✨</span> Generate Offspring Image
-                    </button>
-                    <p className="mt-2 text-xs text-gray-500">
-                      AI will predict features based on both parents
-                    </p>
-                  </div>
-                )}
-              </div>
-              {chatHistory.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`flex ${
-                    msg.role === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
-                  <div
-                    className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${
-                      msg.role === "user"
-                        ? "bg-purple-600 text-white rounded-br-none"
-                        : "bg-white text-gray-800 border border-gray-200 rounded-bl-none shadow-sm"
-                    }`}
-                  >
-                    {msg.role === "model" && (
-                      <span className="block mb-1 text-xs font-bold text-purple-600">
-                        Dr. Paws AI
-                      </span>
-                    )}
-                    {msg.text}
-                  </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-white rounded-[2rem] w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden border-4 border-purple-50">
+                <div className="p-5 bg-gradient-to-r from-purple-600 to-indigo-600 flex justify-between items-center text-white shadow-md shrink-0">
+                    <h2 className="font-bold text-lg flex items-center gap-2"><span>🧬</span> Genetic Advisor</h2>
+                    <button onClick={() => setShowAdvisorModal(false)} className="text-2xl hover:text-gray-200 transition-colors">×</button>
                 </div>
-              ))}
-              {chatLoading && (
-                <div className="flex justify-start">
-                  <div className="p-3 bg-white rounded-2xl rounded-bl-none shadow-sm border border-gray-200">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 rounded-full animate-bounce bg-gray-400"></div>
-                      <div className="w-2 h-2 rounded-full animate-bounce delay-75 bg-gray-400"></div>
-                      <div className="w-2 h-2 rounded-full animate-bounce delay-150 bg-gray-400"></div>
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50/50">
+                    {/* Image Gen Area */}
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-purple-100 text-center">
+                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Offspring Prediction</h3>
+                        {generatedImage ? (
+                            <div className="relative w-full h-56 rounded-xl overflow-hidden shadow-md group">
+                                <img src={generatedImage} alt="Offspring" className="object-cover w-full h-full" />
+                                <button onClick={generateOffspringImage} className="absolute bottom-3 right-3 bg-white/90 backdrop-blur-sm px-4 py-1.5 rounded-full text-xs font-bold shadow-sm hover:bg-white transition-all text-purple-600">Regenerate</button>
+                            </div>
+                        ) : imageLoading ? (
+                            <DNALoading />
+                        ) : (
+                            <button onClick={generateOffspringImage} className="px-6 py-3 bg-purple-50 text-purple-600 rounded-xl font-bold text-sm hover:bg-purple-100 transition shadow-sm border border-purple-100">Generate Visual Prediction</button>
+                        )}
                     </div>
-                  </div>
+                    {/* Chat */}
+                    <div className="space-y-4">
+                        {chatHistory.map((msg, i) => (
+                            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-purple-600 text-white rounded-br-none' : 'bg-white border border-gray-200 rounded-bl-none text-gray-700'}`}>{msg.text}</div>
+                            </div>
+                        ))}
+                        {chatLoading && (
+                            <div className="flex justify-start">
+                                <div className="bg-white p-4 rounded-2xl rounded-bl-none border border-gray-200 shadow-sm">
+                                    <div className="flex space-x-1"><div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce delay-75"></div><div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce delay-150"></div></div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <div ref={chatEndRef} />
                 </div>
-              )}
-              <div ref={chatEndRef} />
+                <form onSubmit={handleSendMessage} className="p-4 bg-white border-t border-gray-100 flex gap-3 shrink-0">
+                    <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Ask Dr. Paws about genetics..." className="flex-1 input-field mb-0 bg-gray-50 border-gray-200" />
+                    <button type="submit" disabled={chatLoading} className="bg-purple-600 text-white w-12 h-12 rounded-xl flex items-center justify-center hover:bg-purple-700 transition shadow-lg disabled:opacity-50">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
+                    </button>
+                </form>
             </div>
-            <form
-              onSubmit={handleSendMessage}
-              className="flex gap-2 p-4 bg-white border-t border-gray-200 shrink-0"
-            >
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Ask about lineage, health risks, or compatibility..."
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
-              />
-              <button
-                type="submit"
-                disabled={chatLoading || !chatInput.trim()}
-                className="p-2 text-white bg-purple-600 rounded-full hover:bg-purple-700 disabled:bg-gray-300 transition"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  className="w-6 h-6"
-                >
-                  <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
-                </svg>
-              </button>
-            </form>
-          </div>
         </div>
       )}
 
-      {/* --- MAIN CONTENT --- */}
-      <div className="max-w-4xl p-6 mx-auto bg-white border-t-8 border-[#4A90E2] rounded-2xl shadow-2xl md:p-10">
-        {/* Header Section */}
-        <div className="mb-4">
-          <span
-            className={`font-bold px-4 py-2 rounded-full text-sm uppercase tracking-wider ${
-              isAdoptionListing
-                ? "bg-blue-100 text-blue-700 border-blue-400 border"
-                : "bg-pink-100 text-pink-700 border-pink-400 border"
-            }`}
-          >
-            {pet.listingType}
-          </span>
-        </div>
-
-        {pet.imageUrls?.length > 0 && (
-          <img
-            src={pet.imageUrls[0]}
-            alt={pet.name}
-            className="object-cover w-full h-96 rounded-xl mb-6 shadow-md"
-          />
-        )}
-
-        <h1 className="mb-3 text-4xl font-extrabold text-[#333333]">
-          {pet.name}
-        </h1>
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-4">
-          <p className="text-lg text-[#333333]">
-            Gender:
-            <span
-              className={`font-semibold px-3 py-1 ml-2 rounded-full ${genderColor}`}
-            >
-              {pet.gender}
-            </span>
-          </p>
-          <p className="text-lg text-[#333333]">
-            Verified:
-            <span
-              className={`font-bold px-3 py-1 ml-2 rounded-full text-sm border ${getStatusBadge(
-                pet.verificationStatus
-              )} uppercase tracking-wider`}
-            >
-              {pet.verificationStatus}
-            </span>
-          </p>
-        </div>
-        <p className="text-lg text-[#333333]">Breed: {pet.breed}</p>
-        <p className="mb-4 text-lg text-[#333333]">Age: {pet.age}</p>
-
-        <div className="flex flex-wrap items-center gap-4 mb-6">
-          {pet.certificateUrl && (
-            <a
-              href={pet.certificateUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium underline text-[#4A90E2] hover:text-[#50E3C2] transition"
-            >
-              View Certificate
-            </a>
-          )}
-
-          {pet.ownerLocation?.coordinates &&
-            pet.ownerLocation.coordinates.length > 0 &&
-            !isOwner && (
-              <button
-                onClick={handleViewLocation}
-                className="flex items-center gap-2 px-4 py-2 font-medium text-white bg-[#4A90E2] rounded-lg shadow-md hover:bg-[#3A75B9] transition"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  className="w-5 h-5"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M9.69 18.933l.003.001C9.89 19.02 10 19 10 19s.11.02.308-.066l.002-.001.006-.003.018-.008a5.741 5.741 0 00.281-.14c.186-.096.446-.24.757-.433.62-.384 1.445-.966 2.274-1.765C15.302 14.988 17 12.493 17 10A7 7 0 103 10c0 2.493 1.698 4.988 3.355 6.584a13.733 13.733 0 002.273 1.765 11.842 11.842 0 00.757.433.62.62 0 00.28.14l.018.008.006.003zM10 11.25a1.25 1.25 0 100-2.5 1.25 1.25 0 000 2.5z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                View Owner&apos;s Location
-              </button>
-            )}
-        </div>
-
-        {/* AI Personality Profile Section */}
-        {pet.aiProfileString && (
-          <div className="relative mt-8 mb-8 p-6 bg-gradient-to-r from-[#F4F7F9] to-white rounded-2xl border border-[#4A90E2]/30 shadow-md overflow-hidden">
-            <div className="absolute top-0 left-0 w-2 h-full bg-[#4A90E2]"></div>
-            <div className="flex items-center gap-3 mb-3">
-              <span className="text-2xl">✨</span>
-              <h2 className="text-2xl font-bold text-[#333333]">
-                Personality Profile
-              </h2>
-            </div>
-            <p className="mb-4 text-lg italic leading-relaxed text-gray-700">
-              &quot;{pet.aiProfileString}&quot;
-            </p>
-
-            <div className="flex flex-wrap gap-3">
-              {pet.temperament && (
-                <span className="px-4 py-1 text-sm font-bold bg-white border border-[#4A90E2] rounded-full shadow-sm text-[#4A90E2]">
-                  Temperament: {pet.temperament}
-                </span>
-              )}
-              {pet.energyLevel && (
-                <span className="px-4 py-1 text-sm font-bold bg-white border border-[#FF9A00] rounded-full shadow-sm text-[#FF9A00]">
-                  Energy: {pet.energyLevel}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Pedigree Section */}
-        {pedigree && (pedigree.dam || pedigree.sire) && (
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <h2 className="mb-4 text-2xl font-bold text-[#333333]">Pedigree</h2>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-              <PedigreeCard pet={pedigree.sire} title="Sire (Father)" />
-              <PedigreeCard pet={pedigree.dam} title="Dam (Mother)" />
-              <PedigreeCard
-                pet={pedigree.sire?.sire}
-                title="Grand-Sire (Father's Side)"
-              />
-              <PedigreeCard
-                pet={pedigree.sire?.dam}
-                title="Grand-Dam (Father's Side)"
-              />
-              <PedigreeCard
-                pet={pedigree.dam?.sire}
-                title="Grand-Sire (Mother's Side)"
-              />
-              <PedigreeCard
-                pet={pedigree.dam?.dam}
-                title="Grand-Dam (Mother's Side)"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* --- NEW CERTIFICATE SECTION --- */}
-        {/* Only show if the pet is adopted and I am the new owner */}
-        {isAdopted && amINewOwner && (
-          <div className="mt-8 mb-6 p-6 text-center bg-green-50 border border-green-200 rounded-xl">
-            <h2 className="mb-2 text-2xl font-bold text-green-800">
-              🎉 Adoption Complete!
-            </h2>
-            <p className="mb-4 text-green-700">
-              Congratulations on adopting {pet.name}. You can now download your
-              official adoption certificate.
-            </p>
-            <DownloadCertificate pet={pet} />
-          </div>
-        )}
-
-        {/* Request Action Section */}
-        <div className="mt-8 pt-6 border-t border-gray-200">
-          <h2 className="mb-3 text-2xl font-bold text-[#4A90E2]">
-            {isOwner
-              ? "Owner Dashboard"
-              : isAdoptionListing
-              ? "Adopt This Pet"
-              : "Mating Request"}
-          </h2>
-
-          {isOwner ? (
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-              <p className="mb-2 font-semibold text-[#333333]">
-                This is your pet.
-              </p>
-              <Link
-                href="/Profile"
-                className="font-bold underline text-[#4A90E2]"
-              >
-                Go to Profile to manage requests
-              </Link>
-            </div>
-          ) : pet.isBanned ? (
-            <p className="text-lg font-bold text-red-500">
-              This pet listing is currently banned and cannot receive requests.
-            </p>
-          ) : isAdoptionListing ? (
-            // --- UPDATED: ADOPTION ACTION ---
-            <div className="p-6 text-center bg-blue-50 rounded-xl border border-blue-100">
-              <p className="mb-4 text-lg text-gray-700">
-                Interested in adopting {pet.name}? Please fill out an
-                application.
-              </p>
-              <button
-                onClick={() => setShowAdoptionModal(true)}
-                disabled={hasPendingAdoptionRequest}
-                className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg transition ${
-                  hasPendingAdoptionRequest
-                    ? "bg-green-500 text-white cursor-default"
-                    : "bg-[#4A90E2] hover:bg-[#3A75B9] text-white"
-                }`}
-              >
-                {hasPendingAdoptionRequest
-                  ? "Application Pending Review ✅"
-                  : "Apply for Adoption"}
-              </button>
-              {hasPendingAdoptionRequest && (
-                <p className="mt-2 text-sm font-medium text-green-600">
-                  The owner will review your answers soon.
-                </p>
-              )}
-            </div>
-          ) : (
-            // --- MATING ACTION ---
+      {/* --- HEADER IMAGE & INFO (CLICKABLE FOR LIGHTBOX) --- */}
+      <button 
+          onClick={() => setShowImageModal(true)}
+          className="relative h-[50vh] w-full overflow-hidden block group cursor-zoom-in outline-none"
+      >
+        {pet.imageUrls?.[0] ? (
             <>
-              {requesterPets.length > 0 ? (
-                <div className="space-y-4">
-                  {requesterPets.length > 1 && (
-                    <div className="mb-2">
-                      <label className="block mb-1 text-lg font-semibold text-[#333333]">
-                        Which of your pets is this request for?
-                      </label>
-                      <select
-                        value={requesterPetId}
-                        onChange={(e) => setRequesterPetId(e.target.value)}
-                        className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-[#4A90E2] transition-colors"
-                      >
-                        <option value="">-- Select Your Pet --</option>
-                        {requesterPets.map((p) => (
-                          <option key={p._id} value={p._id}>
-                            {p.name} ({p.gender})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {requesterPets.length === 1 && (
-                    <p className="mb-2 text-sm text-gray-600">
-                      Requesting on behalf of:{" "}
-                      <strong>{requesterPets[0].name}</strong>
-                    </p>
-                  )}
-
-                  <textarea
-                    placeholder="Write an introductory message for the owner..."
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-[#4A90E2] transition-colors"
-                    rows="3"
-                  />
-
-                  <div className="flex flex-col gap-4 sm:flex-row">
-                    <button
-                      onClick={sendMatingRequest}
-                      className={`flex-1 py-3 px-6 rounded-xl font-bold transition shadow-md ${
-                        canSendRequest
-                          ? "bg-[#4A90E2] hover:bg-[#3A75B9] text-white"
-                          : "bg-gray-400 text-gray-700 cursor-not-allowed"
-                      }`}
-                      disabled={!canSendRequest}
-                    >
-                      Send Mating Request
-                    </button>
-
-                    {showAdvisorButton && (
-                      <button
-                        onClick={openAiAdvisor}
-                        className="flex-1 flex items-center justify-center gap-2 py-3 px-6 font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl shadow-lg transition transform hover:from-purple-700 hover:to-indigo-700 hover:scale-[1.02]"
-                      >
-                        <span>🤖</span> Chat with Mating Advisor
-                      </button>
-                    )}
-                  </div>
+                <Image 
+                    src={pet.imageUrls[0]} 
+                    alt={pet.name} 
+                    fill 
+                    className="object-cover transition-transform duration-700 group-hover:scale-105" 
+                    priority 
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#E2F4EF] via-transparent to-transparent pointer-events-none"></div>
+                
+                {/* Hover Hint */}
+                <div className="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                    <span className="bg-black/50 text-white px-4 py-2 rounded-full text-sm font-bold backdrop-blur-md flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" /></svg>
+                        View Full Photo
+                    </span>
                 </div>
-              ) : (
-                <p className="mt-4 font-semibold text-red-500">
-                  You have no registered pets of type {pet.type} with the
-                  opposite gender to request a mating.
-                </p>
-              )}
             </>
-          )}
-        </div>
-
-        {/* --- RESTORED: Message History Section --- */}
-        <div className="mt-8 pt-6 border-t border-gray-200">
-          <h2 className="mb-3 text-2xl font-bold text-[#333333]">
-            Message History
-          </h2>
-          {pet.messages?.length === 0 ? (
-            <p className="text-[#333333]">No messages yet.</p>
-          ) : (
-            <div className="space-y-3 max-h-72 overflow-y-auto pr-2">
-              {pet.messages?.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`p-3 rounded-xl shadow-sm ${
-                    msg.text.startsWith("ADOPTION INQUIRY:")
-                      ? "bg-blue-50 border-l-4 border-blue-400"
-                      : msg.senderId === "system"
-                      ? "bg-yellow-50 border-l-4 border-yellow-400"
-                      : msg.senderId === pet.ownerId
-                      ? "bg-gray-100 border-l-4 border-gray-400"
-                      : "bg-green-50 border-l-4 border-green-400"
-                  }`}
-                >
-                  <p className="flex justify-between text-sm font-bold text-[#4F200D]">
-                    {msg.senderName}
-                    <span className="text-xs font-normal text-gray-500">
-                      {new Date(msg.sentAt).toLocaleString()}
+        ) : (
+            <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-400 font-bold">No Image Available</div>
+        )}
+      </button>
+        
+      {/* Floating Title Card (Outside Button so links work) */}
+      <div className="absolute top-[50vh] -translate-y-full left-0 w-full p-6 md:p-10 pointer-events-none">
+            <div className="max-w-5xl mx-auto flex flex-col md:flex-row md:items-end justify-between gap-4 pointer-events-auto">
+                <div className="animate-in slide-in-from-bottom duration-700">
+                    <span className={`inline-block px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider mb-3 text-white shadow-lg backdrop-blur-md ${pet.listingType === 'Adoption' ? 'bg-blue-500/90' : 'bg-pink-500/90'}`}>
+                        {pet.listingType} Listing
                     </span>
-                  </p>
-                  <p className="mt-1 text-[#333333]">{msg.text}</p>
+                    <h1 className="text-5xl md:text-7xl font-extrabold text-gray-900 mb-3 drop-shadow-sm tracking-tight">{pet.name}</h1>
+                    <div className="flex items-center gap-4 text-gray-700 font-bold text-lg">
+                        <span>{pet.breed}</span>
+                        <span className="w-2 h-2 rounded-full bg-gray-400"></span>
+                        <span>{pet.age} Years Old</span>
+                    </div>
                 </div>
-              ))}
+                
+                {/* Location Action */}
+                {pet.ownerLocation?.coordinates && pet.ownerLocation.coordinates.length > 0 && !isOwner && (
+                    <button onClick={handleViewLocation} className="bg-white/90 backdrop-blur-xl text-[#333333] px-6 py-3 rounded-full font-bold shadow-xl hover:scale-105 transition-transform flex items-center gap-2 text-sm border border-white/50">
+                        <span>📍</span> View Owner Location
+                    </button>
+                )}
             </div>
-          )}
         </div>
 
-        {/* --- RESTORED: History Sections --- */}
-        {!isAdoptionListing && (
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <h2 className="mb-3 text-2xl font-bold text-[#333333]">
-              Mating History
-            </h2>
-            {pet.matingHistory?.length === 0 ? (
-              <p className="text-[#333333]">No mating requests yet.</p>
-            ) : (
-              <ul className="space-y-2 list-disc list-inside">
-                {pet.matingHistory.map((mh, idx) => (
-                  <li
-                    key={idx}
-                    className={`text-[#333333] ${
-                      mh.status === "accepted"
-                        ? "text-green-600 font-medium"
-                        : mh.status === "rejected"
-                        ? "text-red-600"
-                        : "text-gray-600"
-                    }`}
-                  >
-                    {mh.requesterName} ({mh.requesterPetName}) -{" "}
-                    <span className="uppercase">{mh.status}</span> -{" "}
-                    <span className="text-sm italic">
-                      {new Date(mh.requestedAt).toLocaleDateString()}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+      {/* --- CONTENT CONTAINER --- */}
+      <div className="max-w-5xl mx-auto px-4 md:px-8 -mt-8 relative z-10">
+        
+        {/* --- STATS GRID --- */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10 animate-in slide-in-from-bottom duration-1000 delay-100">
+            <FeaturePill icon={pet.gender === 'Male' ? '♂️' : '♀️'} label="Gender" value={pet.gender} color={genderColor} />
+            <FeaturePill icon="🛡️" label="Status" value={pet.verificationStatus === 'verified' ? 'Verified' : 'Pending'} color={getStatusBadge(pet.verificationStatus)} />
+            <FeaturePill icon="⚡" label="Energy" value={pet.energyLevel} />
+            <FeaturePill icon="😊" label="Mood" value={pet.temperament} />
+        </div>
 
-        {isAdoptionListing && (
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <h2 className="mb-3 text-2xl font-bold text-[#333333]">
-              Adoption Requests
-            </h2>
-            {pet.adoptionRequests?.length === 0 ? (
-              <p className="text-[#333333]">No adoption requests yet.</p>
-            ) : (
-              <ul className="space-y-2 list-disc list-inside">
-                {pet.adoptionRequests.map((req, idx) => (
-                  <li
-                    key={idx}
-                    className={`text-[#333333] ${
-                      req.status === "approved"
-                        ? "text-green-600 font-medium"
-                        : req.status === "rejected"
-                        ? "text-red-600"
-                        : "text-gray-600"
-                    }`}
-                  >
-                    {isOwner ? `${req.requesterName}` : `Request ${idx + 1}`} -{" "}
-                    <span className="uppercase">{req.status}</span>
-                    {(isOwner || req.requesterId === user?.uid) && (
-                      <p className="pl-4 text-sm italic text-gray-500">
-                        &quot;{req.message}&quot;
-                      </p>
+        <div className="grid md:grid-cols-3 gap-8">
+            
+            {/* --- LEFT COLUMN: INFO --- */}
+            <div className="md:col-span-2 space-y-8">
+                
+                {/* AI Personality */}
+                {pet.aiProfileString && (
+                    <div className="bg-white/80 backdrop-blur-xl p-8 rounded-[2.5rem] shadow-sm border border-white animate-in fade-in duration-700">
+                        <h3 className="text-xl font-extrabold text-[#333333] mb-4 flex items-center gap-2">
+                            <span className="text-2xl">✨</span> Personality Profile
+                        </h3>
+                        <p className="text-lg text-gray-600 italic leading-relaxed">"{pet.aiProfileString}"</p>
+                    </div>
+                )}
+
+                {/* Pedigree Tree */}
+                {pedigree && (
+                    <div className="bg-white/80 backdrop-blur-xl p-8 rounded-[2.5rem] shadow-sm border border-white animate-in fade-in duration-700 delay-100">
+                        <h3 className="text-xl font-extrabold text-[#333333] mb-8">Family Tree 🌳</h3>
+                        <div className="grid grid-cols-2 gap-8 relative">
+                            {/* Connector Line */}
+                            <div className="absolute left-1/2 top-12 bottom-12 w-px bg-gray-300 -ml-px border-l border-dashed border-gray-300"></div>
+                            
+                            <div className="space-y-8">
+                                <PedigreeCard pet={pedigree.sire} title="Father" />
+                                <div className="pl-6 border-l-2 border-dashed border-gray-200 space-y-4">
+                                    <PedigreeCard pet={pedigree.sire?.sire} title="Grand-Father" />
+                                    <PedigreeCard pet={pedigree.sire?.dam} title="Grand-Mother" />
+                                </div>
+                            </div>
+                            <div className="space-y-8">
+                                <PedigreeCard pet={pedigree.dam} title="Mother" />
+                                <div className="pl-6 border-l-2 border-dashed border-gray-200 space-y-4">
+                                    <PedigreeCard pet={pedigree.dam?.sire} title="Grand-Father" />
+                                    <PedigreeCard pet={pedigree.dam?.dam} title="Grand-Mother" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* History Sections */}
+                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
+                    <h3 className="text-xl font-extrabold text-[#333333] mb-6">Activity History</h3>
+                    
+                    {/* Message Log */}
+                    <div className="mb-8">
+                        <h4 className="font-bold text-gray-400 text-xs uppercase tracking-wider mb-4">Public Messages</h4>
+                        {pet.messages?.length === 0 ? <p className="text-gray-400 text-sm italic">No messages yet.</p> : (
+                            <div className="space-y-4 max-h-64 overflow-y-auto pr-2">
+                                {pet.messages?.map((msg, idx) => (
+                                    <div key={idx} className="p-4 rounded-2xl bg-gray-50 border border-gray-100 text-sm shadow-sm">
+                                        <div className="flex justify-between mb-1">
+                                            <span className="font-bold text-gray-800">{msg.senderName}</span>
+                                            <span className="text-[10px] text-gray-400 font-medium uppercase">{new Date(msg.sentAt).toLocaleDateString()}</span>
+                                        </div>
+                                        <p className="text-gray-600 leading-relaxed">{msg.text}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Requests Log */}
+                    {!isAdoptionListing && (
+                        <div>
+                            <h4 className="font-bold text-gray-400 text-xs uppercase tracking-wider mb-4">Mating History</h4>
+                            {pet.matingHistory?.length === 0 ? <p className="text-gray-400 text-sm italic">No history.</p> : (
+                                <ul className="space-y-3">
+                                    {pet.matingHistory.map((mh, idx) => (
+                                        <li key={idx} className="text-sm text-gray-600 flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                            <span className="font-medium">{mh.requesterName} ({mh.requesterPetName})</span>
+                                            <span className={`font-bold uppercase text-[10px] px-2 py-1 rounded-md ${mh.status === 'accepted' ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'}`}>{mh.status}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
                     )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+                    
+                    {isAdoptionListing && (
+                        <div>
+                            <h4 className="font-bold text-gray-400 text-xs uppercase tracking-wider mb-4">Adoption Requests</h4>
+                            {pet.adoptionRequests?.length === 0 ? <p className="text-gray-400 text-sm italic">No history.</p> : (
+                                <ul className="space-y-3">
+                                    {pet.adoptionRequests.map((req, idx) => (
+                                        <li key={idx} className="text-sm text-gray-600 flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                            <span className="font-medium">Request #{idx + 1}</span>
+                                            <span className="font-bold uppercase text-[10px] px-2 py-1 rounded-md bg-blue-100 text-blue-600">{req.status}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* --- RIGHT COLUMN: ACTIONS (Sticky) --- */}
+            <div className="md:col-span-1">
+                <div className="sticky top-24 space-y-6">
+                    
+                    {/* Primary Action Card */}
+                    <div className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-gray-100 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#4A90E2] to-[#50E3C2]"></div>
+                        <h3 className="font-extrabold text-gray-800 mb-6 text-lg">
+                            {isOwner ? "Owner Controls" : isAdoptionListing ? "Adopt This Pet" : "Mating Request"}
+                        </h3>
+
+                        {isOwner ? (
+                            <Link href="/Profile" className="flex items-center justify-center w-full py-4 bg-gray-100 text-gray-700 font-bold rounded-xl text-center hover:bg-gray-200 transition gap-2">
+                                <span>⚙️</span> Manage in Profile
+                            </Link>
+                        ) : pet.isBanned ? (
+                            <div className="bg-red-50 text-red-600 p-4 rounded-xl font-bold text-center border border-red-100">Listing Unavailable</div>
+                        ) : isAdoptionListing ? (
+                            // Adoption Action
+                            <button 
+                                onClick={() => setShowAdoptionModal(true)} 
+                                disabled={hasPendingAdoptionRequest}
+                                className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition transform active:scale-95 ${hasPendingAdoptionRequest ? 'bg-green-500' : 'bg-[#4A90E2] hover:bg-[#3A75B9]'}`}
+                            >
+                                {hasPendingAdoptionRequest ? "Application Sent ✅" : "Apply to Adopt"}
+                            </button>
+                        ) : (
+                            // Mating Action
+                            <div className="space-y-4">
+                                {requesterPets.length > 0 ? (
+                                    <>
+                                        {requesterPets.length > 1 && (
+                                            <div>
+                                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1 mb-1 block">Select Your Pet</label>
+                                                <select className="input-field mb-0 bg-gray-50 border-gray-200 font-bold text-gray-700 cursor-pointer" onChange={(e) => setRequesterPetId(e.target.value)} value={requesterPetId}>
+                                                    <option value="">Choose...</option>
+                                                    {requesterPets.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
+                                                </select>
+                                            </div>
+                                        )}
+                                        <textarea 
+                                            value={newMessage} 
+                                            onChange={(e) => setNewMessage(e.target.value)} 
+                                            placeholder="Hi! I'd like to propose..." 
+                                            className="input-field min-h-[120px] bg-gray-50 border-gray-200 resize-none"
+                                        />
+                                        <button onClick={sendMatingRequest} className="auth-btn w-full py-4 shadow-lg text-lg">
+                                            Send Request
+                                        </button>
+                                        
+                                        {showAdvisorButton && (
+                                            <button onClick={openAiAdvisor} className="w-full py-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-2 hover:scale-[1.02] hover:shadow-xl">
+                                                <span>🧬</span> AI Compatibility Check
+                                            </button>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="bg-red-50 text-red-600 p-5 rounded-2xl text-sm text-center border border-red-100 shadow-sm">
+                                        <strong className="block text-lg mb-1">No Eligible Pets</strong>
+                                        You need a non-pregnant, verified pet of the same species & opposite gender.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Certificate Download (If Adopted) */}
+                    {isAdopted && amINewOwner && (
+                        <div className="bg-green-50 p-6 rounded-[2rem] border border-green-200 text-center shadow-md">
+                            <h4 className="font-extrabold text-green-800 mb-1 text-lg">🎉 Adoption Complete!</h4>
+                            <p className="text-green-600 text-sm mb-4">Welcome home, {pet.name}.</p>
+                            <DownloadCertificate pet={pet} />
+                        </div>
+                    )}
+
+                </div>
+            </div>
+
+        </div>
       </div>
     </div>
   );

@@ -1,99 +1,84 @@
 /* app/globals.css */
-
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap'); 
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Custom Color Palette & Modern Font */
 body {
   font-family: 'Poppins', sans-serif;
-  background-color: #E2F4EF; /* Soft Mint/Teal Background */
-}
-.maintopbox {
-  width: 100vw;
-  height: 100vh;
-  overflow-y: hidden;
+  background-color: #E2F4EF; /* Soft Mint Background */
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
 }
 
-/* --- UPDATED CUSTOM UTILITY CLASSES FOR GLASSMORPHISM & THEME --- */
-
-/* Primary Theme Colors */
-.bg-primary { background-color: #4A90E2; }
-.text-primary { color: #333333; } 
-.text-accent { color: #50E3C2; } 
-
-/* Glassmorphism Effect - ENHANCED */
-.glass-container {
-  /* Translucent white background */
-  background: rgba(255, 255, 255, 0.4); 
-  /* Strong blur effect */
-  backdrop-filter: blur(20px);         
+/* --- UTILITIES --- */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.75); /* Slightly more opaque for readability */
+  backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  /* Light border for depth */
-  border: 1px solid rgba(255, 255, 255, 0.3); 
-  border-right-color: rgba(255, 255, 255, 0.2);
-  border-bottom-color: rgba(255, 255, 255, 0.2);
-  /* Stronger shadow for floating effect */
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1); 
-  @apply rounded-3xl p-6 md:p-10; /* Apply consistent padding and border radius */
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
 }
 
-/* Input Styles */
-.input-style { 
-    /* Semi-transparent white background for inputs */
-    @apply w-full outline-none bg-white/70 border border-gray-300 p-3 rounded-lg mb-4 focus:border-[#4A90E2] transition-colors shadow-sm; 
+.input-group {
+  @apply relative mb-3; /* Reduced bottom margin */
 }
 
-/* Button Styles */
-.btn-primary { 
-    @apply bg-[#4A90E2] hover:bg-[#3A75B9] text-white font-bold py-3 px-8 rounded-xl shadow-lg transition-all duration-300; 
-}
-.btn-secondary { 
-    @apply bg-[#50E3C2] hover:bg-[#3FCCB4] text-[#333333] font-bold py-3 px-8 rounded-xl shadow-lg transition-all duration-300; 
+/* Compact Input Field */
+.input-field {
+  @apply w-full bg-white/90 border border-gray-200 text-gray-800 text-sm rounded-xl focus:ring-2 focus:ring-[#4A90E2] focus:border-transparent block p-3 outline-none transition-all placeholder-gray-400 font-medium shadow-sm;
 }
 
-/* Utility to remove all margin/padding from the top of the body for auth screens */
-.auth-page-layout {
-    @apply min-h-screen w-screen p-0;
+.auth-btn {
+  @apply w-full text-white bg-gradient-to-r from-[#4A90E2] to-[#3A75B9] hover:from-[#3A75B9] hover:to-[#2b5c94] focus:ring-4 focus:outline-none focus:ring-blue-300 font-bold rounded-xl text-sm px-5 py-3 text-center shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200;
 }
 
-/* --- NEW: Animated Particle Background CSS --- */
-.animated-background {
-  position: absolute;
+/* Hide Number Input Spinners (Chrome/Safari/Edge/Opera) */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+/* Firefox */
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* --- ANIMATED BACKGROUND PAWS --- */
+.bg-animation {
+  position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden; 
-  z-index: 0; 
-  pointer-events: none; 
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  overflow: hidden;
+  background: linear-gradient(135deg, #E2F4EF 0%, #D0EBE5 100%);
 }
 
-.particle {
+.paw-print {
   position: absolute;
-  /* Particle color set to transparent mint green */
-  background: rgba(80, 227, 194, 0.4); 
-  border-radius: 50%;
-  opacity: 0; 
-  animation: moveParticles 15s infinite ease-in-out; 
-  animation-fill-mode: forwards; 
+  width: 40px;
+  height: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='%234A90E2' fill-opacity='0.15' d='M226.5 92.9c14.3 42.9-.3 86.2-32.6 96.8s-70.1-19.3-84.4-62.2-4.6-86.2 32.6-96.8 70.1 19.3 84.4 62.2zM61 118.5c7.9 6.3 21.4-8.8 29.9-33.9 8.5-25.1 6.9-49.9-1-56.3-8-6.3-21.4 8.8-29.9 33.9-8.5 25.1-6.9 49.9 1 56.3zm118.2-42.6c-13.1-3.4-25.5 8.9-39.6 30.2-14 21.3-15.8 46.2-2.7 49.6 13.1 3.4 25.5-8.9 39.6-30.2 14-21.3 15.8-46.2 2.7-49.6zM155 423.9c50.4 26.6 126.6 9.3 157.6-49.7s6.6-129.6-58.2-150.6c-53.6-17.4-143.2 14.1-156.9 77.3-9.2 42.3 7.2 96.5 57.5 123zM279 159.2c13.1-3.4 25.5 8.9 39.6 30.2 14 21.3 15.8 46.2 2.7 49.6-13.1 3.4-25.5-8.9-39.6-30.2-14.1-21.3-15.9-46.2-2.7-49.6zM369.2 162c12.1 38.4-13.8 79.7-52.9 85.3-39.2 5.6-80.2-25.9-92.3-64.3-12.1-38.4 13.8-79.7 52.9-85.3 39.1-5.6 80.1 25.9 92.3 64.3zm28.6-74.4c-8-6.3-21.4 8.8-29.9 33.9-8.5 25.1-6.9 49.9 1 56.3 7.9 6.3 21.4-8.8 29.9-33.9 8.5-25.1 6.9-49.9-1-56.3z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  opacity: 0;
+  animation: floatUp 15s infinite linear;
 }
 
-/* Different sizes and animation delays for variety */
-.particle:nth-child(1) { width: 40px; height: 40px; left: 10%; top: 20%; animation-delay: 0s; }
-.particle:nth-child(2) { width: 30px; height: 30px; left: 30%; top: 50%; animation-delay: 2s; }
-.particle:nth-child(3) { width: 50px; height: 50px; left: 50%; top: 10%; animation-delay: 4s; }
-.particle:nth-child(4) { width: 35px; height: 35px; left: 70%; top: 80%; animation-delay: 6s; }
-.particle:nth-child(5) { width: 45px; height: 45px; left: 90%; top: 40%; animation-delay: 8s; }
-.particle:nth-child(6) { width: 25px; height: 25px; left: 5%; top: 90%; animation-delay: 10s; }
-.particle:nth-child(7) { width: 55px; height: 55px; left: 40%; top: 70%; animation-delay: 12s; }
+/* Randomize paw positions */
+.paw-print:nth-child(1) { left: 10%; width: 50px; height: 50px; animation-duration: 12s; animation-delay: 0s; }
+.paw-print:nth-child(2) { left: 30%; width: 30px; height: 30px; animation-duration: 18s; animation-delay: 2s; }
+.paw-print:nth-child(3) { left: 70%; width: 60px; height: 60px; animation-duration: 15s; animation-delay: 4s; }
+.paw-print:nth-child(4) { left: 50%; width: 40px; height: 40px; animation-duration: 20s; animation-delay: 6s; }
+.paw-print:nth-child(5) { left: 90%; width: 35px; height: 35px; animation-duration: 14s; animation-delay: 1s; }
+.paw-print:nth-child(6) { left: 20%; width: 45px; height: 45px; animation-duration: 16s; animation-delay: 8s; }
 
-@keyframes moveParticles {
-  0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
-  25% { transform: translate(10vw, 20vh) scale(1); opacity: 0.8; }
-  50% { transform: translate(0vw, 40vh) scale(0.7); opacity: 0.6; }
-  75% { transform: translate(-10vw, 20vh) scale(1.2); opacity: 0.9; }
-  100% { transform: translate(0, 0) scale(0.5); opacity: 0; } 
+@keyframes floatUp {
+  0% { transform: translateY(110vh) rotate(0deg); opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(-10vh) rotate(20deg); opacity: 0; }
 }

@@ -6,12 +6,18 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 
-// --- IMPORTS ---
+// --- COMPONENTS ---
 import PetStatusBadge from "../components/PetStatusBadge";
 import RequestManager from "../components/RequestManager";
 import MatingConfirmation from "../components/MatingConfirmation";
 import AdoptionHandover from "../components/AdoptionHandover";
 import DownloadCertificate from "../components/DownloadCertificate"; 
+
+// --- ICONS ---
+const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>;
+const LogoutIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" /></svg>;
+const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
+const LocationIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>;
 
 export default function Profile() {
   const { user, loading: authLoading, userData, signOut } = useAuth();
@@ -20,6 +26,7 @@ export default function Profile() {
   const [confirmingPregnancy, setConfirmingPregnancy] = useState(null);
   const router = useRouter();
 
+  // --- FETCH PETS ---
   const fetchUserPets = useCallback(async () => {
     if (user) {
       try {
@@ -34,8 +41,6 @@ export default function Profile() {
           const data = await res.json();
           setPets(data);
           router.refresh();
-        } else {
-          console.error(`Failed to fetch pets. Status: ${res.status}`);
         }
       } catch (error) {
         console.error("Error fetching pets:", error);
@@ -53,13 +58,10 @@ export default function Profile() {
     }
   }, [authLoading, user, router, fetchUserPets]);
 
+  // --- HANDLERS ---
   const handleSignOut = async () => {
-    try {
-      await signOut();
-      router.push("/Login");
-    } catch (error) {
-      console.error("Sign out error", error);
-    }
+    await signOut();
+    router.push("/Login");
   };
 
   const handleConfirmPregnancy = async (petId) => {
@@ -89,164 +91,256 @@ export default function Profile() {
   };
 
   if (authLoading || loading) {
-    return <div className="flex justify-center items-center min-h-screen"><div className="loader">Loading...</div></div>;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#E2F4EF]">
+        <div className="w-16 h-16 border-4 border-[#4A90E2] border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-[#4A90E2] font-bold mt-4 animate-pulse">Loading Profile...</p>
+      </div>
+    );
   }
 
   if (!user || !userData) return null;
 
   return (
-    <div className="container mx-auto p-4 pt-20">
-      <div className="bg-white shadow-xl rounded-lg overflow-hidden md:max-w-4xl md:mx-auto">
-        <div className="md:flex">
-          {/* Left Sidebar */}
-          <div className="md:w-1/3 p-6 bg-gray-50">
-            <div className="flex flex-col items-center">
-              <Image
-                src={user.photoURL || "/imgs/profile.jpg"}
-                alt="Profile"
-                width={150}
-                height={150}
-                className="rounded-full border-4 border-gray-300"
-              />
-              <h2 className="text-2xl font-bold mt-4 text-gray-800">{userData.name}</h2>
-              <p className="text-gray-600">@{userData.username}</p>
-              <p className="text-gray-600 mt-2">{userData.phone}</p>
-              <p className="text-gray-600 mt-1">{userData.location?.city || "Location not set"}</p>
+    <div className="min-h-screen bg-[#E2F4EF] relative overflow-x-hidden pb-20">
+      
+      {/* Background Animation */}
+      <div className="bg-animation">
+        {[...Array(6)].map((_, i) => <div key={i} className="paw-print"></div>)}
+      </div>
 
-              <Link href="/forgot-password" className="mt-6 w-full max-w-[200px] text-center btn-fancy-primary text-sm">
-                Reset Password
-              </Link>
+      <div className="max-w-7xl mx-auto px-4 md:px-8 pt-24 md:pt-28">
+        <div className="flex flex-col lg:flex-row gap-8">
+          
+          {/* --- LEFT: USER CARD (Sticky on Desktop) --- */}
+          <div className="lg:w-1/3 flex-shrink-0 relative z-10">
+            <div className="glass-panel p-8 rounded-[2.5rem] sticky top-28 text-center shadow-2xl border border-white/60 backdrop-blur-xl">
+              
+              <div className="relative w-32 h-32 mx-auto mb-6">
+                <div className="absolute inset-0 bg-gradient-to-tr from-[#4A90E2] to-[#50E3C2] rounded-full animate-pulse opacity-20"></div>
+                <Image
+                  src={user.photoURL || "/imgs/profile.jpg"}
+                  alt="Profile"
+                  fill
+                  className="rounded-full object-cover border-4 border-white shadow-lg"
+                />
+              </div>
+              
+              <h2 className="text-3xl font-extrabold text-gray-800 mb-1">{userData.name}</h2>
+              <p className="text-[#4A90E2] font-medium mb-4">@{userData.username}</p>
+              
+              <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-6 bg-white/50 py-2 px-4 rounded-full inline-flex">
+                <LocationIcon />
+                <span>{userData.location?.city || "Location not set"}</span>
+              </div>
 
-              <button onClick={handleSignOut} className="mt-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-full">
-                Sign Out
-              </button>
-              <button onClick={() => router.push("/Addpet")} className="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-full">
-                Add New Pet
-              </button>
+              <div className="space-y-3">
+                <button 
+                    onClick={() => router.push("/Addpet")} 
+                    className="w-full flex items-center justify-center gap-2 bg-[#333333] text-white py-3 rounded-xl font-bold shadow-lg hover:scale-[1.02] transition-transform"
+                >
+                    <PlusIcon /> Add New Pet
+                </button>
+                
+                <div className="grid grid-cols-2 gap-3">
+                    <Link href="/forgot-password" className="flex items-center justify-center gap-2 bg-white text-gray-700 border border-gray-200 py-3 rounded-xl font-bold text-sm hover:bg-gray-50 transition">
+                        <EditIcon /> Password
+                    </Link>
+                    <button onClick={handleSignOut} className="flex items-center justify-center gap-2 bg-red-50 text-red-600 border border-red-100 py-3 rounded-xl font-bold text-sm hover:bg-red-100 transition">
+                        <LogoutIcon /> Sign Out
+                    </button>
+                </div>
+              </div>
+
             </div>
           </div>
 
-          {/* Right Content: Pets */}
-          <div className="md:w-2/3 p-6">
-            <h3 className="text-3xl font-bold text-gray-800 mb-6">My Pets</h3>
-            {pets.length > 0 ? (
-              <div className="space-y-6">
-                {pets.map((pet) => {
-                  const isMated = pet.matingHistory?.some(req => req.status === "mated") || 
-                                  pet.outgoingRequests?.some(req => req.status === "mated");
-                  
-                  const isIncoming = pet.isIncomingAdoption;
+          {/* --- RIGHT: PETS LIST --- */}
+          <div className="lg:w-2/3 relative z-10">
+            <div className="flex justify-between items-end mb-6 px-2">
+                <div>
+                    <h2 className="text-3xl font-extrabold text-[#333333]">My Pets</h2>
+                    <p className="text-gray-500 text-sm mt-1">Manage profiles, requests & health.</p>
+                </div>
+                <span className="bg-white px-3 py-1 rounded-full text-sm font-bold text-[#4A90E2] shadow-sm border border-gray-100">
+                    {pets.length} Pets
+                </span>
+            </div>
 
-                  // --- LEGACY ADOPTION LOGIC (FIXED) ---
-                  // Check if adoption is technically complete (flags are true) but log is missing
+            {pets.length > 0 ? (
+              <div className="space-y-8">
+                {pets.map((pet) => {
+                  // --- LOGIC EXTRACTION ---
+                  const isMated = pet.matingHistory?.some(req => req.status === "mated") || pet.outgoingRequests?.some(req => req.status === "mated");
+                  const isIncoming = pet.isIncomingAdoption;
                   const completedReq = pet.adoptionRequests?.find(r => r.ownerConfirmedHandover && r.requesterConfirmedHandover);
                   const isLegacyAdopted = !pet.adoptionLog && pet.listingType === 'None' && completedReq;
-
-                  // Prepare pet object for certificate (Use real log OR generate fake one for legacy)
+                  
                   let effectivePet = pet;
                   if (isLegacyAdopted) {
                       effectivePet = {
                           ...pet,
                           adoptionLog: {
-                              adoptionDate: new Date(), // Fallback date
+                              adoptionDate: new Date(),
                               newOwnerName: completedReq.requesterName,
-                              previousOwnerName: "Previous Owner", // Fallback name
+                              previousOwnerName: "Previous Owner",
                               certificateId: `LEGACY-${pet._id}`
                           }
                       };
                   }
-                  
-                  // Show certificate if: (Has real log OR is legacy adopted) AND (Not currently incoming process)
                   const showCertificate = (pet.adoptionLog || isLegacyAdopted) && !isIncoming;
-                  // -------------------------------------
+                  // ------------------------
 
                   return (
-                    <div key={pet._id} className={`p-4 rounded-lg shadow-md border ${isIncoming ? "bg-purple-50 border-purple-200" : pet.isPregnant ? "bg-pink-50 border-pink-200" : "bg-gray-50 border-gray-200"}`}>
-                      
-                      {isIncoming && (
-                        <span className="bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded mb-2 inline-block">
-                          INCOMING ADOPTION
-                        </span>
-                      )}
+                    <div 
+                        key={pet._id} 
+                        className={`group bg-white/90 backdrop-blur-md rounded-[2rem] p-6 md:p-8 shadow-lg border hover:shadow-2xl transition-all duration-300 relative overflow-hidden ${
+                            isIncoming ? "border-purple-300 bg-purple-50/90" : "border-white"
+                        }`}
+                    >
+                      {/* Decorative Background Element */}
+                      <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-blue-50 to-purple-50 rounded-bl-full opacity-50 group-hover:scale-110 transition-transform duration-500"></div>
 
-                      <div className="flex items-center mb-4">
-                        <Image src={pet.imageUrls[0] || "/imgs/dog.jpg"} alt={pet.name} width={100} height={100} className="rounded-lg object-cover" />
-                        <div className="ml-4">
-                          <h4 className="text-2xl font-semibold text-gray-900 flex items-center">
-                            {pet.name}
-                            {!isIncoming && <PetStatusBadge status={pet.verificationStatus} />}
-                            {pet.isPregnant && <span className="ml-2 px-2 py-1 bg-pink-500 text-white text-xs font-bold rounded-full animate-pulse">PREGNANT</span>}
-                          </h4>
-                          <p className="text-gray-600">{pet.type} | {pet.breed} | {pet.age} years</p>
-                          {!isIncoming && <p className="text-sm text-gray-500 capitalize">Listing: {pet.listingType}</p>}
+                      {/* --- PET HEADER --- */}
+                      <div className="flex flex-col sm:flex-row gap-6 relative z-10">
+                        <div className="relative shrink-0">
+                            <div className="w-28 h-28 rounded-2xl overflow-hidden shadow-md border-4 border-white relative">
+                                <Image src={pet.imageUrls[0] || "/imgs/dog.jpg"} alt={pet.name} fill className="object-cover" />
+                            </div>
+                            {/* Floating Type Icon */}
+                            <div className="absolute -bottom-3 -right-3 bg-white p-2 rounded-full shadow-md text-xl border border-gray-100">
+                                {pet.type === 'Dog' ? '🐶' : pet.type === 'Cat' ? '🐱' : '🐾'}
+                            </div>
+                        </div>
+
+                        <div className="flex-1 pt-2">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                    <h3 className="text-2xl font-extrabold text-gray-800 flex items-center gap-2">
+                                        {pet.name}
+                                        <span className={`text-xs px-2 py-1 rounded-md border font-bold uppercase tracking-wider ${pet.gender === 'Male' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-pink-50 text-pink-600 border-pink-200'}`}>
+                                            {pet.gender}
+                                        </span>
+                                    </h3>
+                                    <p className="text-gray-500 font-medium">{pet.breed}</p>
+                                    <div className="flex gap-3 mt-2 text-sm text-gray-400">
+                                        <span>{pet.age} Years Old</span>
+                                        <span>•</span>
+                                        <span className="capitalize">{pet.listingType} Listing</span>
+                                    </div>
+                                </div>
+                                
+                                {/* Status Badges */}
+                                <div className="flex flex-col items-end gap-2">
+                                    {!isIncoming && <PetStatusBadge status={pet.verificationStatus} />}
+                                    {pet.isPregnant && (
+                                        <span className="bg-pink-500 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-md animate-pulse">
+                                            PREGNANT
+                                        </span>
+                                    )}
+                                    {isIncoming && (
+                                        <span className="bg-purple-600 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-md">
+                                            INCOMING ADOPTION
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                       </div>
 
-                      {/* --- CERTIFICATE BUTTON --- */}
+                      {/* --- ACTION GRID --- */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6 relative z-10">
+                          {/* Primary Action: View/Edit */}
+                          <Link 
+                            href={`/pet/${pet._id}`}
+                            className="flex items-center justify-center gap-2 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-600 hover:bg-[#4A90E2] hover:text-white hover:border-[#4A90E2] transition-colors"
+                          >
+                            <span>🔍</span> View Full Profile
+                          </Link>
+
+                          {/* Contextual Actions */}
+                          {pet.isPregnant && (
+                            <Link 
+                                href={`/pregnancy-tracker/${pet._id}`} 
+                                className="flex items-center justify-center gap-2 py-3 bg-pink-50 border border-pink-200 text-pink-600 rounded-xl font-bold hover:bg-pink-500 hover:text-white hover:border-pink-500 transition-colors"
+                            >
+                                <span>🤰</span> Track Pregnancy
+                            </Link>
+                          )}
+
+                          {!pet.isPregnant && isMated && pet.gender === "Female" && !isIncoming && (
+                             <button 
+                                onClick={() => handleConfirmPregnancy(pet._id)} 
+                                disabled={confirmingPregnancy === pet._id}
+                                className="flex items-center justify-center gap-2 py-3 bg-blue-50 border border-blue-200 text-blue-600 rounded-xl font-bold hover:bg-blue-500 hover:text-white hover:border-blue-500 transition-colors"
+                             >
+                                <span>✅</span> {confirmingPregnancy === pet._id ? "Processing..." : "Confirm Pregnancy"}
+                             </button>
+                          )}
+                      </div>
+
+                      {/* --- CERTIFICATE SECTION --- */}
                       {showCertificate && (
-                        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                            <p className="text-green-800 font-bold text-sm mb-2 text-center">🎉 Adoption Complete</p>
-                            <DownloadCertificate pet={effectivePet} />
+                        <div className="mt-6 p-5 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl text-center relative z-10">
+                            <h4 className="text-green-800 font-extrabold text-lg mb-1">🎉 Adoption Complete!</h4>
+                            <p className="text-green-600 text-sm mb-4">Welcome home, {pet.name}.</p>
+                            <div className="w-full sm:w-auto inline-block">
+                                <DownloadCertificate pet={effectivePet} />
+                            </div>
                         </div>
                       )}
 
-                      {/* --- PREGNANT / MATING ACTIONS --- */}
-                      {pet.isPregnant && (
-                        <Link href={`/pregnancy-tracker/${pet._id}`} className="block w-full text-center bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 px-4 rounded-xl mb-4 shadow-md transition">
-                          View Pregnancy Day-by-Day Tracker
-                        </Link>
-                      )}
+                      {/* --- DYNAMIC REQUESTS SECTION --- */}
+                      {/* This renders mating/adoption/handover requests cleanly */}
+                      <div className="mt-6 space-y-4 relative z-10">
+                          {!isIncoming && <RequestManager pet={pet} onUpdate={fetchUserPets} />}
 
-                      {!pet.isPregnant && isMated && pet.gender === "Female" && !isIncoming && (
-                          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl text-center">
-                            <p className="text-blue-800 font-semibold mb-2">Mating is confirmed. Is {pet.name} pregnant?</p>
-                            <button onClick={() => handleConfirmPregnancy(pet._id)} disabled={confirmingPregnancy === pet._id} className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-lg shadow-sm transition disabled:opacity-50">
-                              {confirmingPregnancy === pet._id ? "Generating..." : "Confirm Pregnancy ✅"}
-                            </button>
-                          </div>
-                      )}
+                          {/* Mating Confirmations */}
+                          {!isIncoming && pet.matingHistory?.map((req, idx) => (
+                              ['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'].includes(req.status) && 
+                              <div key={idx} className="scale-95"><MatingConfirmation pet={pet} request={req} onUpdate={fetchUserPets} /></div>
+                          ))}
+                          {!isIncoming && pet.outgoingRequests?.map((req, idx) => (
+                              req.requestType === "mating" && 
+                              <div key={idx} className="scale-95"><MatingConfirmation pet={pet} request={req} onUpdate={fetchUserPets} /></div>
+                          ))}
 
-                      {/* --- STATUS MESSAGES --- */}
+                          {/* Adoption Handovers */}
+                          {!isIncoming && !isLegacyAdopted && pet.adoptionRequests?.map((req, idx) => (
+                              (req.status === "approved" || req.status === 'confirmHandover') && !(req.ownerConfirmedHandover && req.requesterConfirmedHandover) &&
+                              <div key={idx} className="scale-95"><AdoptionHandover pet={pet} request={req} onUpdate={fetchUserPets} isIncoming={false} /></div>
+                          ))}
+
+                          {isIncoming && pet.adoptionRequests?.map((req, idx) => (
+                              <div key={idx} className="scale-95"><AdoptionHandover pet={pet} request={req} onUpdate={fetchUserPets} isIncoming={true} /></div>
+                          ))}
+                      </div>
+
+                      {/* --- ALERTS --- */}
                       {["pending", "needs-review", "rejected"].includes(pet.verificationStatus) && !isIncoming && (
-                          <div className="p-3 my-2 text-sm bg-yellow-100 border border-yellow-300 rounded-md">
-                            <strong>Verification Status: </strong>
-                            {pet.verificationStatus === "pending" && "Your pet's certificate is being reviewed by our AI."}
-                            {pet.verificationStatus === "needs-review" && "Our AI couldn't verify all details. An admin will review soon."}
-                            {pet.verificationStatus === "rejected" && "Verification rejected. Please re-upload certificate."}
+                          <div className={`mt-4 p-3 rounded-lg text-xs font-semibold border ${
+                              pet.verificationStatus === 'rejected' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                          }`}>
+                            ⚠️ Verification Status: {pet.verificationStatus.toUpperCase()}
                           </div>
                       )}
-
-                      {!isIncoming && <RequestManager pet={pet} onUpdate={fetchUserPets} />}
-
-                      {/* --- MATING CONFIRMATIONS --- */}
-                      {!isIncoming && pet.matingHistory?.map((req, idx) => (
-                          ['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'].includes(req.status) && 
-                          <MatingConfirmation key={req._id || idx} pet={pet} request={req} onUpdate={fetchUserPets} />
-                      ))}
-                      {!isIncoming && pet.outgoingRequests?.map((req, idx) => (
-                          req.requestType === "mating" && 
-                          <MatingConfirmation key={req._id || idx} pet={pet} request={req} onUpdate={fetchUserPets} />
-                      ))}
-
-                      {/* --- ADOPTION HANDOVER --- */}
-                      {/* FIX: Hide handover if adoption is already complete (including legacy) */}
-                      {!isIncoming && !isLegacyAdopted && pet.adoptionRequests?.map((req, idx) => (
-                          (req.status === "approved" || req.status === 'confirmHandover') && !(req.ownerConfirmedHandover && req.requesterConfirmedHandover) &&
-                          <AdoptionHandover key={`handover-owner-${idx}`} pet={pet} request={req} onUpdate={fetchUserPets} isIncoming={false} />
-                      ))}
-
-                      {isIncoming && pet.adoptionRequests?.map((req, idx) => (
-                          <AdoptionHandover key={`handover-req-${idx}`} pet={pet} request={req} onUpdate={fetchUserPets} isIncoming={true} />
-                      ))}
 
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <p className="text-gray-600">You haven't added any pets yet.</p>
+              <div className="flex flex-col items-center justify-center py-20 bg-white/60 rounded-[2.5rem] border border-white shadow-sm text-center">
+                <div className="text-6xl mb-4 grayscale opacity-50">🐾</div>
+                <h3 className="text-xl font-bold text-gray-400">No pets found</h3>
+                <p className="text-gray-400 text-sm mt-1">Your furry friends will appear here.</p>
+                <button onClick={() => router.push("/Addpet")} className="mt-6 bg-[#4A90E2] text-white px-6 py-2 rounded-full font-bold hover:shadow-lg transition">
+                    Add Your First Pet
+                </button>
+              </div>
             )}
           </div>
+
         </div>
       </div>
     </div>

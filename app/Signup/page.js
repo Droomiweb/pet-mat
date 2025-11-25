@@ -1,223 +1,241 @@
 // app/Signup/page.js
 "use client";
-import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { useRouter } from "next/navigation";
 
+// Icons
+const EyeIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
+const EyeSlashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>;
+const LocIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>;
+
 export default function Signup() {
-  const [userN, setUserN] = useState("");
-  const [name, setName] = useState("");
-  const [pass, setPass] = useState("");
-  const [pass2, setPass2] = useState("");
-  const [phone, setPhone] = useState("");
-  const [message, setMessage] = useState("");
+  const [formData, setFormData] = useState({
+    name: "", username: "", phone: "", password: "", confirmPassword: ""
+  });
   const [showPass, setShowPass] = useState(false);
   const [location, setLocation] = useState({ lat: null, lng: null, city: "" });
+  const [status, setStatus] = useState({ type: "", msg: "" });
+  const [loading, setLoading] = useState(false);
+  
+  // Interactive State
+  const [isTyping, setIsTyping] = useState(false);
+
+  // 3D State
+  const [rotate, setRotate] = useState({ x: 0, y: 0 });
+  const cardRef = useRef(null);
+
   const router = useRouter();
 
-  const getLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          
-          let cityName = "Unknown";
-          try {
-              const geoRes = await fetch(
-                  `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
-              );
-              const geoData = await geoRes.json();
-              cityName = geoData.address.city || geoData.address.town || geoData.address.village || "Unknown";
-          } catch (e) {
-              console.error("Reverse geocoding failed", e);
-          }
-          
-          setLocation({ lat, lng, city: cityName });
-          setMessage(`Location set: ${cityName}`);
+  // --- 3D TILT LOGIC ---
+  const handleMouseMove = (e) => {
+    if (!cardRef.current) return;
+    const card = cardRef.current;
+    const rect = card.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const rotateX = ((y - centerY) / centerY) * -10; 
+    const rotateY = ((x - centerX) / centerX) * 10;
+    setRotate({ x: rotateX, y: rotateY });
+  };
 
-        },
-        (error) => {
-          console.error("Error getting location:", error);
-          alert("Unable to get location. Please allow location access.");
-        }
-      );
-    } else {
-      alert("Geolocation is not supported by your browser.");
-    }
+  const handleMouseLeave = () => {
+    setRotate({ x: 0, y: 0 });
+  };
+
+  const handleInput = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+    // Trigger excitement animation
+    setIsTyping(true);
+    setTimeout(() => setIsTyping(false), 300);
+  };
+
+  const getLocation = () => {
+    if (!navigator.geolocation) return alert("Geolocation not supported");
+    
+    setStatus({ type: "info", msg: "Detecting location..." });
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        let cityName = "Unknown";
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const data = await res.json();
+          cityName = data.address.city || data.address.town || data.address.village || "Unknown Location";
+        } catch (e) { console.error(e); }
+        
+        setLocation({ lat: latitude, lng: longitude, city: cityName });
+        setStatus({ type: "success", msg: `📍 ${cityName}` });
+      },
+      () => setStatus({ type: "error", msg: "Location access denied." })
+    );
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setMessage("");
+    setStatus({ type: "", msg: "" });
 
-    if (!name) return setMessage("Please enter your name");
-    if (!userN) return setMessage("Please enter username");
-    if (!phone || phone.length !== 10) return setMessage("Enter a valid 10-digit phone number");
-    if (!pass) return setMessage("Enter your password");
-    if (pass !== pass2) return setMessage("Passwords do not match");
-    if (!location.lat || !location.lng) return setMessage("Please share your location before signing up");
+    if (formData.password !== formData.confirmPassword) {
+      return setStatus({ type: "error", msg: "Passwords do not match!" });
+    }
+    if (!location.lat) {
+      return setStatus({ type: "error", msg: "Please share your location." });
+    }
 
+    setLoading(true);
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, userN + "@example.com", pass);
-      const user = userCredential.user;
-
+      const cred = await createUserWithEmailAndPassword(auth, formData.username + "@example.com", formData.password);
       await fetch("/api/user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-            name, 
-            username: userN, 
-            phone, 
-            location: { lat: location.lat, lng: location.lng, city: location.city },
-            firebaseUid: user.uid 
+        body: JSON.stringify({
+          name: formData.name,
+          username: formData.username,
+          phone: formData.phone,
+          location,
+          firebaseUid: cred.user.uid
         }),
       });
-
-      alert("Signup successful! Now let's add your first pet.");
+      
       router.push("/Addpet");
     } catch (err) {
-      console.error(err);
-      setMessage(err.message.includes("auth/email-already-in-use") ? "Username already taken." : err.message);
+      setStatus({ type: "error", msg: err.message.includes("email-already-in-use") ? "Username already taken." : err.message });
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="auth-page-layout bg-[#E2F4EF] flex items-center justify-center relative">
-      
-      {/* Animated background particles */}
-      <div className="animated-background">
-        <div className="particle"></div>
-        <div className="particle"></div>
-        <div className="particle"></div>
-        <div className="particle"></div>
-        <div className="particle"></div>
-        <div className="particle"></div>
-        <div className="particle"></div>
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-[#E2F4EF]">
+      {/* Background Animation */}
+      <div className="bg-animation">
+        {[...Array(6)].map((_, i) => <div key={i} className="paw-print"></div>)}
       </div>
 
-      <div className="max-w-6xl w-full h-full sm:h-[90vh] sm:rounded-3xl glass-container overflow-hidden grid grid-cols-1 md:grid-cols-2 shadow-2xl z-10">
-
-        {/* LEFT COLUMN: Visual/Illustration */}
-        <div className="hidden md:flex flex-col justify-center items-center p-10 bg-[#50E3C2]/50">
-          <h2 className="text-4xl font-extrabold text-white mb-6">Join PetLink</h2>
-          <Image 
-            src="/imgs/dog.jpg" 
-            alt="Welcome Illustration" 
-            width={250} 
-            height={250} 
-            className="w-48 h-auto rounded-full object-cover mb-4"
-          />
-          <p className="text-center text-white text-lg font-medium italic">
-            Find the perfect companion for your pet!
-          </p>
-        </div>
-
-        {/* RIGHT COLUMN: Signup Form */}
-        <div className="flex flex-col justify-center items-center p-8 sm:p-12 w-full h-full overflow-y-auto">
-          
-          <h1 className="text-3xl font-extrabold text-primary mb-2 text-center">CREATE ACCOUNT</h1>
-          <p className="text-xl text-gray-500 mb-8">Get Started</p>
-
-          <form onSubmit={handleSubmit} className="w-full max-w-sm flex flex-col">
+      <div className="w-full max-w-5xl bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[550px] glass-panel z-10">
+        
+        {/* --- LEFT: 3D INTERACTIVE ZONE (Dog Emoji) --- */}
+        <div 
+          className="hidden md:flex md:w-1/2 bg-[#E2F4EF] flex-col justify-center items-center p-10 relative perspective-1000 overflow-hidden"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+          style={{ perspective: "1000px" }}
+        >
+          {/* 3D Tilting Card */}
+          <div 
+            ref={cardRef}
+            className="relative w-full max-w-xs aspect-square flex flex-col items-center justify-center transition-transform duration-100 ease-out preserve-3d"
+            style={{ 
+              transform: `rotateX(${rotate.x}deg) rotateY(${rotate.y}deg)`,
+              transformStyle: "preserve-3d"
+            }}
+          >
+            <h2 
+                className="text-3xl font-extrabold text-[#333333] mb-4 text-center transition-transform duration-100"
+                style={{ transform: "translateZ(50px)" }}
+            >
+                Join Us!
+            </h2>
             
-            {/* Input 1: Full Name */}
-            <input 
-                type="text" 
-                value={name} 
-                onChange={(e) => setName(e.target.value)} 
-                className="input-style" 
-                placeholder="Full Name" 
-                required 
-            />
-
-            {/* Input 2: Username */}
-            <input 
-                type="text" 
-                value={userN} 
-                onChange={(e) => setUserN(e.target.value)} 
-                className="input-style" 
-                placeholder="Username" 
-                required 
-            />
-
-            {/* Input 3: Phone */}
-            <input 
-                type="number" 
-                value={phone} 
-                onChange={(e) => setPhone(e.target.value)} 
-                className="input-style" 
-                placeholder="Phone (10 digits)" 
-                required 
-            />
-
-            {/* Input 4: Password */}
-            <div className="relative w-full mb-4">
-              <input 
-                type={showPass ? "text" : "password"} 
-                value={pass} 
-                onChange={(e) => setPass(e.target.value)} 
-                className="input-style pr-12" 
-                placeholder="Password" 
-                required 
-              />
-              <button
-                type="button"
-                onClick={() => setShowPass(!showPass)}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-[#4A90E2] font-semibold hover:text-[#3A75B9] transition"
-              >
-                {showPass ? "Hide" : "Show"}
-              </button>
+            {/* Interactive Dog Container */}
+            <div 
+                className={`relative w-56 h-56 mb-6 shadow-xl rounded-full border-8 border-white bg-white/20 backdrop-blur-sm flex items-center justify-center transition-all duration-200 ease-in-out ${isTyping ? 'scale-110 rotate-3' : 'scale-100 rotate-0'}`}
+                style={{ transform: "translateZ(30px)" }}
+            >
+                {/* GIANT DOG EMOJI */}
+                <span className="text-[8rem] drop-shadow-lg select-none">🐶</span>
             </div>
 
-            {/* Input 5: Rewrite Password */}
-            <input 
-                type={showPass ? "text" : "password"} 
-                value={pass2} 
-                onChange={(e) => setPass2(e.target.value)} 
-                className="input-style" 
-                placeholder="Rewrite Password" 
-                required 
-            />
+            {/* Floating Elements - Dog Theme */}
+            <div className="absolute top-10 left-0 text-4xl animate-bounce transition-transform duration-100" style={{ transform: "translateZ(80px)", animationDelay: '0.5s' }}>🎾</div>
+            <div className="absolute bottom-16 right-4 text-4xl animate-pulse transition-transform duration-100" style={{ transform: "translateZ(60px)" }}>🦴</div>
+
+            <p 
+                className="text-gray-600 text-center font-medium px-4 transition-transform duration-100"
+                style={{ transform: "translateZ(20px)" }}
+            >
+                {isTyping ? "Yay! Almost there!" : "Find playmates and adoption matches."}
+            </p>
+          </div>
+        </div>
+
+        {/* --- RIGHT: COMPACT FORM --- */}
+        <div className="w-full md:w-1/2 p-8 flex flex-col justify-center h-full overflow-y-auto bg-white/60 backdrop-blur-md">
+          <div className="text-center md:text-left mb-6">
+            <h1 className="text-2xl font-bold text-gray-800">Create Account</h1>
+            <p className="text-gray-500 text-sm">Start your PetLink journey</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {/* Row 1: Names */}
+            <div className="grid grid-cols-2 gap-3">
+              <input name="name" type="text" placeholder="Full Name" className="input-field" onChange={handleInput} required />
+              <input name="username" type="text" placeholder="Username" className="input-field" onChange={handleInput} required />
+            </div>
+
+            {/* Row 2: WhatsApp */}
+            <div className="input-group">
+              <label className="text-[10px] font-bold text-[#4A90E2] ml-2 mb-1 block uppercase tracking-wider">WhatsApp Number</label>
+              <input name="phone" type="tel" placeholder="e.g. 9876543210" className="input-field" onChange={handleInput} required />
+            </div>
+
+            {/* Row 3: Passwords Side-by-Side */}
+            <div className="grid grid-cols-2 gap-3">
+                <div className="relative">
+                    <input 
+                        name="password" 
+                        type={showPass ? "text" : "password"} 
+                        placeholder="Password" 
+                        className="input-field pr-8" 
+                        onChange={handleInput} 
+                        required 
+                    />
+                    <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-2 top-3 text-gray-400 hover:text-[#4A90E2]">
+                        {showPass ? <EyeSlashIcon /> : <EyeIcon />}
+                    </button>
+                </div>
+                <input 
+                    name="confirmPassword" 
+                    type="password" 
+                    placeholder="Confirm" 
+                    className="input-field" 
+                    onChange={handleInput} 
+                    required 
+                />
+            </div>
 
             {/* Location Button */}
-            <button
-              type="button"
-              onClick={getLocation}
-              className="mt-2 mb-2 btn-secondary py-3 px-4"
+            <button 
+              type="button" 
+              onClick={getLocation} 
+              className={`w-full py-2.5 rounded-xl border-2 font-bold flex items-center justify-center gap-2 transition-all text-sm ${
+                location.lat 
+                  ? "border-green-500 bg-green-50 text-green-600" 
+                  : "border-dashed border-[#4A90E2] text-[#4A90E2] hover:bg-blue-50"
+              }`}
             >
-              {location.lat ? `Location Set: ${location.city} ✅` : "Share My Location"}
+              <LocIcon />
+              {location.lat ? "Location Set ✅" : "Detect Location"}
             </button>
 
-            {/* Show raw location if city is unknown */}
-            {location.lat && !location.city && (
-              <p className="text-[#4A90E2] text-xs mb-4 font-medium text-center">
-                Location set: Lat {location.lat.toFixed(4)}, Lng {location.lng.toFixed(4)}
+            {status.msg && (
+              <p className={`text-center text-xs font-bold ${status.type === 'error' ? 'text-red-500' : 'text-green-600'}`}>
+                {status.msg}
               </p>
             )}
 
-            <p className="my-4 text-center text-primary text-sm">
-              Already have an account? <Link className="text-[#4A90E2] font-bold underline hover:text-[#3A75B9]" href="/Login">Login</Link>
-            </p>
-
-            {/* Submit button */}
-            <button
-              type="submit"
-              disabled={!location.lat || !location.lng}
-              className={`mt-2 py-3 px-6 rounded-xl font-bold transition shadow-lg ${
-                location.lat && location.lng
-                  ? "bg-[#4A90E2] hover:bg-[#3A75B9] text-white"
-                  : "bg-gray-400 cursor-not-allowed text-gray-700"
-              }`}
-            >
-              Sign Up Now
+            <button type="submit" disabled={loading} className="auth-btn mt-2">
+              {loading ? "Creating..." : "Sign Up"}
             </button>
-
-            {message && <p className={`mt-2 text-center text-sm font-semibold ${message.includes("successfully") ? 'text-green-600' : 'text-red-500'}`}>{message}</p>}
           </form>
+
+          <p className="text-center text-gray-500 text-xs mt-4">
+            Already have an account? <Link href="/Login" className="text-[#4A90E2] font-bold hover:underline">Login</Link>
+          </p>
         </div>
       </div>
     </div>
