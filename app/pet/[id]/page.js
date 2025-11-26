@@ -237,7 +237,7 @@ export default function PetDetailPage() {
 
   // --- ACTION HANDLERS ---
 
-  // 1. LOST & FOUND LOGIC
+  // 1. LOST & FOUND LOGIC (Owner Action)
   const handleReportLost = async () => {
     const newStatus = !pet.isLost;
     const confirmMsg = newStatus
@@ -287,6 +287,67 @@ export default function PetDetailPage() {
       alert("Error updating status");
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // --- NEW: Handle "I Found This Pet" action (Finder Action) ---
+  const handleFoundPet = async () => {
+    if (!user) {
+        // Optional: could store redirect path in sessionStorage here
+        return router.push("/Login");
+    }
+
+    const confirmFound = confirm("Great news! Do you want to send your current location to the owner immediately?");
+    if (!confirmFound) return;
+
+    setActionLoading(true);
+
+    const sendFoundMessage = async (lat, lng) => {
+      try {
+        const conversationId = createConversationId(pet._id, user.uid, pet.ownerId);
+        
+        let messageText = `🚨 URGENT: I believe I have found your pet, ${pet.name}!`;
+        
+        if (lat && lng) {
+            const mapLink = `http://googleusercontent.com/maps.google.com/?q=${lat},${lng}`;
+            messageText += `\n\n📍 My Location: ${mapLink}`;
+        } else {
+            messageText += `\n\nPlease reply so we can coordinate.`;
+        }
+
+        await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            petId: pet._id,
+            conversationId: conversationId,
+            senderId: user.uid,
+            senderName: user.displayName || user.email.split("@")[0],
+            text: messageText,
+          }),
+        });
+
+        alert("Alert sent to owner! Redirecting to chat...");
+        router.push(`/messages/${conversationId}`);
+      } catch (error) {
+        console.error("Found Pet Error:", error);
+        alert("Could not send message. Please try the manual chat below.");
+      } finally {
+        setActionLoading(false);
+      }
+    };
+
+    // Get Location
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => sendFoundMessage(pos.coords.latitude, pos.coords.longitude),
+            (err) => {
+                console.warn("Location denied:", err);
+                sendFoundMessage(null, null); // Send without location if denied
+            }
+        );
+    } else {
+        sendFoundMessage(null, null);
     }
   };
 
@@ -1187,30 +1248,49 @@ export default function PetDetailPage() {
                 )}
               </div>
 
-              {/* Contact Owner */}
+              {/* Contact Owner & Actions */}
               {!isOwner && (
-                <div className="bg-white/90 backdrop-blur-sm p-6 rounded-[2.5rem] shadow-md border border-gray-100">
-                  <h3 className="font-extrabold text-gray-800 mb-4 flex items-center gap-2">
-                    <span>💬</span> Contact Owner
-                  </h3>
-                  <textarea
-                    value={quickMessage}
-                    onChange={(e) =>
-                      setQuickMessage(e.target.value)
-                    }
-                    placeholder={`Say hi to ${pet.name}'s owner...`}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm mb-3 resize-none outline-none focus:border-[#4A90E2] focus:bg-white transition-all"
-                    rows={2}
-                  />
-                  <button
-                    onClick={handleStartChat}
-                    disabled={actionLoading}
-                    className="w-full py-3 bg-[#333333] text-white font-bold rounded-xl shadow-lg hover:bg-black transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95"
-                  >
-                    {actionLoading
-                      ? "Connecting..."
-                      : "Send Message & Chat"}
-                  </button>
+                <div className="space-y-6">
+                  
+                  {/* --- NEW: SPECIAL FOUND BUTTON (Only if Lost) --- */}
+                  {pet.isLost && (
+                    <div className="bg-green-50 border-2 border-green-500 p-6 rounded-[2.5rem] shadow-lg text-center animate-pulse">
+                        <h3 className="text-green-800 font-extrabold text-xl mb-2">Did you find {pet.name}?</h3>
+                        <p className="text-green-700 text-sm mb-4">Help reunite them with their family!</p>
+                        <button
+                            onClick={handleFoundPet}
+                            disabled={actionLoading}
+                            className="w-full py-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-lg"
+                        >
+                            {actionLoading ? "Sending Alert..." : "👋 I Found This Pet!"}
+                        </button>
+                    </div>
+                  )}
+
+                  {/* Standard Chat Box */}
+                  <div className="bg-white/90 backdrop-blur-sm p-6 rounded-[2.5rem] shadow-md border border-gray-100">
+                    <h3 className="font-extrabold text-gray-800 mb-4 flex items-center gap-2">
+                      <span>💬</span> Contact Owner
+                    </h3>
+                    <textarea
+                      value={quickMessage}
+                      onChange={(e) =>
+                        setQuickMessage(e.target.value)
+                      }
+                      placeholder={`Say hi to ${pet.name}'s owner...`}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm mb-3 resize-none outline-none focus:border-[#4A90E2] focus:bg-white transition-all"
+                      rows={2}
+                    />
+                    <button
+                      onClick={handleStartChat}
+                      disabled={actionLoading}
+                      className="w-full py-3 bg-[#333333] text-white font-bold rounded-xl shadow-lg hover:bg-black transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95"
+                    >
+                      {actionLoading
+                        ? "Connecting..."
+                        : "Send Message & Chat"}
+                    </button>
+                  </div>
                 </div>
               )}
 

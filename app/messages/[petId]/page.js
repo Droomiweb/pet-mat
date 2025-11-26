@@ -1,4 +1,3 @@
-// app/messages/[petId]/page.js
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -48,6 +47,29 @@ export default function ChatSessionPage() {
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const conversationId = params.petId;
+
+  // --- HELPER: Parse Text for Links ---
+  const renderTextWithLinks = (text, isSender) => {
+    // Regex to find URLs (starts with http/https)
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    
+    return text.split(urlRegex).map((part, index) => {
+        if (part.match(urlRegex)) {
+            return (
+                <a 
+                    key={index} 
+                    href={part} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className={`underline font-bold break-all ${isSender ? 'text-white hover:text-gray-200' : 'text-blue-600 hover:text-blue-800'}`}
+                >
+                    {part}
+                </a>
+            );
+        }
+        return part;
+    });
+  };
 
   // --- 1. DATA FETCHING & LISTENERS ---
   
@@ -110,7 +132,6 @@ export default function ChatSessionPage() {
       const lastMsg = msgs[msgs.length - 1];
       if (lastMsg && lastMsg.senderId !== user.uid && document.visibilityState === 'hidden') {
           const now = new Date().getTime();
-          // Only notify if message is recent (within 2 seconds) to prevent spam on load
           if (lastMsg.createdAt && (now - lastMsg.createdAt.toMillis()) < 2000) {
               if (Notification.permission === "granted") {
                   new Notification(`New message from ${lastMsg.senderName}`, {
@@ -126,7 +147,6 @@ export default function ChatSessionPage() {
     const unsubscribeConv = onSnapshot(doc(db, "conversations", conversationId), (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
-            // Check if *anyone other than me* is typing
             const othersTyping = data.typing 
                 ? Object.entries(data.typing).some(([uid, isTyping]) => uid !== user.uid && isTyping)
                 : false;
@@ -154,7 +174,6 @@ export default function ChatSessionPage() {
 
       if (!user || !conversationId) return;
 
-      // If not already marked as typing, update DB
       if (!isTyping) {
           setIsTyping(true);
           updateDoc(doc(db, "conversations", conversationId), {
@@ -162,7 +181,6 @@ export default function ChatSessionPage() {
           });
       }
 
-      // Debounce stop typing
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       
       typingTimeoutRef.current = setTimeout(() => {
@@ -170,7 +188,7 @@ export default function ChatSessionPage() {
           updateDoc(doc(db, "conversations", conversationId), {
               [`typing.${user.uid}`]: false
           });
-      }, 2000); // Stop typing 2s after last keystroke
+      }, 2000); 
   };
 
   const handleFileSelect = (e) => {
@@ -200,7 +218,6 @@ export default function ChatSessionPage() {
     
     setSending(true);
     
-    // Clear typing status immediately
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     setIsTyping(false);
     updateDoc(doc(db, "conversations", conversationId), { [`typing.${user.uid}`]: false });
@@ -328,8 +345,12 @@ export default function ChatSessionPage() {
                             </div>
                         )}
 
-                        {/* TEXT */}
-                        {msg.text && <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>}
+                        {/* TEXT WITH LINK PARSING */}
+                        {msg.text && (
+                            <p className="leading-relaxed whitespace-pre-wrap">
+                                {renderTextWithLinks(msg.text, isSender)}
+                            </p>
+                        )}
                         
                         {/* METADATA ROW (Time + Ticks) */}
                         <div className={`flex items-center justify-end mt-1 gap-1 ${isSender ? "opacity-90" : "opacity-50"}`}>
