@@ -95,15 +95,21 @@ const petSchema = new mongoose.Schema({
     required: true
   },
   
-  // --- UPDATED LINEAGE FIELDS ---
-  // Links to registered pets (if available)
+  // --- LINEAGE FIELDS ---
   damId: { type: mongoose.Schema.Types.ObjectId, ref: 'Pet', default: null },
   sireId: { type: mongoose.Schema.Types.ObjectId, ref: 'Pet', default: null },
-  // Text fallback extracted from certificate (NEW)
   damName: { type: String, default: null },
   sireName: { type: String, default: null },
-  // ------------------------------
   
+  // --- NEW: LOST & FOUND FIELDS ---
+  isLost: { type: Boolean, default: false },
+  lastSeenDate: { type: Date, default: null },
+  lastSeenLocation: {
+    type: { type: String, enum: ['Point'], default: 'Point' },
+    coordinates: { type: [Number], default: [0, 0] } // [lng, lat]
+  },
+  // ---------------------------------
+
   nftTokenId: { type: Number, default: null, index: true },
   nftContractAddress: { type: String, default: null },
 
@@ -138,6 +144,7 @@ const petSchema = new mongoose.Schema({
 });
 
 petSchema.index({ location: '2dsphere' });
+petSchema.index({ lastSeenLocation: '2dsphere' }); // Index for lost searches
 
 const Pet = mongoose.models.Pet || mongoose.model("Pet", petSchema);
 export default Pet;

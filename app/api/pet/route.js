@@ -210,7 +210,7 @@ export async function POST(req) {
       ownerName,
     } = await req.json();
 
-    // Use stricter validation from second version
+    // Validation
     if (
       !name ||
       !type ||
@@ -330,7 +330,7 @@ export async function POST(req) {
       imageUrls,
       ownerId,
 
-      // Lineage (from first version)
+      // Lineage
       sireName:
         aiData?.extractedData?.sireName &&
         aiData.extractedData.sireName !== "N/A"
@@ -420,54 +420,50 @@ export async function GET(req) {
     const excludeOwnerId = searchParams.get("excludeOwnerId");
     const listingType = searchParams.get("listingType");
 
-    // Build the Query
+    // NEW: Check for lost filter
+    const isLostFilter = searchParams.get("isLost") === "true";
+
     const petQuery = {};
-    if (type) petQuery.type = type;
-    if (breed) petQuery.breed = breed;
-    if (excludeOwnerId) petQuery.ownerId = { $ne: excludeOwnerId };
-    if (listingType) petQuery.listingType = listingType;
 
-    // 1. Hide Pregnant Pets
-    petQuery.isPregnant = { $ne: true };
+    // If searching for LOST pets, ignore other filters
+    if (isLostFilter) {
+      petQuery.isLost = true;
+    } else {
+      // Standard Filters
+      if (type) petQuery.type = type;
+      if (breed) petQuery.breed = breed;
+      if (excludeOwnerId) petQuery.ownerId = { $ne: excludeOwnerId };
+      if (listingType) petQuery.listingType = listingType;
 
-    // 2. Only show Verified Pets
-    petQuery.verificationStatus = "verified";
+      // Default visibility rules
+      petQuery.isPregnant = { $ne: true };
+      petQuery.verificationStatus = "verified";
+      petQuery.isLost = { $ne: true }; // Don't show lost pets in normal mating feed
 
-    // 3. Hide pets that already have an APPROVED adoption request
-    petQuery.adoptionRequests = {
-      $not: {
-        $elemMatch: { status: "approved" },
-      },
-    };
+      // Hide pets with approved adoption
+      petQuery.adoptionRequests = {
+        $not: { $elemMatch: { status: "approved" } },
+      };
 
-    // 4. Hide Mated Females
-    // Step A: Get all pets that were Requesters in a "mated" transaction
-    const matedRequesterIds = await Pet.distinct(
-      "matingHistory.requesterPetId",
-      {
-        "matingHistory.status": "mated",
-      }
-    );
+      // Hide Mated Females
+      const matedRequesterIds = await Pet.distinct(
+        "matingHistory.requesterPetId",
+        { "matingHistory.status": "mated" }
+      );
+      petQuery.$or = [
+        { gender: { $ne: "Female" } },
+        {
+          $and: [
+            { "matingHistory.status": { $ne: "mated" } },
+            { _id: { $nin: matedRequesterIds } },
+          ],
+        },
+      ];
+    }
 
-    // Step B: Apply exclusion logic:
-    // - Show all males
-    // - Show females only if:
-    //   a) they are not "mated" as host
-    //   b) their _id is not in the list of requester IDs that are "mated"
-    petQuery.$or = [
-      { gender: { $ne: "Female" } },
-      {
-        $and: [
-          { "matingHistory.status": { $ne: "mated" } },
-          { _id: { $nin: matedRequesterIds } },
-        ],
-      },
-    ];
+    let pets = await Pet.find(petQuery).sort({ createdAt: -1 }).lean();
 
-    // Run the query
-    let pets = await Pet.find(petQuery).lean();
-
-    // Filter by city (back-end side)
+    // Filter by city (using Owner location)
     if (city) {
       const usersInCity = await User.find(
         { "location.city": city },
@@ -498,6 +494,10 @@ export async function GET(req) {
           imageUrls: pet.imageUrls || [],
           certificateUrl: pet.certificateUrl || null,
           ownerId: pet.ownerId,
+          // Lost-pet related fields
+          isLost: pet.isLost,
+          lastSeenDate: pet.lastSeenDate,
+          // Location
           location: owner?.location || null,
         };
       })

@@ -7,6 +7,10 @@ const UserSchema = new mongoose.Schema({
   phone: { type: String, required: true },
   firebaseUid: { type: String, required: true, unique: true },
   
+    // --- NEW: Avatar Field ---
+  avatar: { type: String, default: "" }, 
+  // -------------------------
+
   // --- NEW FIELDS FOR OTP RESET ---
   otpCode: { type: String, default: null },
   otpExpiry: { type: Date, default: null },

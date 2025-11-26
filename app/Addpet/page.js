@@ -134,7 +134,6 @@ export default function AddPet() {
       
       // 1. Check for Human
       if (data.isHuman) {
-          // We throw here to jump to the catch block, BUT we distinguish it
           throw new Error("HUMAN_DETECTED");
       }
 
@@ -159,7 +158,7 @@ export default function AddPet() {
       if (err.message === "HUMAN_DETECTED") {
           setError("Humans detected! 🚫 Only pet photos are allowed. 🐾");
       } else {
-          console.error("Image Analysis Error:", err); // Only log real errors
+          console.error("Image Analysis Error:", err); 
           setError(err.message || "Could not analyze image. Try another.");
       }
       
@@ -172,7 +171,7 @@ export default function AddPet() {
     }
   };
 
-  // --- DRAG AND DROP HANDLERS ---
+  // --- DRAG AND DROP HANDLERS (Restored) ---
   const handleDragOver = (e) => {
       e.preventDefault();
       setIsDragging(true);
@@ -254,7 +253,7 @@ export default function AddPet() {
       </div>
 
       {/* Main Container: Stack on Mobile, Row on Desktop */}
-      <div className="w-full max-w-5xl bg-white/95 md:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[100dvh] md:min-h-[600px] glass-panel z-10">
+      <div className="w-full max-w-5xl bg-white/80 backdrop-blur-xl md:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[100dvh] md:min-h-[600px] border border-white/60 z-10">
 
         {/* --- LEFT: INTERACTIVE 3D PANEL (Header on Mobile) --- */}
         <div 
@@ -306,7 +305,7 @@ export default function AddPet() {
         </div>
 
         {/* --- RIGHT: FORM PANEL --- */}
-        <div className="w-full md:w-1/2 p-6 md:p-8 flex flex-col justify-center bg-white md:bg-white/60 backdrop-blur-md flex-1 rounded-t-[2rem] md:rounded-none -mt-6 md:mt-0 z-20 shadow-[0_-10px_20px_rgba(0,0,0,0.1)] md:shadow-none overflow-y-auto">
+        <div className="w-full md:w-1/2 p-6 md:p-8 flex flex-col justify-center bg-white/80 backdrop-blur-md flex-1 rounded-t-[2rem] md:rounded-none -mt-6 md:mt-0 z-20 shadow-[0_-10px_20px_rgba(0,0,0,0.1)] md:shadow-none overflow-y-auto">
           
           <div className="mb-6 text-center md:text-left pt-2 md:pt-0">
             <div className="flex items-center justify-center md:justify-start gap-2 mb-1">

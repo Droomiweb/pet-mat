@@ -24,7 +24,7 @@ export default function Login() {
   
   const router = useRouter();
 
-  // --- 3D TILT LOGIC ---
+  // --- 3D TILT LOGIC (Desktop) ---
   const handleMouseMove = (e) => {
     if (!cardRef.current) return;
     const card = cardRef.current;
@@ -58,16 +58,17 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-[#E2F4EF]">
+    <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#E2F4EF]">
       
       {/* Animated Background */}
       <div className="bg-animation">
         {[...Array(6)].map((_, i) => <div key={i} className="paw-print"></div>)}
       </div>
 
-      <div className="w-full max-w-4xl bg-white/90 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[550px] glass-panel z-10">
+      {/* Main Container */}
+      <div className="w-full max-w-4xl bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[600px] border border-white/60 z-10 animate-in zoom-in duration-300">
 
-        {/* --- LEFT: 3D INTERACTIVE ZONE (Emoji Version) --- */}
+        {/* --- LEFT: 3D INTERACTIVE ZONE (Desktop) --- */}
         <div 
           className="hidden md:flex md:w-1/2 bg-gradient-to-br from-[#4A90E2] to-[#50E3C2] flex-col justify-center items-center p-10 relative perspective-1000 overflow-hidden"
           onMouseMove={handleMouseMove}
@@ -83,10 +84,7 @@ export default function Login() {
               transformStyle: "preserve-3d"
             }}
           >
-            <h2 
-              className="text-4xl font-extrabold mb-6 text-white drop-shadow-lg transition-transform duration-100"
-              style={{ transform: "translateZ(60px)" }}
-            >
+            <h2 className="text-4xl font-extrabold mb-6 text-white drop-shadow-lg transition-transform duration-100" style={{ transform: "translateZ(60px)" }}>
               Welcome!
             </h2>
             
@@ -95,44 +93,37 @@ export default function Login() {
               className="w-48 h-48 relative rounded-full border-8 border-white/30 shadow-2xl mb-6 transition-transform duration-100 bg-white/20 backdrop-blur-sm flex items-center justify-center"
               style={{ transform: "translateZ(40px)" }}
             >
-               {/* The Giant Emoji */}
                <span className="text-[8rem] drop-shadow-md select-none">🐱</span>
 
-              {/* --- CSS PAWS (Privacy Mode) --- */}
-              {/* Left Paw */}
-              <div 
-                className={`absolute bottom-[-10px] left-[10px] w-16 h-16 bg-white rounded-full shadow-lg z-20 flex items-center justify-center text-2xl transition-all duration-500 ease-in-out ${isPasswordFocused ? 'translate-y-[-60px] translate-x-[20px] rotate-12' : 'translate-y-[100px]'}`}
-              >🐾</div>
-              {/* Right Paw */}
-              <div 
-                className={`absolute bottom-[-10px] right-[10px] w-16 h-16 bg-white rounded-full shadow-lg z-20 flex items-center justify-center text-2xl transition-all duration-500 ease-in-out ${isPasswordFocused ? 'translate-y-[-60px] translate-x-[-20px] -rotate-12' : 'translate-y-[100px]'}`}
-              >🐾</div>
+              {/* Privacy Paws */}
+              <div className={`absolute bottom-[-10px] left-[10px] w-16 h-16 bg-white rounded-full shadow-lg z-20 flex items-center justify-center text-2xl transition-all duration-500 ease-in-out ${isPasswordFocused ? 'translate-y-[-60px] translate-x-[20px] rotate-12' : 'translate-y-[100px]'}`}>🐾</div>
+              <div className={`absolute bottom-[-10px] right-[10px] w-16 h-16 bg-white rounded-full shadow-lg z-20 flex items-center justify-center text-2xl transition-all duration-500 ease-in-out ${isPasswordFocused ? 'translate-y-[-60px] translate-x-[-20px] -rotate-12' : 'translate-y-[100px]'}`}>🐾</div>
             </div>
 
-            {/* Floating Elements */}
-            <div className="absolute top-0 left-10 text-4xl animate-bounce transition-transform duration-100" style={{ transform: "translateZ(80px)", animationDuration: '3s' }}>🧶</div>
-            <div className="absolute bottom-10 right-10 text-4xl animate-bounce transition-transform duration-100" style={{ transform: "translateZ(100px)", animationDuration: '4s' }}>🐟</div>
-            
-            <p 
-              className="text-center text-white text-lg font-medium opacity-90 px-2 transition-transform duration-100"
-              style={{ transform: "translateZ(30px)" }}
-            >
+            <p className="text-center text-white text-lg font-medium opacity-90 px-2 transition-transform duration-100" style={{ transform: "translateZ(30px)" }}>
               {isPasswordFocused ? "Don't worry, I'm not looking!" : "Connect, Adopt, and Care."}
             </p>
           </div>
         </div>
 
         {/* --- RIGHT: LOGIN FORM --- */}
-        <div className="w-full md:w-1/2 p-8 sm:p-12 flex flex-col justify-center bg-white/60 h-full backdrop-blur-sm">
+        <div className="w-full md:w-1/2 p-8 sm:p-12 flex flex-col justify-center h-full relative">
+          
+          {/* Mobile Mascot (Visible only on small screens) */}
+          <div className="md:hidden flex justify-center mb-6 animate-bounce">
+             <div className="w-24 h-24 bg-gradient-to-tr from-[#4A90E2] to-[#50E3C2] rounded-full flex items-center justify-center shadow-lg border-4 border-white">
+                <span className="text-5xl">🐱</span>
+             </div>
+          </div>
+
           <div className="mb-8 text-center md:text-left">
-            <h1 className="text-3xl font-bold text-gray-800 mb-1">Member Login</h1>
-            <p className="text-gray-500 text-sm">Enter credentials to access PetLink</p>
+            <h1 className="text-3xl font-extrabold text-gray-800 mb-1 tracking-tight">Member Login</h1>
+            <p className="text-gray-500 text-sm font-medium">Welcome back to PetLink!</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-5">
-            
-            <div>
-              <label htmlFor="username" className="block text-[10px] font-bold text-gray-500 uppercase mb-1 ml-1 tracking-wider">Username</label>
+            <div className="space-y-1">
+              <label htmlFor="username" className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Username</label>
               <input
                 id="username"
                 type="text"
@@ -140,17 +131,14 @@ export default function Login() {
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="e.g. catlover99"
                 required
-                className="input-field"
+                className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-base rounded-xl focus:ring-4 focus:ring-blue-100 focus:border-[#4A90E2] block p-4 outline-none transition-all font-medium placeholder-gray-400 shadow-sm"
               />
             </div>
 
-            <div className="relative">
-              <div className="flex justify-between items-center mb-1 ml-1">
-                {/* FIXED: class -> className */}
-                <label htmlFor="password" className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Password</label>
-                
-                {/* FIXED: class -> className */}
-                <Link href="/forgot-password" className="text-xs text-[#4A90E2] hover:underline font-bold">Forgot Password?</Link>
+            <div className="space-y-1">
+              <div className="flex justify-between items-center ml-1">
+                <label htmlFor="password" className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Password</label>
+                <Link href="/forgot-password" className="text-xs text-[#4A90E2] hover:text-[#3A75B9] font-bold transition-colors">Forgot?</Link>
               </div>
               <div className="relative">
                 <input
@@ -158,17 +146,16 @@ export default function Login() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  // Triggers the cat hiding its eyes
                   onFocus={() => setIsPasswordFocused(true)}
                   onBlur={() => setIsPasswordFocused(false)}
                   placeholder="••••••••"
                   required
-                  className="input-field pr-10"
+                  className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-base rounded-xl focus:ring-4 focus:ring-blue-100 focus:border-[#4A90E2] block p-4 pr-12 outline-none transition-all font-medium placeholder-gray-400 shadow-sm"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 text-gray-400 hover:text-[#4A90E2] transition-colors"
+                  className="absolute right-4 top-4 text-gray-400 hover:text-[#4A90E2] transition-colors"
                 >
                   {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
                 </button>
@@ -176,24 +163,30 @@ export default function Login() {
             </div>
 
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 animate-pulse">
-                ⚠️ {error}
+              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2 animate-pulse">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 shrink-0"><path fillRule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clipRule="evenodd" /></svg>
+                {error}
               </div>
             )}
 
             <button
               type="submit"
               disabled={loading}
-              className="auth-btn"
+              className="w-full text-white bg-gradient-to-r from-[#4A90E2] to-[#3A75B9] hover:from-[#3A75B9] hover:to-[#2b5c94] focus:ring-4 focus:outline-none focus:ring-blue-300 font-bold rounded-xl text-base px-5 py-4 text-center shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 active:scale-95 disabled:opacity-70 disabled:scale-100"
             >
-              {loading ? "Signing In..." : "Sign In"}
+              {loading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Signing In...</span>
+                </div>
+              ) : "Sign In"}
             </button>
           </form>
 
           <div className="mt-8 text-center">
-            <p className="text-sm text-gray-600">
-              New to PetLink?{" "}
-              <Link href="/Signup" className="text-[#4A90E2] font-bold hover:underline">Create Account</Link>
+            <p className="text-sm text-gray-500">
+              New here?{" "}
+              <Link href="/Signup" className="text-[#4A90E2] font-bold hover:underline decoration-2 underline-offset-4">Create Account</Link>
             </p>
           </div>
         </div>
