@@ -2,7 +2,7 @@
 "use client";
 import Link from "next/link";
 import { useState, useRef } from "react";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, deleteUser } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { useRouter } from "next/navigation";
 
@@ -69,14 +69,17 @@ const SignupMascot = ({ isExcited }) => {
 
 export default function Signup() {
   const [formData, setFormData] = useState({ name: "", username: "", phone: "", password: "", confirmPassword: "" });
+  
+  // Visibility States
   const [showPass, setShowPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
+  
   const [location, setLocation] = useState({ lat: null, lng: null, city: "" });
   const [status, setStatus] = useState({ type: "", msg: "" });
   const [loading, setLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef(null);
   
-  // 3D State
   const [rotate, setRotate] = useState({ x: 0, y: 0 });
   const cardRef = useRef(null);
   const router = useRouter();
@@ -139,9 +142,27 @@ export default function Signup() {
     }
 
     setLoading(true);
+    let createdUser = null;
+
     try {
+      // 1. PRE-CHECK: Check if Username or Phone exists in MongoDB BEFORE creating Firebase user
+      const checkRes = await fetch(`/api/user?username=${formData.username}&phone=${formData.phone}`);
+      const checkData = await checkRes.json();
+      
+      if (checkData.exists) {
+          const msg = checkData.field === "phone" 
+              ? "Phone number already in use." 
+              : "Username already taken.";
+          setLoading(false);
+          return setStatus({ type: "error", msg: msg });
+      }
+
+      // 2. Create User in Firebase
       const cred = await createUserWithEmailAndPassword(auth, formData.username + "@example.com", formData.password);
-      await fetch("/api/user", {
+      createdUser = cred.user;
+
+      // 3. Create User in MongoDB
+      const res = await fetch("/api/user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -152,9 +173,25 @@ export default function Signup() {
           firebaseUid: cred.user.uid
         }),
       });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        // If MongoDB fails unexpectedly, try to clean up the Firebase user to prevent ghosts
+        try {
+            await deleteUser(createdUser);
+        } catch(delErr) { console.warn("Could not cleanup firebase user", delErr); }
+        
+        throw new Error(data.error || "Failed to create account.");
+      }
+
       router.push("/Addpet");
     } catch (err) {
-      setStatus({ type: "error", msg: err.message.includes("email-already-in-use") ? "Username already taken." : err.message });
+      console.error("Signup Error:", err);
+      let errorMessage = err.message;
+      if (err.message.includes("email-already-in-use")) errorMessage = "Username already taken.";
+      
+      setStatus({ type: "error", msg: errorMessage });
     } finally {
       setLoading(false);
     }
@@ -206,7 +243,7 @@ export default function Signup() {
         {/* --- RIGHT: FORM --- */}
         <div className="w-full md:w-1/2 p-8 sm:p-10 flex flex-col justify-center h-full overflow-y-auto">
           
-          {/* Mobile Mascot Header (Replaces Emoji) */}
+          {/* Mobile Mascot Header */}
           <div className="md:hidden flex flex-col items-center mb-6">
              <div className="w-28 h-28 mb-2">
                 <SignupMascot isExcited={isTyping} />
@@ -230,25 +267,50 @@ export default function Signup() {
             {/* Row 2 */}
             <div>
               <label className="text-[10px] font-bold text-[#4A90E2] ml-2 mb-1 block uppercase tracking-wider">WhatsApp Number</label>
-              <input name="phone" type="tel" placeholder="e.g. 9876543210" className="input-field" onChange={handleInput} required />
+              <input name="phone" type="number" placeholder="e.g. 9876543210" className="input-field" onChange={handleInput} required />
             </div>
 
-            {/* Row 3 */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Row 3 - Passwords with Toggles */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Password Field */}
                 <div className="relative">
                     <input 
                         name="password" 
                         type={showPass ? "text" : "password"} 
                         placeholder="Password" 
-                        className="input-field pr-8" 
+                        className="input-field pr-10" 
                         onChange={handleInput} 
                         required 
                     />
-                    <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-3.5 text-gray-400 hover:text-[#4A90E2]">
+                    <button 
+                        type="button" 
+                        onClick={() => setShowPass(!showPass)} 
+                        className="absolute right-3 top-3.5 text-gray-400 hover:text-[#4A90E2] transition-colors"
+                        tabIndex="-1"
+                    >
                         {showPass ? <EyeSlashIcon /> : <EyeIcon />}
                     </button>
                 </div>
-                <input name="confirmPassword" type="password" placeholder="Confirm" className="input-field" onChange={handleInput} required />
+
+                {/* Confirm Password Field */}
+                <div className="relative">
+                    <input 
+                        name="confirmPassword" 
+                        type={showConfirmPass ? "text" : "password"} 
+                        placeholder="Confirm" 
+                        className="input-field pr-10" 
+                        onChange={handleInput} 
+                        required 
+                    />
+                    <button 
+                        type="button" 
+                        onClick={() => setShowConfirmPass(!showConfirmPass)} 
+                        className="absolute right-3 top-3.5 text-gray-400 hover:text-[#4A90E2] transition-colors"
+                        tabIndex="-1"
+                    >
+                        {showConfirmPass ? <EyeSlashIcon /> : <EyeIcon />}
+                    </button>
+                </div>
             </div>
 
             {/* Location Button */}

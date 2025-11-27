@@ -1,6 +1,7 @@
+// app/auth-provider.js
 "use client";
 import { createContext, useContext, useEffect, useState } from "react";
-import { auth } from "./lib/firebase"; // Your firebase.js
+import { auth } from "./lib/firebase"; 
 import { onAuthStateChanged, signOut as firebaseSignOut } from "firebase/auth";
 
 const AuthContext = createContext();
@@ -19,27 +20,21 @@ export const AuthProvider = ({ children }) => {
           const res = await fetch(`/api/user/${user.uid}`);
           
           if (res.ok) {
-            // --- This part is correct ---
             const data = await res.json();
             setUserData(data);
             setIsAdmin(data.isAdmin);
           } else {
-            // --- THIS IS THE FIX ---
-            // This block runs when res.ok is false (e.g., a 404 error)
-            console.error("User not found in database (404) or API error. Logging out.");
-            setUserData(null); // Ensure userData is null
+            // Log as warning instead of Error to prevent console spam during cleanup
+            console.warn("User profile not found in database. Initializing or Deleted. Signing out.");
+            setUserData(null);
             setIsAdmin(false);
-            await firebaseSignOut(auth); // Sign out the user
-            // --- END FIX ---
+            await firebaseSignOut(auth); 
           }
         } catch (error) {
-          // --- THIS IS ALSO A FIX ---
-          // This catches network errors
           console.error("Auth: Error fetching user data:", error);
           setUserData(null);
           setIsAdmin(false);
-          await firebaseSignOut(auth); // Sign out on any error
-          // --- END FIX ---
+          await firebaseSignOut(auth);
         } finally {
           setLoading(false);
         }
@@ -55,7 +50,6 @@ export const AuthProvider = ({ children }) => {
 
   const signOut = async () => {
     await firebaseSignOut(auth);
-    // onAuthStateChanged will handle setting states to null
   };
 
   return (
