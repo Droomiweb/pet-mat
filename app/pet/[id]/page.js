@@ -95,19 +95,19 @@ const DNALoading = () => (
 );
 
 const FeaturePill = ({ icon, label, value, color }) => (
-  <div className="flex items-center gap-3 px-5 py-4 rounded-2xl border shadow-sm transition-all hover:scale-105 bg-white border-gray-100">
+  <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 sm:py-4 rounded-2xl border shadow-sm transition-all hover:scale-105 bg-white border-gray-100 min-w-0">
     <div
-      className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
+      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-base sm:text-lg shrink-0 ${
         color || "bg-gray-100 text-gray-600"
       }`}
     >
       {icon}
     </div>
-    <div className="flex flex-col leading-none">
-      <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider mb-1">
+    <div className="flex flex-col leading-none min-w-0 overflow-hidden">
+      <span className="text-[9px] sm:text-[10px] font-bold uppercase text-gray-400 tracking-wider mb-0.5 sm:mb-1 truncate">
         {label}
       </span>
-      <span className="font-bold text-gray-800 text-sm">{value || "N/A"}</span>
+      <span className="font-bold text-gray-800 text-xs sm:text-sm truncate">{value || "N/A"}</span>
     </div>
   </div>
 );
@@ -745,7 +745,7 @@ export default function PetDetailPage() {
       {/* --- AI ADVISOR MODAL --- */}
       {showAdvisorModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-[2rem] w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden border-4 border-purple-50 animate-in zoom-in-95">
+          <div className="bg-white rounded-[2rem] w-full max-w-2xl h-[90dvh] flex flex-col shadow-2xl overflow-hidden border-4 border-purple-50 animate-in zoom-in-95">
             <div className="p-5 bg-gradient-to-r from-purple-600 to-indigo-600 flex justify-between items-center text-white shadow-md shrink-0">
               <h2 className="font-bold text-lg flex items-center gap-2">
                 <span>🧬</span> AI Genetic Advisor
@@ -901,7 +901,7 @@ export default function PetDetailPage() {
             {/* LOST overlay */}
             {pet.isLost && (
               <div className="absolute inset-0 bg-red-500/20 flex items-center justify-center">
-                <h2 className="text-6xl font-extrabold text-white drop-shadow-lg tracking-widest border-4 border-white p-4 rounded-xl transform -rotate-12">
+                <h2 className="text-4xl md:text-6xl font-extrabold text-white drop-shadow-lg tracking-widest border-4 border-white p-2 md:p-4 rounded-xl transform -rotate-12">
                   LOST
                 </h2>
               </div>
@@ -934,11 +934,11 @@ export default function PetDetailPage() {
       </button>
 
       {/* Floating Title Card */}
-      <div className="absolute top-[50vh] -translate-y-full left-0 w-full p-6 md:p-10 pointer-events-none">
+      <div className="absolute top-[50vh] -translate-y-full left-0 w-full p-4 sm:p-6 md:p-10 pointer-events-none">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row md:items-end justify-between gap-4 pointer-events-auto">
           <div className="animate-in slide-in-from-bottom duration-700">
             <span
-              className={`inline-block px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider mb-3 text-white shadow-lg backdrop-blur-md ${
+              className={`inline-block px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider mb-2 sm:mb-3 text-white shadow-lg backdrop-blur-md ${
                 pet.listingType === "Adoption"
                   ? "bg-blue-500/90"
                   : "bg-pink-500/90"
@@ -946,12 +946,12 @@ export default function PetDetailPage() {
             >
               {pet.listingType} Listing
             </span>
-            <h1 className="text-5xl md:text-7xl font-extrabold text-gray-900 mb-3 drop-shadow-sm tracking-tight">
+            <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold text-gray-900 mb-2 sm:mb-3 drop-shadow-sm tracking-tight break-words">
               {pet.name}
             </h1>
-            <div className="flex items-center gap-4 text-gray-700 font-bold text-lg">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-gray-700 font-bold text-base sm:text-lg">
               <span>{pet.breed}</span>
-              <span className="w-2 h-2 rounded-full bg-gray-400"></span>
+              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-gray-400"></span>
               <span>{pet.age} Years Old</span>
             </div>
           </div>
@@ -962,7 +962,7 @@ export default function PetDetailPage() {
             !isOwner && (
               <button
                 onClick={handleViewLocation}
-                className="bg-white/90 backdrop-blur-xl text-[#333333] px-6 py-3 rounded-full font-bold shadow-xl hover:scale-105 transition-transform flex items-center gap-2 text-sm border border-white/50"
+                className="bg-white/90 backdrop-blur-xl text-[#333333] px-6 py-3 rounded-full font-bold shadow-xl hover:scale-105 transition-transform flex items-center gap-2 text-sm border border-white/50 w-full sm:w-auto justify-center"
               >
                 <span>📍</span> View Owner Location
               </button>
@@ -973,7 +973,7 @@ export default function PetDetailPage() {
       {/* --- CONTENT CONTAINER --- */}
       <div className="max-w-5xl mx-auto px-4 md:px-8 -mt-8 relative z-10">
         {/* --- STATS GRID --- */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10 animate-in slide-in-from-bottom duration-1000 delay-100">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-10 animate-in slide-in-from-bottom duration-1000 delay-100">
           <FeaturePill
             icon={pet.gender === "Male" ? "♂️" : "♀️"}
             label="Gender"
@@ -998,24 +998,24 @@ export default function PetDetailPage() {
           />
         </div>
 
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="flex flex-col md:grid md:grid-cols-3 gap-6 md:gap-8">
           {/* --- LEFT COLUMN: INFO --- */}
-          <div className="md:col-span-2 space-y-8">
+          <div className="md:col-span-2 space-y-6 md:space-y-8 order-2 md:order-1">
             {/* AI Personality */}
             {pet.aiProfileString && (
-              <div className="bg-white/80 backdrop-blur-xl p-8 rounded-[2.5rem] shadow-sm border border-white animate-in fade-in duration-700">
+              <div className="bg-white/80 backdrop-blur-xl p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-white animate-in fade-in duration-700">
                 <h3 className="text-xl font-extrabold text-[#333333] mb-4 flex items-center gap-2">
                   <span className="text-2xl">✨</span> Personality
                   Profile
                 </h3>
-                <p className="text-lg text-gray-600 italic leading-relaxed">
+                <p className="text-base md:text-lg text-gray-600 italic leading-relaxed">
                   "{pet.aiProfileString}"
                 </p>
               </div>
             )}
 
             {/* History Sections */}
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
+            <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
               <h3 className="text-xl font-extrabold text-[#333333] mb-6">
                 Activity History
               </h3>
@@ -1072,11 +1072,11 @@ export default function PetDetailPage() {
                           key={idx}
                           className="text-sm text-gray-600 flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100"
                         >
-                          <span className="font-medium">
+                          <span className="font-medium truncate mr-2">
                             {mh.requesterName} ({mh.requesterPetName})
                           </span>
                           <span
-                            className={`font-bold uppercase text-[10px] px-2 py-1 rounded-md ${
+                            className={`font-bold uppercase text-[10px] px-2 py-1 rounded-md shrink-0 ${
                               mh.status === "accepted"
                                 ? "bg-green-100 text-green-600"
                                 : "bg-gray-200 text-gray-500"
@@ -1122,9 +1122,9 @@ export default function PetDetailPage() {
             </div>
           </div>
 
-          {/* --- RIGHT COLUMN: ACTIONS (Sticky) --- */}
-          <div className="md:col-span-1">
-            <div className="sticky top-24 space-y-6">
+          {/* --- RIGHT COLUMN: ACTIONS (Sticky on Desktop) --- */}
+          <div className="md:col-span-1 order-1 md:order-2">
+            <div className="md:sticky md:top-24 space-y-6">
               {/* Primary Action Card */}
               <div className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-gray-100 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#4A90E2] to-[#50E3C2]"></div>
