@@ -15,19 +15,6 @@ const ChevronDownIcon = (props) => (<svg {...props} viewBox="0 0 24 24" fill="no
 const BellIcon = (props) => (<svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.37 21a2 2 0 0 0 3.26 0"/></svg>);
 const MessageIcon = (props) => (<svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>);
 
-// --- NEW: Custom Gradient Logo Icon ---
-const AppLogoIcon = ({ className }) => (
-  <svg viewBox="0 0 512 512" className={className} xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="pawGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#4A90E2" />
-        <stop offset="100%" stopColor="#50E3C2" />
-      </linearGradient>
-    </defs>
-    <path fill="url(#pawGradient)" d="M226.5 92.9c14.3 42.9-.3 86.2-32.6 96.8s-70.1-19.3-84.4-62.2-4.6-86.2 32.6-96.8 70.1 19.3 84.4 62.2zM61 118.5c7.9 6.3 21.4-8.8 29.9-33.9 8.5-25.1 6.9-49.9-1-56.3-8-6.3-21.4 8.8-29.9 33.9-8.5 25.1-6.9 49.9 1 56.3zm118.2-42.6c-13.1-3.4-25.5 8.9-39.6 30.2-14 21.3-15.8 46.2-2.7 49.6 13.1 3.4 25.5-8.9 39.6-30.2 14-21.3 15.8-46.2 2.7-49.6zM155 423.9c50.4 26.6 126.6 9.3 157.6-49.7s6.6-129.6-58.2-150.6c-53.6-17.4-143.2 14.1-156.9 77.3-9.2 42.3 7.2 96.5 57.5 123zM279 159.2c13.1-3.4 25.5 8.9 39.6 30.2 14 21.3 15.8 46.2 2.7 49.6-13.1 3.4-25.5-8.9-39.6-30.2-14.1-21.3-15.9-46.2-2.7-49.6zM369.2 162c12.1 38.4-13.8 79.7-52.9 85.3-39.2 5.6-80.2-25.9-92.3-64.3-12.1-38.4 13.8-79.7 52.9-85.3 39.1-5.6 80.1 25.9 92.3 64.3zm28.6-74.4c-8-6.3-21.4 8.8-29.9 33.9-8.5 25.1-6.9 49.9 1 56.3 7.9 6.3 21.4-8.8 29.9-33.9 8.5-25.1 6.9-49.9-1-56.3z"/>
-  </svg>
-);
-
 // --- SUBMENU ICONS ---
 const VetIcon = () => <span className="text-lg">🏥</span>;
 const AdoptionIcon = () => <span className="text-lg">🏠</span>;
@@ -148,7 +135,14 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
 
                 <Link href="/" className="flex items-center gap-2 group">
                     <div className="relative w-9 h-9 transition-transform duration-300 group-hover:scale-110">
-                        <AppLogoIcon className="w-full h-full drop-shadow-sm" />
+                        {/* --- FIXED: Use Image with your custom icon.svg --- */}
+                        {/* Ensure icon.svg is placed in the 'public' folder */}
+                        <Image 
+                            src="/icon.svg" 
+                            alt="PetLink Logo" 
+                            fill 
+                            className="object-contain drop-shadow-sm"
+                        />
                     </div>
                     <span className="text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-[#4A90E2] to-[#50E3C2] hidden sm:block">
                         PetLink
@@ -291,7 +285,7 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
                             <div className="flex items-center justify-between px-6 py-6 border-b border-gray-100">
                                 <div className="flex items-center gap-2">
                                     <div className="relative w-8 h-8">
-                                        <AppLogoIcon className="w-full h-full" />
+                                        <Image src="/icon.svg" alt="PetLink" fill className="object-contain" />
                                     </div>
                                     <span className="text-xl font-extrabold text-gray-800 tracking-tight">PetLink</span>
                                 </div>

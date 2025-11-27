@@ -37,9 +37,7 @@ export default async function RootLayout({ children }) {
 
   return (
     <html lang="en">
-      <head>
-        <link rel="icon" href="/favicon.ico" />
-      </head>
+      {/* Head tag removed so Next.js automatically uses app/icon.svg */}
       <body className={poppins.className}>
         <AuthProvider>
           {/* Pass status to the wrapper instead of blocking here */}
