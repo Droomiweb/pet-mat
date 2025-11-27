@@ -6,115 +6,116 @@ import Pet from "../../models/PetModel";
 export async function POST(req) {
   try {
     await connectDB();
-    // Destructure the 'image' and 'mimeType' fields from the request
+    
     const { history, message, petId, image, mimeType } = await req.json();
 
     let contextPrompt = "";
-    let currentMemory = "No history recorded.";
+    let currentMemory = "No history recorded yet.";
 
-    // 1. Fetch Pet Memory if petId is provided (for context-aware answers)
+    // 1. Retrieve Pet Context & Medical Memory
     if (petId) {
         const pet = await Pet.findById(petId);
         if (pet) {
-            currentMemory = pet.medicalHistoryLog || "No history recorded.";
+            currentMemory = pet.medicalHistoryLog || "No history recorded yet.";
             contextPrompt = `
-            **IMPORTANT CONTEXT - PET MEDICAL MEMORY:**
-            The user is asking about their pet named "${pet.name}" (${pet.breed}, ${pet.age}yo).
-            Here is the saved history of past consultations/events for this pet:
-            "${currentMemory}"
+            **ACTIVE PATIENT CONTEXT:**
+            - Name: ${pet.name}
+            - Species: ${pet.type}
+            - Breed: ${pet.breed}
+            - Age: ${pet.age} years old
             
-            Use this history to provide accurate, context-aware advice.
+            **EXISTING MEDICAL HISTORY LOG:**
+            """
+            ${currentMemory}
+            """
+            
+            **INSTRUCTION:** You are Dr. Paws. Use the history above to inform your answers.
             `;
         }
     }
 
-    // 2. Start Chat Session (Text Context)
-    // We include the Pet Memory context at the start of the history
+    // 2. Initialize Chat with History
     const chat = textModel.startChat({
       history: [
         ...history,
-        { role: "user", parts: [{ text: contextPrompt || "System: No specific pet context selected." }] }
+        { role: "user", parts: [{ text: contextPrompt || "System: No specific pet selected." }] }
       ],
     });
 
-    // 3. Prepare the STRICT System Instructions
+    // 3. System Prompt - UPDATED for Detailed Storage & Clean UI
     const systemInstruction = `
-      [SYSTEM INSTRUCTION - STRICT]:
-      1. You are Dr. Paws, a helpful AI Veterinary Assistant.
+      [SYSTEM PROTOCOLS]:
+      1. **IDENTITY**: You are Dr. Paws, a professional AI Veterinarian.
+      2. **SCOPE**: Answer questions related to animal health and care.
       
-      2. **IMAGE ANALYSIS RULES**:
-         - If the user sends an image, you MUST first check if it contains a pet (dog, cat, bird, etc.) or a pet-related item (medical report, medication, pet food label, poop/vomit for diagnosis).
-         - **IF THE IMAGE IS NOT RELATED TO PETS OR VETERINARY CARE (e.g., a selfie, a car, a building, random object), YOU MUST REFUSE TO ANALYZE IT.**
-         - Polite refusal example: "I'm Dr. Paws, a vet assistant. I can only analyze images related to your pet's health or care. That looks like something else!"
-         - If the image IS valid, analyze it strictly for health issues (skin, eyes, injuries, posture) or care advice.
-
-      3. **TEXT RULES**:
-         - Answer only questions related to pet health, behavior, nutrition, or care. 
-         - If the user asks about general topics (coding, math, news), politely redirect them to pet care.
-
-      4. **MEMORY UPDATE**:
-         - IF the user mentioned a new medical event (surgery, fever, symptoms, medication) to be remembered, append a summary at the very end of your response like this:
-         ||MEMORY_UPDATE||: [Concise summary of the event]
+      3. **MEMORY UPDATE RULE (CRITICAL)**:
+         - You must track the pet's health journey in detail.
+         - IF the user mentions a NEW medical event (symptoms, injury, vet visit, medication, surgery, vaccination), you MUST append a summary tag at the very end of your response.
+         - **Format:** ||MEMORY_UPDATE||: [Date] - [Detailed Clinical Note]
+         - **INSTRUCTION FOR NOTE:** Do not be brief. Store ALL specific details provided by the user (e.g., "Surgery on left leg for fracture," "Prescribed 5mg Prednisone," "Doctor said rest for 2 weeks").
+         - **Example:** "...hope Peggy feels better. ||MEMORY_UPDATE||: 27/11/2025 - Surgery performed on rear left leg to repair cruciate ligament. Owner advised to keep pet in crate for 10 days."
+         - If no new medical info is shared, do NOT output the tag.
     `;
 
-    // Combine user message with instructions
-    const textPart = `
-      ${message}
-      
-      ${systemInstruction}
-    `;
-
+    const textPart = `${message}\n\n${systemInstruction}`;
     let result;
 
-    // 4. Send Message (Multimodal if image exists)
+    // 4. Send Request (Multimodal if image exists)
     if (image) {
-        // Remove the header string (e.g., "data:image/jpeg;base64,") if present to get raw base64
         const base64Data = image.split(",")[1] || image;
-        
         const imagePart = {
             inlineData: {
                 data: base64Data,
                 mimeType: mimeType || "image/jpeg"
             }
         };
-        
-        // Send text + image to Gemini
         result = await chat.sendMessage([textPart, imagePart]);
     } else {
-        // Send text only
         result = await chat.sendMessage(textPart);
     }
 
     const response = await result.response;
-    let fullText = response.text();
+    const fullText = response.text();
 
-    // 5. Extract and Save Memory (if the AI generated a memory update)
+    // 5. Robust Parsing (Fixes the "Showing Tag" issue)
     let finalText = fullText;
     
-    if (fullText.includes("||MEMORY_UPDATE||:")) {
-        const parts = fullText.split("||MEMORY_UPDATE||:");
-        finalText = parts[0].trim(); // The actual chat response to show user
-        const newMemoryFragment = parts[1].trim();
+    // Regex to capture "||MEMORY_UPDATE||:" and EVERYTHING after it (including newlines)
+    // [\s\S]* matches any character including newlines, ensuring we catch the whole tag.
+    const memoryRegex = /\|\|\s*MEMORY_UPDATE\s*\|\|\s*:\s*([\s\S]*)/i;
+    const match = fullText.match(memoryRegex);
 
-        // Update the database silently
+    if (match) {
+        // Remove the tag from the text sent to the user
+        finalText = fullText.replace(match[0], "").trim(); 
+        
+        const newMemoryFragment = match[1].trim();
+
+        // 6. Update MongoDB
         if (petId && newMemoryFragment) {
             const pet = await Pet.findById(petId);
-            const timestamp = new Date().toLocaleDateString();
-            const updatedLog = `${pet.medicalHistoryLog || ''}\n- [${timestamp}]: ${newMemoryFragment}`;
-            
-            pet.medicalHistoryLog = updatedLog.slice(-3000); // Keep log size manageable
-            await pet.save();
-            console.log(`[PetDoc] Memory updated for ${pet.name}`);
+            if (pet) {
+                const timestamp = new Date().toLocaleDateString("en-GB"); // DD/MM/YYYY
+                
+                // Append new detailed entry to the log
+                // If the log was just the default message, start fresh
+                const oldLog = (pet.medicalHistoryLog === "No medical history recorded yet.") ? "" : pet.medicalHistoryLog;
+                
+                const updatedLog = `${oldLog}\n- [${timestamp}] ${newMemoryFragment}`.trim();
+                
+                // Increased limit to 10,000 characters to hold more details
+                pet.medicalHistoryLog = updatedLog.slice(-10000); 
+                
+                await pet.save();
+                console.log(`[Medical Memory] Updated for ${pet.name}`);
+            }
         }
     }
 
-    return new Response(JSON.stringify({ text: finalText }), { 
-      status: 200,
-      headers: { "Content-Type": "application/json" } 
-    });
+    return new Response(JSON.stringify({ text: finalText }), { status: 200 });
 
   } catch (error) {
-    console.error("AI Chat Error:", error);
-    return new Response(JSON.stringify({ error: "Failed to generate response. Please try again." }), { status: 500 });
+    console.error("Dr. Paws Chat Error:", error);
+    return new Response(JSON.stringify({ error: "Dr. Paws is currently offline. Please try again." }), { status: 500 });
   }
 }
