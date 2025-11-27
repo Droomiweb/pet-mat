@@ -11,6 +11,62 @@ const EyeIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBo
 const EyeSlashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>;
 const LocIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>;
 
+// --- ANIMATED DOG COMPONENT ---
+const SignupMascot = ({ isExcited }) => {
+  return (
+    <svg viewBox="0 0 200 200" className="w-full h-full drop-shadow-xl overflow-visible">
+      <defs>
+        <filter id="shadow">
+          <feDropShadow dx="0" dy="4" stdDeviation="4" floodOpacity="0.2"/>
+        </filter>
+      </defs>
+
+      {/* Ears (Animate on isExcited) */}
+      <g className={`transition-transform duration-300 origin-[100px_80px] ${isExcited ? 'rotate-[-5deg] translate-y-[-10px]' : ''}`}>
+        <path d="M50,80 Q30,20 80,60" fill="#E6C229" stroke="#D4B018" strokeWidth="4" />
+      </g>
+      <g className={`transition-transform duration-300 origin-[100px_80px] ${isExcited ? 'rotate-[5deg] translate-y-[-10px]' : ''}`}>
+        <path d="M150,80 Q170,20 120,60" fill="#E6C229" stroke="#D4B018" strokeWidth="4" />
+      </g>
+
+      {/* Head */}
+      <circle cx="100" cy="100" r="65" fill="#E6C229" stroke="#D4B018" strokeWidth="4" />
+      
+      {/* Patches */}
+      <circle cx="70" cy="90" r="18" fill="white" opacity="0.8" />
+      
+      {/* Eyes */}
+      <ellipse cx="70" cy="90" rx="8" ry="10" fill="black" />
+      <ellipse cx="130" cy="90" rx="8" ry="10" fill="black" />
+      
+      {/* Eye Shine */}
+      <circle cx="73" cy="86" r="3" fill="white" />
+      <circle cx="133" cy="86" r="3" fill="white" />
+
+      {/* Snout Area */}
+      <ellipse cx="100" cy="120" rx="25" ry="18" fill="white" />
+      <path d="M100,115 L90,130 L110,130 Z" fill="black" rx="5" /> {/* Nose */}
+      
+      {/* Mouth & Tongue */}
+      <path d="M100,130 Q100,145 100,145" stroke="black" strokeWidth="2" />
+      <g className={`transition-all duration-300 ${isExcited ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-[-10px]'}`}>
+         {/* Tongue Animation */}
+         <path d="M92,145 Q100,165 108,145" fill="#FF6B6B" stroke="#D32F2F" strokeWidth="1" />
+      </g>
+      
+      {/* Cheeks */}
+      <circle cx="60" cy="115" r="10" fill="#FFCDD2" opacity="0.5" />
+      <circle cx="140" cy="115" r="10" fill="#FFCDD2" opacity="0.5" />
+
+      {/* Floating Elements (Excitement) */}
+      <g className={`transition-opacity duration-300 ${isExcited ? 'opacity-100' : 'opacity-0'}`}>
+         <path d="M160,50 L170,40 M165,60 L180,55" stroke="#4A90E2" strokeWidth="3" strokeLinecap="round" className="animate-bounce" />
+         <path d="M40,50 L30,40 M35,60 L20,55" stroke="#4A90E2" strokeWidth="3" strokeLinecap="round" className="animate-bounce" style={{ animationDelay: '0.1s' }} />
+      </g>
+    </svg>
+  );
+};
+
 export default function Signup() {
   const [formData, setFormData] = useState({ name: "", username: "", phone: "", password: "", confirmPassword: "" });
   const [showPass, setShowPass] = useState(false);
@@ -18,6 +74,7 @@ export default function Signup() {
   const [status, setStatus] = useState({ type: "", msg: "" });
   const [loading, setLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const typingTimeoutRef = useRef(null);
   
   // 3D State
   const [rotate, setRotate] = useState({ x: 0, y: 0 });
@@ -42,8 +99,11 @@ export default function Signup() {
 
   const handleInput = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    
+    // Trigger Typing Animation
     setIsTyping(true);
-    setTimeout(() => setIsTyping(false), 300);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 500);
   };
 
   const getLocation = () => {
@@ -128,16 +188,17 @@ export default function Signup() {
             <h2 className="text-4xl font-extrabold text-[#333333] mb-4 text-center transition-transform duration-100" style={{ transform: "translateZ(50px)" }}>
                 Join Us!
             </h2>
+            
+            {/* Mascot Container */}
             <div 
-                className={`relative w-56 h-56 mb-6 shadow-2xl rounded-full border-8 border-white bg-white/40 backdrop-blur-sm flex items-center justify-center transition-all duration-200 ease-in-out ${isTyping ? 'scale-110 rotate-3' : 'scale-100 rotate-0'}`}
+                className="w-56 h-56 mb-6 transition-transform duration-200"
                 style={{ transform: "translateZ(30px)" }}
             >
-                <span className="text-[8rem] drop-shadow-lg select-none">🐶</span>
+                <SignupMascot isExcited={isTyping} />
             </div>
-            <div className="absolute top-10 left-0 text-4xl animate-bounce" style={{ transform: "translateZ(80px)", animationDelay: '0.5s' }}>🎾</div>
-            <div className="absolute bottom-16 right-4 text-4xl animate-pulse" style={{ transform: "translateZ(60px)" }}>🦴</div>
+
             <p className="text-gray-500 text-center font-medium px-4 transition-transform duration-100" style={{ transform: "translateZ(20px)" }}>
-                {isTyping ? "Yay! Almost there!" : "Find playmates and adoption matches."}
+                {isTyping ? "Woohoo! Filling it out!" : "Find playmates and adoption matches."}
             </p>
           </div>
         </div>
@@ -145,10 +206,10 @@ export default function Signup() {
         {/* --- RIGHT: FORM --- */}
         <div className="w-full md:w-1/2 p-8 sm:p-10 flex flex-col justify-center h-full overflow-y-auto">
           
-          {/* Mobile Header */}
+          {/* Mobile Mascot Header (Replaces Emoji) */}
           <div className="md:hidden flex flex-col items-center mb-6">
-             <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-md border-2 border-[#4A90E2] animate-bounce mb-2">
-                <span className="text-4xl">🐶</span>
+             <div className="w-28 h-28 mb-2">
+                <SignupMascot isExcited={isTyping} />
              </div>
              <h1 className="text-2xl font-extrabold text-gray-800">Create Account</h1>
              <p className="text-gray-500 text-xs">Start your PetLink journey</p>
