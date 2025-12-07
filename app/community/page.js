@@ -1,31 +1,49 @@
 // app/community/page.js
-"use client";
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "../auth-provider";
-import Link from "next/link";
-import Image from "next/image";
 
-// --- ICONS ---
+// 1. DIRECTIVE
+// "use client" is required because this page has interactivity (Clicking likes, typing in forms).
+"use client";
+
+// 2. IMPORTS
+import { useState, useEffect } from "react"; // React hooks for state management
+import { useRouter } from "next/navigation"; // Hook to redirect users (e.g., to Login)
+import { useAuth } from "../auth-provider"; // Custom hook to get the current logged-in user
+import Link from "next/link"; // optimized Next.js navigation
+import Image from "next/image"; // optimized Image component
+
+// --- 3. UI COMPONENTS (ICONS) ---
+// We define SVG icons here as lightweight functional components to avoid installing heavy icon libraries.
+
+// Heart Icon: Changes color based on the 'filled' prop (Red if liked, Gray if not)
 const HeartIcon = ({ filled }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill={filled ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-6 h-6 transition-colors ${filled ? 'text-red-500' : 'text-gray-400 group-hover:text-red-500'}`}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
   </svg>
 );
+
+// Chat Icon: Represents comments/replies
 const ChatIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 text-gray-400 group-hover:text-[#4A90E2] transition-colors">
     <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.159 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
   </svg>
 );
+
+// Share Icon: Uses Web Share API or Clipboard
 const ShareIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 text-gray-400 group-hover:text-green-500 transition-colors">
     <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
   </svg>
 );
+
+// Plus Icon: For the "Create Post" button
 const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
+
+// Trash Icon: Only visible to the author of a post
 const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>;
 
-// --- SKELETON LOADER ---
+// --- 4. SKELETON LOADER ---
+// This component simulates the shape of a post card while data is fetching.
+// 'animate-pulse' creates the shimmering loading effect.
 const SkeletonCard = () => (
   <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100 animate-pulse">
     <div className="flex items-center gap-3 mb-4">
@@ -45,54 +63,60 @@ const SkeletonCard = () => (
   </div>
 );
 
+// --- 5. MAIN COMPONENT START ---
 export default function CommunityPage() {
-  const [posts, setPosts] = useState([]);
-  const [filteredPosts, setFilteredPosts] = useState([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState("feed"); // 'feed' or 'myposts'
-  const [loading, setLoading] = useState(true);
+  // --- STATE MANAGEMENT ---
+  const [posts, setPosts] = useState([]); // Stores all fetched posts
+  const [filteredPosts, setFilteredPosts] = useState([]); // Stores posts after search/tab filter is applied
+  const [searchQuery, setSearchQuery] = useState(""); // Stores text from search bar
+  const [activeTab, setActiveTab] = useState("feed"); // Toggle: 'feed' (All) or 'myposts' (Only mine)
+  const [loading, setLoading] = useState(true); // Loading state for initial fetch
   
   // Modal & Upload States
-  const [showModal, setShowModal] = useState(false);
+  const [showModal, setShowModal] = useState(false); // Controls visibility of "Create Post" popup
   const [newPostTitle, setNewPostTitle] = useState("");
   const [newPostContent, setNewPostContent] = useState("");
-  const [mediaFile, setMediaFile] = useState(null);
-  const [mediaPreview, setMediaPreview] = useState(null);
-  const [formLoading, setFormLoading] = useState(false);
+  const [mediaFile, setMediaFile] = useState(null); // The actual file object selected by user
+  const [mediaPreview, setMediaPreview] = useState(null); // The URL to preview the image/video
+  const [formLoading, setFormLoading] = useState(false); // Loading state while submitting a post
   
-  const { user } = useAuth();
-  const router = useRouter();
+  // Custom hooks
+  const { user } = useAuth(); // Access current logged in user
+  const router = useRouter(); // Used to redirect non-logged-in users
 
-  // --- FETCH DATA ---
+  // --- 6. FETCH DATA ---
   const fetchPosts = async () => {
     try {
+      // Call our API. 'no-store' ensures we always get fresh data, not cached.
       const res = await fetch("/api/community/posts", { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setPosts(data);
-        setFilteredPosts(data);
+        setFilteredPosts(data); // Initially, filtered list is same as full list
       }
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      setLoading(false); // Stop showing Skeleton loader
     }
   };
 
+  // Run fetchPosts once when the component loads
   useEffect(() => {
     fetchPosts();
   }, []);
 
-  // --- FILTER LOGIC ---
+  // --- 7. FILTER LOGIC ---
+  // This Effect runs whenever search query, tab, or user changes
   useEffect(() => {
     let result = posts;
 
-    // 1. Tab Filter
+    // Filter A: If 'My Posts' tab is active, only show posts where authorId matches current user
     if (activeTab === "myposts" && user) {
       result = result.filter(p => p.authorId === user.uid);
     }
 
-    // 2. Search Filter
+    // Filter B: If search box has text, filter by Title OR Author Name (case insensitive)
     if (searchQuery.trim()) {
       const lowerQ = searchQuery.toLowerCase();
       result = result.filter(
@@ -103,15 +127,19 @@ export default function CommunityPage() {
     setFilteredPosts(result);
   }, [searchQuery, posts, activeTab, user]);
 
-  // --- HANDLERS ---
+  // --- 8. HANDLERS (User Interactions) ---
+
+  // Handle file selection from the Create Post form
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
         setMediaFile(file);
+        // Create a temporary local URL so the user can see the image before uploading
         setMediaPreview(URL.createObjectURL(file));
     }
   };
 
+  // Helper to convert file -> Base64 string (Required for our Cloudinary API logic)
   const fileToBase64 = (file) => new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
@@ -119,20 +147,23 @@ export default function CommunityPage() {
       reader.onerror = error => reject(error);
   });
 
+  // Handle Form Submission
   const handlePostSubmit = async (e) => {
     e.preventDefault();
-    if (!user) return router.push("/Login");
+    if (!user) return router.push("/Login"); // Security check
     
-    setFormLoading(true);
+    setFormLoading(true); // Disable button & show spinner
     try {
       let mediaBase64 = null;
       let mediaType = null;
 
+      // Convert image/video if one was selected
       if (mediaFile) {
           mediaBase64 = await fileToBase64(mediaFile);
           mediaType = mediaFile.type.startsWith("video") ? "video" : "image";
       }
 
+      // Send to API
       const res = await fetch("/api/community/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -140,19 +171,20 @@ export default function CommunityPage() {
           title: newPostTitle,
           content: newPostContent,
           authorId: user.uid,
-          authorName: user.email.split("@")[0],
-          mediaBase64,
+          authorName: user.email.split("@")[0], // Fallback name logic
+          mediaBase64, // Send the heavy string to the backend
           mediaType
         }),
       });
 
       if (res.ok) {
+        // Reset form completely
         setNewPostTitle("");
         setNewPostContent("");
         setMediaFile(null);
         setMediaPreview(null);
         setShowModal(false);
-        fetchPosts();
+        fetchPosts(); // Refresh the feed to show the new post
       } else {
         alert("Failed to create post.");
       }
@@ -163,23 +195,30 @@ export default function CommunityPage() {
     }
   };
 
+  // Handle Like Button Click
   const handleLike = async (postId) => {
       if (!user) return router.push("/Login");
       
+      // OPTIMISTIC UI UPDATE:
+      // We update the local state IMMEDIATELY so the heart turns red instantly.
+      // We don't wait for the API response. This makes the app feel fast.
       const updatedPosts = posts.map(p => {
           if (p._id === postId) {
               const currentLikes = p.likes || [];
               const isLiked = currentLikes.includes(user.uid);
               return {
                   ...p,
+                  // Toggle logic: If liked, remove ID. If not liked, add ID.
                   likes: isLiked ? currentLikes.filter(id => id !== user.uid) : [...currentLikes, user.uid],
+                  // Update count visually
                   likeCount: isLiked ? (p.likeCount || 0) - 1 : (p.likeCount || 0) + 1
               };
           }
           return p;
       });
-      setPosts(updatedPosts);
+      setPosts(updatedPosts); // Update state
 
+      // Send actual request to server in background
       await fetch(`/api/community/posts/${postId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -187,6 +226,7 @@ export default function CommunityPage() {
       });
   };
 
+  // Handle Delete Post (Only available to author)
   const handleDeletePost = async (postId) => {
     if (!confirm("Are you sure you want to delete this post?")) return;
     try {
@@ -196,40 +236,45 @@ export default function CommunityPage() {
         body: JSON.stringify({ userId: user.uid })
       });
       if (res.ok) {
+        // Remove from local list instantly
         const remaining = posts.filter(p => p._id !== postId);
         setPosts(remaining);
       }
     } catch (err) { console.error(err); }
   };
 
+  // Handle Share Button
   const handleShare = (post) => {
+      // Use native mobile share sheet if available
       if (navigator.share) {
           navigator.share({
               title: post.title,
               url: `${window.location.origin}/community/${post._id}`
           }).catch(console.error);
       } else {
+          // Fallback for desktop: Copy to clipboard
           navigator.clipboard.writeText(`${window.location.origin}/community/${post._id}`);
           alert("Link copied!");
       }
   };
 
+  // --- 9. RENDER ---
   return (
     <div className="min-h-screen bg-[#F4F7F9] relative">
       
-      {/* Background Decoration */}
+      {/* Background Decoration: Subtle gradient header */}
       <div className="fixed top-0 left-0 w-full h-96 bg-gradient-to-b from-[#E2F4EF] to-transparent -z-10"></div>
 
       <div className="max-w-3xl mx-auto px-4 md:px-8 py-24">
         
-        {/* --- HEADER --- */}
+        {/* --- PAGE HEADER --- */}
         <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-extrabold text-[#333333] mb-2">Social Feed</h1>
             <p className="text-gray-500">Connect with pet lovers, share stories.</p>
           </div>
           
-          {/* Desktop Create Button */}
+          {/* Desktop "Create Post" Button (Hidden on mobile) */}
           <button 
             onClick={() => user ? setShowModal(true) : router.push("/Login")}
             className="hidden md:flex items-center gap-2 bg-[#4A90E2] hover:bg-[#3A75B9] text-white font-bold py-3 px-6 rounded-full shadow-lg transition-all hover:scale-105 active:scale-95"
@@ -239,9 +284,11 @@ export default function CommunityPage() {
         </div>
 
         {/* --- CONTROLS (Search & Tabs) --- */}
+        {/* Sticky allows this bar to stay at the top while scrolling */}
         <div className="sticky top-20 z-30 bg-white/80 backdrop-blur-xl p-3 rounded-[2rem] shadow-lg border border-white/50 mb-8 transition-all">
           <div className="flex flex-col md:flex-row gap-3">
-            {/* Search */}
+            
+            {/* Search Bar */}
             <div className="flex-1 relative">
               <svg className="absolute left-4 top-3.5 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
               <input 
@@ -253,7 +300,7 @@ export default function CommunityPage() {
               />
             </div>
 
-            {/* Tabs */}
+            {/* Tab Switcher */}
             <div className="flex bg-gray-100 rounded-full p-1 shrink-0">
                 <button 
                     onClick={() => setActiveTab("feed")}
@@ -271,26 +318,30 @@ export default function CommunityPage() {
           </div>
         </div>
 
-        {/* --- FEED --- */}
+        {/* --- FEED DISPLAY --- */}
         {loading ? (
+          // Show 3 skeleton cards while loading
           <div className="space-y-6">
             {[...Array(3)].map((_, i) => <SkeletonCard key={i} />)}
           </div>
         ) : filteredPosts.length === 0 ? (
+          // Empty State
           <div className="text-center py-20 bg-white/50 rounded-[2rem] border-2 border-dashed border-gray-200">
             <p className="text-gray-400 font-bold text-lg">No posts found.</p>
             <p className="text-gray-400 text-sm">Be the first to share something!</p>
           </div>
         ) : (
+          // List of Posts
           <div className="space-y-6 pb-24">
             {filteredPosts.map(post => {
+              // Calculate specific state for this card
               const isLiked = user && (post.likes || []).includes(user.uid);
               const isMyPost = user && user.uid === post.authorId;
               
               return (
                 <div key={post._id} className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
                   
-                  {/* Header */}
+                  {/* Card Header (Avatar + Name) */}
                   <div className="p-5 flex justify-between items-start">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-purple-500 text-white rounded-full flex items-center justify-center font-bold text-lg shadow-sm">
@@ -302,6 +353,7 @@ export default function CommunityPage() {
                       </div>
                     </div>
                     
+                    {/* Delete Button (Only visible if owner) */}
                     {isMyPost && (
                         <button onClick={() => handleDeletePost(post._id)} className="text-gray-300 hover:text-red-500 transition-colors p-2">
                             <TrashIcon />
@@ -309,13 +361,13 @@ export default function CommunityPage() {
                     )}
                   </div>
 
-                  {/* Content */}
+                  {/* Card Content - Links to Single Post Page */}
                   <Link href={`/community/${post._id}`} className="block px-5 pb-2 group cursor-pointer">
                     <h3 className="text-xl font-extrabold text-gray-800 mb-2 group-hover:text-[#4A90E2] transition-colors leading-tight">{post.title}</h3>
                     <p className="text-gray-600 text-sm leading-relaxed line-clamp-3">{post.content}</p>
                   </Link>
 
-                  {/* Media */}
+                  {/* Card Media (Image or Video) */}
                   {post.mediaUrl && (
                     <div className="mt-3 px-2">
                         <div className="rounded-2xl overflow-hidden max-h-[500px] bg-gray-100 flex justify-center items-center">
@@ -328,7 +380,7 @@ export default function CommunityPage() {
                     </div>
                   )}
 
-                  {/* Actions Footer */}
+                  {/* Card Actions Footer (Like, Reply, Share) */}
                   <div className="px-6 py-4 flex items-center gap-8 mt-2">
                     <button 
                         onClick={() => handleLike(post._id)} 
@@ -354,6 +406,7 @@ export default function CommunityPage() {
         )}
 
         {/* --- MOBILE FAB (Floating Action Button) --- */}
+        {/* Only visible on mobile/tablet screens */}
         <button
             onClick={() => user ? setShowModal(true) : router.push("/Login")}
             className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-[#4A90E2] text-white rounded-full shadow-2xl flex items-center justify-center z-40 active:scale-90 transition-transform border-4 border-white"
@@ -361,7 +414,7 @@ export default function CommunityPage() {
             <PlusIcon />
         </button>
 
-        {/* --- CREATE POST MODAL --- */}
+        {/* --- CREATE POST MODAL (Overlay) --- */}
         {showModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end md:items-center justify-center p-0 md:p-4">
             <div className="bg-white w-full md:max-w-2xl md:rounded-[2rem] rounded-t-[2rem] shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-10 duration-300">
@@ -372,7 +425,7 @@ export default function CommunityPage() {
                 <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-800 p-2 text-2xl">×</button>
               </div>
               
-              {/* Modal Body */}
+              {/* Modal Form */}
               <form onSubmit={handlePostSubmit} className="p-6 overflow-y-auto">
                 <input
                   value={newPostTitle}
@@ -390,7 +443,7 @@ export default function CommunityPage() {
                   required
                 />
 
-                {/* Media Preview */}
+                {/* Media Preview (Shows image before uploading) */}
                 {mediaPreview && (
                     <div className="relative w-full h-48 bg-gray-100 rounded-xl overflow-hidden mt-4 group">
                         <img src={mediaPreview} alt="Preview" className="w-full h-full object-cover" />
@@ -398,7 +451,7 @@ export default function CommunityPage() {
                     </div>
                 )}
 
-                {/* Actions Bar */}
+                {/* Actions Bar (Upload Button & Submit Button) */}
                 <div className="mt-6 flex items-center justify-between border-t border-gray-100 pt-4">
                     <label className="flex items-center gap-2 text-[#4A90E2] font-bold cursor-pointer hover:bg-blue-50 px-4 py-2 rounded-full transition">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>

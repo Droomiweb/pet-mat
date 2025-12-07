@@ -1,33 +1,43 @@
 // app/api/pet/report-lost/route.js
+
+// 1. IMPORTS
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
 import User from "../../../models/User";
 import { sendWhatsAppText } from "../../../lib/greenApi";
+// Firebase imports for creating System Alerts in the chat inbox
 import { db } from "../../../lib/firebase"; 
 import { collection, addDoc, serverTimestamp, doc, setDoc, increment } from "firebase/firestore";
 
+// 2. POST HANDLER
 export async function POST(req) {
   try {
     await connectDB();
+    
+    // Parse the request: Who is the pet, who is the owner, and where was it lost?
     const { petId, userId, lastSeenLat, lastSeenLng, status } = await req.json();
 
     const pet = await Pet.findById(petId);
     if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
     
-    // Security check
+    // 3. SECURITY CHECK
+    // Only the actual owner is allowed to trigger a community alert.
     if (pet.ownerId !== userId) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
 
-    // Toggle Status
+    // 4. TOGGLE STATUS
+    // status: true (LOST), status: false (FOUND)
     const isLost = status === true;
     pet.isLost = isLost;
     
     if (isLost) {
         pet.lastSeenDate = new Date();
-        // Update location if provided
+        
+        // LOCATION LOGIC:
+        // Priority 1: User pinned a specific spot on the map (lastSeenLat/Lng).
         if (lastSeenLat && lastSeenLng) {
             pet.lastSeenLocation = { type: 'Point', coordinates: [lastSeenLng, lastSeenLat] };
         } else {
-            // Fallback to owner's home location
+            // Priority 2: Fallback to the owner's registered home address.
             const owner = await User.findOne({ firebaseUid: userId });
             if (owner?.location?.coordinates) {
                 pet.lastSeenLocation = owner.location;
@@ -35,68 +45,70 @@ export async function POST(req) {
         }
     }
 
+    // Save the status change to MongoDB
     await pet.save();
 
-    // If marking as LOST, send alerts to neighbors
+    // 5. ALERT SYSTEM (Only runs if pet is marked LOST)
     let notifiedCount = 0;
     
     if (isLost) {
+        // GEOSPATIAL QUERY: Find neighbors within 5km
         const nearbyUsers = await User.find({
           location: {
             $near: {
               $geometry: pet.lastSeenLocation,
-              $maxDistance: 5000 // 5km Radius
+              $maxDistance: 5000 // 5000 meters = 5km
             }
           },
-          firebaseUid: { $ne: userId } // Don't alert self
-        }).limit(50);
+          firebaseUid: { $ne: userId } // Exclude the owner from their own alert
+        }).limit(50); // Cap at 50 to prevent spam/timeout
 
         const petProfileUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pet/${petId}`;
         
+        // Define Alert Messages
         const alertMessage = `🚨 *LOST PET ALERT* 🚨\n\nHELP! "${pet.name}" (${pet.breed}) was just reported lost near you.\n\nPLEASE KEEP A LOOKOUT.\nView Profile: ${petProfileUrl}`;
         
         const internalChatMessage = `🚨 LOST PET ALERT! \n\n"${pet.name}" is missing nearby. Please check their profile and help us find them.\n\nView Profile: ${petProfileUrl}`;
 
-        // Process notifications in parallel (using Promise.all for speed, but handling errors individually)
+        // 6. BROADCAST NOTIFICATIONS
+        // Use Promise.all to send parallel requests for speed.
         await Promise.all(nearbyUsers.map(async (user) => {
-            // LOGGING: Numbers and Usernames
             console.log(`[LostPet] Preparing alert for User: ${user.username} | Phone: ${user.phone}`);
 
-            // 1. Send WhatsApp
+            // CHANNEL A: WhatsApp
             if (user.phone) {
                 try {
+                    // Send via Green API
                     await sendWhatsAppText(`91${user.phone}`, alertMessage);
-                    console.log(`[WhatsApp] Sent successfully to ${user.username} (${user.phone})`);
+                    console.log(`[WhatsApp] Sent successfully to ${user.username}`);
                 } catch (e) { 
-                    console.error(`[WhatsApp] Failed to send to ${user.username} (${user.phone}):`, e.message); 
+                    // Log error but DO NOT throw, so other messages continue
+                    console.error(`[WhatsApp] Failed to send to ${user.username}:`, e.message); 
                 }
-            } else {
-                console.log(`[WhatsApp] Skipped ${user.username} (No phone number)`);
             }
 
-            // 2. Send Internal Website Chat (System Message)
+            // CHANNEL B: Internal Website Chat (System Injection)
             try {
-                // Construct a stable Conversation ID for "System -> User" about this specific Pet
-                // Format: petId_system_userUID
+                // Create a unique conversation ID for this specific alert
                 const conversationId = `${petId}_system_${user.firebaseUid}`;
 
-                // A. Create the Message
+                // 1. Add the message to Firestore
                 await addDoc(collection(db, "conversations", conversationId, "messages"), {
-                    senderId: "system",
+                    senderId: "system", // Special ID for the system bot
                     senderName: "🚨 PetLink Alert",
                     text: internalChatMessage,
                     createdAt: serverTimestamp(),
                     read: false
                 });
 
-                // B. Update/Create Conversation Metadata
+                // 2. Update metadata to trigger the unread badge
                 await setDoc(doc(db, "conversations", conversationId), {
                     petId: petId,
                     participants: ["system", user.firebaseUid],
                     lastMessage: "🚨 LOST PET ALERT!",
                     updatedAt: serverTimestamp(),
                     unreadCounts: {
-                        [user.firebaseUid]: increment(1)
+                        [user.firebaseUid]: increment(1) // Force unread count up
                     }
                 }, { merge: true });
 
@@ -112,6 +124,7 @@ export async function POST(req) {
         console.log(`[LostPet] Total neighbors targeted: ${notifiedCount}`);
     }
 
+    // 7. SUCCESS RESPONSE
     return new Response(JSON.stringify({ 
         message: isLost ? `Alert activated! ${notifiedCount} neighbors notified via WhatsApp & Chat.` : "Pet marked as found! Alert removed.",
         pet 

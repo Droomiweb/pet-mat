@@ -1,5 +1,7 @@
 // app/api/ai-chat/route.js
-import { textModel } from "../../lib/gemini";
+
+// 1. IMPORTS
+import { textModel } from "../../lib/gemini"; // Our Gemini AI configuration
 import connectDB from "../../lib/mongodb";
 import Pet from "../../models/PetModel";
 
@@ -7,16 +9,19 @@ export async function POST(req) {
   try {
     await connectDB();
     
+    // Parse the incoming request body
     const { history, message, petId, image, mimeType } = await req.json();
 
     let contextPrompt = "";
     let currentMemory = "No history recorded yet.";
 
-    // 1. Retrieve Pet Context & Medical Memory
+    // 2. RETRIEVE PET CONTEXT (The "Memory" Fetch)
     if (petId) {
         const pet = await Pet.findById(petId);
         if (pet) {
             currentMemory = pet.medicalHistoryLog || "No history recorded yet.";
+            
+            // We construct a "System Context" string. 
             contextPrompt = `
             **ACTIVE PATIENT CONTEXT:**
             - Name: ${pet.name}
@@ -34,7 +39,7 @@ export async function POST(req) {
         }
     }
 
-    // 2. Initialize Chat with History
+    // 3. INITIALIZE CHAT
     const chat = textModel.startChat({
       history: [
         ...history,
@@ -42,7 +47,7 @@ export async function POST(req) {
       ],
     });
 
-    // 3. System Prompt - UPDATED for Detailed Storage & Clean UI
+    // 4. SYSTEM INSTRUCTION
     const systemInstruction = `
       [SYSTEM PROTOCOLS]:
       1. **IDENTITY**: You are Dr. Paws, a professional AI Veterinarian.
@@ -52,70 +57,78 @@ export async function POST(req) {
          - You must track the pet's health journey in detail.
          - IF the user mentions a NEW medical event (symptoms, injury, vet visit, medication, surgery, vaccination), you MUST append a summary tag at the very end of your response.
          - **Format:** ||MEMORY_UPDATE||: [Date] - [Detailed Clinical Note]
-         - **INSTRUCTION FOR NOTE:** Do not be brief. Store ALL specific details provided by the user (e.g., "Surgery on left leg for fracture," "Prescribed 5mg Prednisone," "Doctor said rest for 2 weeks").
-         - **Example:** "...hope Peggy feels better. ||MEMORY_UPDATE||: 27/11/2025 - Surgery performed on rear left leg to repair cruciate ligament. Owner advised to keep pet in crate for 10 days."
+         - **INSTRUCTION FOR NOTE:** Do not be brief. Store ALL specific details.
          - If no new medical info is shared, do NOT output the tag.
     `;
 
     const textPart = `${message}\n\n${systemInstruction}`;
     let result;
 
-    // 4. Send Request (Multimodal if image exists)
-    if (image) {
-        const base64Data = image.split(",")[1] || image;
-        const imagePart = {
-            inlineData: {
-                data: base64Data,
-                mimeType: mimeType || "image/jpeg"
-            }
-        };
-        result = await chat.sendMessage([textPart, imagePart]);
-    } else {
-        result = await chat.sendMessage(textPart);
+    // 5. SEND TO GEMINI (WITH RATE LIMIT HANDLING)
+    try {
+        if (image) {
+            const base64Data = image.split(",")[1] || image;
+            const imagePart = {
+                inlineData: {
+                    data: base64Data,
+                    mimeType: mimeType || "image/jpeg"
+                }
+            };
+            result = await chat.sendMessage([textPart, imagePart]);
+        } else {
+            result = await chat.sendMessage(textPart);
+        }
+    } catch (aiError) {
+        console.warn("⚠️ Dr. Paws AI Rate Limit Hit:", aiError.message);
+        
+        // --- FALLBACK RESPONSE ---
+        // Instead of crashing with a 500 error, we return a 200 OK with a "Busy" message.
+        // The frontend will render this text as a message from the bot.
+        if (aiError.message.includes("429") || aiError.message.includes("Quota")) {
+            return new Response(JSON.stringify({ 
+                text: "🚫 **High Traffic Alert:** I'm receiving too many requests right now! Please wait about 30 seconds and try asking me again. (Rate Limit Reached)" 
+            }), { status: 200 });
+        }
+        
+        // For other AI errors, return a generic helpful message
+        return new Response(JSON.stringify({ 
+            text: "My connection is a bit unstable. Please try again in a moment." 
+        }), { status: 200 });
     }
 
     const response = await result.response;
     const fullText = response.text();
 
-    // 5. Robust Parsing (Fixes the "Showing Tag" issue)
+    // 6. PARSING AND CLEANUP
     let finalText = fullText;
     
-    // Regex to capture "||MEMORY_UPDATE||:" and EVERYTHING after it (including newlines)
-    // [\s\S]* matches any character including newlines, ensuring we catch the whole tag.
     const memoryRegex = /\|\|\s*MEMORY_UPDATE\s*\|\|\s*:\s*([\s\S]*)/i;
     const match = fullText.match(memoryRegex);
 
     if (match) {
-        // Remove the tag from the text sent to the user
         finalText = fullText.replace(match[0], "").trim(); 
-        
         const newMemoryFragment = match[1].trim();
 
-        // 6. Update MongoDB
+        // 7. UPDATE MONGODB
         if (petId && newMemoryFragment) {
             const pet = await Pet.findById(petId);
             if (pet) {
-                const timestamp = new Date().toLocaleDateString("en-GB"); // DD/MM/YYYY
-                
-                // Append new detailed entry to the log
-                // If the log was just the default message, start fresh
+                const timestamp = new Date().toLocaleDateString("en-GB"); 
                 const oldLog = (pet.medicalHistoryLog === "No medical history recorded yet.") ? "" : pet.medicalHistoryLog;
-                
                 const updatedLog = `${oldLog}\n- [${timestamp}] ${newMemoryFragment}`.trim();
-                
-                // Increased limit to 10,000 characters to hold more details
                 pet.medicalHistoryLog = updatedLog.slice(-10000); 
-                
                 await pet.save();
                 console.log(`[Medical Memory] Updated for ${pet.name}`);
             }
         }
     }
 
+    // 8. RETURN RESPONSE
     return new Response(JSON.stringify({ text: finalText }), { status: 200 });
 
   } catch (error) {
-    console.error("Dr. Paws Chat Error:", error);
+    console.error("Dr. Paws Critical Error:", error);
+    // Only return 500 for actual server crashes (DB connection loss, etc.)
     return new Response(JSON.stringify({ error: "Dr. Paws is currently offline. Please try again." }), { status: 500 });
   }
 }

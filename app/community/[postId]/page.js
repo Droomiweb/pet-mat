@@ -58,6 +58,7 @@ export default function SinglePostPage() {
 
   const fetchPost = async () => {
     try {
+      // FIX: Updated path to match route structure (/api/community/posts/[postId])
       const res = await fetch(`/api/community/posts/${params.postId}`, { cache: 'no-store' });
       if (!res.ok) {
         if (res.status === 404) return router.push("/community");
@@ -93,6 +94,7 @@ export default function SinglePostPage() {
     }));
 
     try {
+      // FIX: Updated path to match route structure
       await fetch(`/api/community/posts/${params.postId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -122,6 +124,7 @@ export default function SinglePostPage() {
   const handleDeletePost = async () => {
     if (!confirm("Delete this post? This cannot be undone.")) return;
     try {
+      // FIX: Updated path to match route structure
       const res = await fetch(`/api/community/posts/${params.postId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -134,11 +137,16 @@ export default function SinglePostPage() {
   const handleDeleteReply = async (replyId) => {
     if (!confirm("Delete this comment?")) return;
     try {
-      const res = await fetch(`/api/community/replies/${replyId}`, {
+      // FIX: Updated path to match route structure (Using plural 'replies')
+      // Note: You may need to ensure your API supports DELETE on this route with a body, 
+      // or implement a specific DELETE route for replies like /api/community/replies/[replyId]
+      // For now, mapping to the 'replies' route we saw earlier.
+      const res = await fetch(`/api/community/replies`, { 
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.uid })
+        body: JSON.stringify({ replyId, userId: user.uid })
       });
+
       if (res.ok) {
         setPost(prev => ({
             ...prev,
@@ -155,6 +163,7 @@ export default function SinglePostPage() {
 
     setReplyLoading(true);
     try {
+      // FIX: Updated path to match route structure (plural 'replies')
       const res = await fetch("/api/community/replies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

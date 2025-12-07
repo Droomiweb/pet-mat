@@ -1,4 +1,6 @@
 // app/api/pet/route.js
+
+// 1. IMPORTS
 import connectDB from "../../lib/mongodb";
 import Pet from "../../models/PetModel";
 import User from "../../models/User";
@@ -6,26 +8,23 @@ import { v2 as cloudinary } from "cloudinary";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-// =====================
-// Cloudinary Config
-// =====================
+// 2. CONFIGURATION
+// Setup Cloudinary for image storage and Gemini for AI analysis
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// =====================
-// Gemini Config
-// =====================
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// We use 'flash' model for speed and cost-efficiency
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 // =====================
-// Helpers
+// 3. HELPERS
 // =====================
 
-// Convert Base64 to Gemini Part
+// Converts Base64 string to a format Gemini API accepts
 const fileToGenerativePart = (base64, mimeType) => {
   const base64Data = base64.split(",")[1] || base64;
   return {
@@ -36,7 +35,7 @@ const fileToGenerativePart = (base64, mimeType) => {
   };
 };
 
-// Calculate Age in Years from DOB string DD/MM/YYYY
+// Calculates precise age (e.g., 2.5 years) from a DD/MM/YYYY string
 const calculateAgeInYears = (dobString) => {
   if (!dobString || dobString.toUpperCase() === "N/A") return null;
   const parts = dobString.split("/");
@@ -47,6 +46,7 @@ const calculateAgeInYears = (dobString) => {
 
   if (isNaN(dob.getTime()) || dob > now) return null;
 
+  // Calculate difference in months to get decimal age
   const totalMonths =
     (now.getFullYear() - dob.getFullYear()) * 12 +
     (now.getMonth() - dob.getMonth()) +
@@ -55,7 +55,7 @@ const calculateAgeInYears = (dobString) => {
   return Math.round((totalMonths / 12) * 10) / 10;
 };
 
-// Parse date string DD/MM/YYYY to UTC Date
+// Parses "DD/MM/YYYY" into a standardized UTC Date object for MongoDB
 const parseDateToUTC = (dateStr) => {
   if (!dateStr || dateStr.toUpperCase() === "N/A") return null;
   const parts = dateStr.split("/");
@@ -72,7 +72,7 @@ const parseDateToUTC = (dateStr) => {
 };
 
 // =====================
-// Certificate Analysis (Gemini)
+// 4. CORE AI LOGIC
 // =====================
 const runCertificateAnalysis = async (petData) => {
   const { name, breed, age, certificateBase64, certificateMimeType, ownerName } =
@@ -87,6 +87,8 @@ const runCertificateAnalysis = async (petData) => {
   let ownerNameMatch = false;
   const MAX_RETRIES = 3;
 
+  // Retry Loop: AI requests can occasionally fail or timeout. 
+  // We try 3 times before giving up.
   for (let i = 0; i < MAX_RETRIES; i++) {
     try {
       const prompt = `
@@ -129,19 +131,21 @@ const runCertificateAnalysis = async (petData) => {
       const result = await model.generateContent([prompt, imagePart]);
       const responseText = result.response.text();
 
+      // Clean Markdown formatting (```json) often added by LLMs
       const cleanedText = responseText
         .replace(/```json/g, "")
         .replace(/```/g, "")
         .trim();
 
       aiResult = JSON.parse(cleanedText);
-      break;
+      break; // Success! Exit loop.
     } catch (err) {
       console.error(
         `Gemini Analysis Attempt ${i + 1} failed:`,
         err.message || err
       );
       if (i < MAX_RETRIES - 1) {
+        // Exponential backoff: wait 2s, 4s, etc.
         const delay = (i + 1) * 2000;
         console.log(`Retrying in ${delay / 1000} seconds...`);
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -149,6 +153,7 @@ const runCertificateAnalysis = async (petData) => {
     }
   }
 
+  // Handle Total AI Failure
   if (!aiResult) {
     return {
       aiResult: null,
@@ -157,7 +162,8 @@ const runCertificateAnalysis = async (petData) => {
     };
   }
 
-  // Permissive Owner Name Check
+  // NAME VERIFICATION LOGIC
+  // We perform a permissive check. "Smith" matches "Mr. Smith".
   const extractedOwnerName = aiResult.extractedData?.ownerName?.toLowerCase() || "";
   const expectedOwnerName = ownerName.toLowerCase();
 
@@ -165,22 +171,21 @@ const runCertificateAnalysis = async (petData) => {
     extractedOwnerName.includes(expectedOwnerName) ||
     expectedOwnerName.includes(extractedOwnerName);
 
+  // Sanity check: ensure names aren't too short (e.g., "Bo") to avoid false positives
   const isSane =
     extractedOwnerName.length >= 3 || expectedOwnerName.length >= 3;
   ownerNameMatch = isSubstringMatch && isSane;
 
-  // Final Status Logic
+  // Determine Verification Status
   let finalStatus;
   let finalReason;
 
   if (ownerNameMatch) {
     finalStatus = "verified";
-    finalReason =
-      "Owner name matched, and key certificate data was successfully extracted. Auto-verified.";
+    finalReason = "Owner name matched, and key certificate data was successfully extracted. Auto-verified.";
   } else {
     finalStatus = "rejected";
-    finalReason =
-      "Owner Name Mismatch. Primary security check failed (Name on certificate does not match user name).";
+    finalReason = "Owner Name Mismatch. Primary security check failed (Name on certificate does not match user name).";
   }
 
   aiResult.finalStatus = finalStatus;
@@ -190,7 +195,7 @@ const runCertificateAnalysis = async (petData) => {
 };
 
 // =====================
-// POST: Add a new pet
+// 5. POST: CREATE PET
 // =====================
 export async function POST(req) {
   try {
@@ -210,18 +215,10 @@ export async function POST(req) {
       ownerName,
     } = await req.json();
 
-    // Validation
+    // Basic Validation
     if (
-      !name ||
-      !type ||
-      !userProvidedAge ||
-      !breed ||
-      !gender ||
-      !listingType ||
-      !certificateBase64 ||
-      !imagesBase64 ||
-      !ownerId ||
-      !ownerName
+      !name || !type || !userProvidedAge || !breed || !gender ||
+      !listingType || !certificateBase64 || !imagesBase64 || !ownerId || !ownerName
     ) {
       return new Response(
         JSON.stringify({ error: "All fields are required" }),
@@ -229,12 +226,13 @@ export async function POST(req) {
       );
     }
 
-    // 1. Upload Assets
+    // A. Upload Certificate to Cloudinary (Private Folder)
     const certUpload = await cloudinary.uploader.upload(certificateBase64, {
       folder: `certificates/${ownerId}`,
       resource_type: "auto",
     });
 
+    // B. Upload Pet Photo to Cloudinary (Public Folder)
     const imageUrls = [];
     if (imagesBase64.length > 0) {
       const upload = await cloudinary.uploader.upload(imagesBase64[0], {
@@ -243,7 +241,7 @@ export async function POST(req) {
       imageUrls.push(upload.secure_url);
     }
 
-    // 2. Run AI Analysis & Verification
+    // C. Execute AI Analysis
     const analysisResult = await runCertificateAnalysis({
       name,
       breed,
@@ -253,7 +251,8 @@ export async function POST(req) {
       ownerName,
     });
 
-    // If AI completely failed, still save pet but mark for review
+    // Fallback: If AI crashed, save the pet anyway but flag it for human review.
+    // We don't want to lose the user's data just because the AI had a hiccup.
     if (analysisResult.error) {
       console.error("Critical AI Failure: ", analysisResult.error);
 
@@ -267,10 +266,9 @@ export async function POST(req) {
         certificateUrl: certUpload.secure_url,
         imageUrls,
         ownerId,
-        // lineage unavailable because AI failed
-        sireName: null,
+        sireName: null, // Lineage unknown due to AI failure
         damName: null,
-        verificationStatus: "needs-review",
+        verificationStatus: "needs-review", // Flag for admin
         certificateAnalysis: {
           certificateUrl: certUpload.secure_url,
           status: "ai-error",
@@ -284,41 +282,35 @@ export async function POST(req) {
 
       return new Response(
         JSON.stringify({
-          message:
-            "Pet added successfully! Verification failed, pet is marked for Admin Review.",
+          message: "Pet added successfully! Verification failed, pet is marked for Admin Review.",
           petId: newPet._id.toString(),
         }),
         { status: 201 }
       );
     }
 
-    // 3. Determine Final Age & Process Data
+    // D. Process AI Success Data
     const aiData = analysisResult.aiResult;
     let finalAge = parseInt(userProvidedAge, 10);
 
-    // Prefer DOB-based age
+    // Age Logic: Trust the Certificate's DOB over the user's manual input
     if (
       aiData?.extractedData?.extractedDOB &&
       aiData.extractedData.extractedDOB.toUpperCase() !== "N/A"
     ) {
-      const calculatedAge = calculateAgeInYears(
-        aiData.extractedData.extractedDOB
-      );
+      const calculatedAge = calculateAgeInYears(aiData.extractedData.extractedDOB);
       if (calculatedAge !== null) {
         finalAge = calculatedAge;
-        console.log(
-          `✅ Age calculated from DOB (${aiData.extractedData.extractedDOB}): ${finalAge} years`
-        );
       }
     } else if (aiData?.extractedData?.extractedAge) {
-      // Fallback: parse numeric age from "X years"
+      // Try to parse "2 years" -> 2
       const ageMatch = aiData.extractedData.extractedAge.match(/(\d+)/);
       if (ageMatch) {
         finalAge = parseInt(ageMatch[1], 10);
       }
     }
 
-    // 4. Build Pet Document with lineage + vaccination logic
+    // E. Construct Final Pet Object
     const petCreationData = {
       name,
       type,
@@ -330,49 +322,39 @@ export async function POST(req) {
       imageUrls,
       ownerId,
 
-      // Lineage
-      sireName:
-        aiData?.extractedData?.sireName &&
-        aiData.extractedData.sireName !== "N/A"
-          ? aiData.extractedData.sireName
-          : null,
-      damName:
-        aiData?.extractedData?.damName &&
-        aiData.extractedData.damName !== "N/A"
-          ? aiData.extractedData.damName
-          : null,
+      // Lineage (Sire/Dam) extraction
+      sireName: aiData?.extractedData?.sireName !== "N/A" ? aiData.extractedData.sireName : null,
+      damName: aiData?.extractedData?.damName !== "N/A" ? aiData.extractedData.damName : null,
 
       verificationStatus: aiData?.finalStatus || "needs-review",
 
+      // Store the full analysis for future reference/debugging
       certificateAnalysis: {
         certificateUrl: certUpload.secure_url,
         extractedOwnerName: aiData?.extractedData?.ownerName || null,
         extractedPetName: aiData?.extractedData?.petName || null,
-        aiOcrText:
-          aiData?.extractedData?.aiOcrText ||
-          (aiData?.extractedData
-            ? JSON.stringify(aiData.extractedData)
-            : null),
+        aiOcrText: aiData?.extractedData?.aiOcrText || (aiData?.extractedData ? JSON.stringify(aiData.extractedData) : null),
         ownerNameMatch: analysisResult.ownerNameMatch,
         status: aiData?.finalStatus || "ai-error",
         reason: aiData?.reason || analysisResult.error,
       },
 
+      // Parse Vaccinations
       vaccinationHistory: (aiData?.vaccinationRecords || [])
         .map((vax) => {
           const vaxDate = parseDateToUTC(vax.vaccinationDate);
           const expiryDate = parseDateToUTC(vax.expiryDate);
 
+          // Auto-calculate status based on dates
           let status = "active";
           if (!expiryDate || isNaN(expiryDate.getTime())) {
             status = "needs-review";
           } else if (expiryDate < new Date()) {
             status = "expired";
           } else if (
-            expiryDate <
-            new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+            expiryDate < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
           ) {
-            status = "upcoming";
+            status = "upcoming"; // Expiring in < 30 days
           }
 
           return {
@@ -407,7 +389,7 @@ export async function POST(req) {
 }
 
 // =====================
-// GET: Fetch pets with filters
+// 6. GET: FETCH PETS
 // =====================
 export async function GET(req) {
   try {
@@ -419,13 +401,11 @@ export async function GET(req) {
     const city = searchParams.get("city");
     const excludeOwnerId = searchParams.get("excludeOwnerId");
     const listingType = searchParams.get("listingType");
-
-    // NEW: Check for lost filter
     const isLostFilter = searchParams.get("isLost") === "true";
 
     const petQuery = {};
 
-    // If searching for LOST pets, ignore other filters
+    // LOGIC: Lost Filter overrides everything else
     if (isLostFilter) {
       petQuery.isLost = true;
     } else {
@@ -435,21 +415,26 @@ export async function GET(req) {
       if (excludeOwnerId) petQuery.ownerId = { $ne: excludeOwnerId };
       if (listingType) petQuery.listingType = listingType;
 
-      // Default visibility rules
+      // SAFETY RULES:
+      // 1. Never show pregnant pets in mating lists
       petQuery.isPregnant = { $ne: true };
+      // 2. Only show verified pets
       petQuery.verificationStatus = "verified";
-      petQuery.isLost = { $ne: true }; // Don't show lost pets in normal mating feed
-
-      // Hide pets with approved adoption
+      // 3. Don't show lost pets in the normal feed (they have their own section)
+      petQuery.isLost = { $ne: true }; 
+      // 4. Hide pets that have an approved adoption (they are effectively "sold")
       petQuery.adoptionRequests = {
         $not: { $elemMatch: { status: "approved" } },
       };
 
-      // Hide Mated Females
+      // 5. Hide Females that have already mated successfully
+      // We find all pets who are the "Requester" in a 'mated' transaction
       const matedRequesterIds = await Pet.distinct(
         "matingHistory.requesterPetId",
         { "matingHistory.status": "mated" }
       );
+      
+      // Complex Query: Either NOT female OR (if female, not mated AND not in that list)
       petQuery.$or = [
         { gender: { $ne: "Female" } },
         {
@@ -463,17 +448,19 @@ export async function GET(req) {
 
     let pets = await Pet.find(petQuery).sort({ createdAt: -1 }).lean();
 
-    // Filter by city (using Owner location)
+    // LOCATION FILTERING
+    // Since 'location' is on the User model, we must fetch relevant Users first.
     if (city) {
       const usersInCity = await User.find(
         { "location.city": city },
         "firebaseUid"
       ).lean();
       const userUids = usersInCity.map((u) => u.firebaseUid);
+      // Filter the pets array in memory based on owner IDs
       pets = pets.filter((pet) => userUids.includes(pet.ownerId));
     }
 
-    // Attach Location Data
+    // Attach Location Data to Response
     const petsWithLocation = await Promise.all(
       pets.map(async (pet) => {
         const owner = await User.findOne(
@@ -494,11 +481,9 @@ export async function GET(req) {
           imageUrls: pet.imageUrls || [],
           certificateUrl: pet.certificateUrl || null,
           ownerId: pet.ownerId,
-          // Lost-pet related fields
           isLost: pet.isLost,
           lastSeenDate: pet.lastSeenDate,
-          // Location
-          location: owner?.location || null,
+          location: owner?.location || null, // Attach owner location
         };
       })
     );

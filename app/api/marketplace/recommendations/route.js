@@ -1,12 +1,15 @@
 // app/api/marketplace/recommendations/route.js
+
+// 1. IMPORTS
 import connectDB from "../../../lib/mongodb"; 
 import Pet from "../../../models/PetModel"; 
-import { textModel } from "../../../lib/gemini"; 
-import * as cheerio from 'cheerio'; 
+import { textModel } from "../../../lib/gemini"; // Google Gemini AI instance
+import * as cheerio from 'cheerio'; // Library for parsing HTML (scraping)
 
+// 2. CONFIGURATION
 export const dynamic = 'force-dynamic';
 
-// --- Helper: Scrape Amazon (Unchanged) ---
+// 3. HELPER FUNCTION: Amazon Image Scraper
 async function fetchRealAmazonImage(query) {
   try {
     const url = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
@@ -17,61 +20,121 @@ async function fetchRealAmazonImage(query) {
       },
       cache: 'no-store'
     });
+    
     if (!response.ok) return null;
+    
     const html = await response.text();
     const $ = cheerio.load(html);
     const imageUrl = $('.s-image').first().attr('src');
+    
     return imageUrl || null;
   } catch (error) {
     return null;
   }
 }
 
+// --- NEW: FALLBACK DATA GENERATOR ---
+// Returns generic items so the page isn't empty when AI fails
+const getFallbackItems = (petType = "Pet") => {
+    return [
+        {
+            title: `Premium ${petType} Food`,
+            query: `best ${petType} food india`,
+            price: "899",
+            category: "Food",
+            imageUrl: "https://image.pollinations.ai/prompt/premium%20pet%20food%20bag%20packaging%20white%20background?nologo=true"
+        },
+        {
+            title: "Healthy Treats Pack",
+            query: `healthy ${petType} treats`,
+            price: "350",
+            category: "Food",
+            imageUrl: "https://image.pollinations.ai/prompt/dog%20treats%20biscuits%20white%20background?nologo=true"
+        },
+        {
+            title: "Comfort Bedding",
+            query: `comfortable ${petType} bed`,
+            price: "1200",
+            category: "Gear",
+            imageUrl: "https://image.pollinations.ai/prompt/cozy%20pet%20bed%20cushion%20studio%20shot?nologo=true"
+        },
+        {
+            title: "Interactive Toy",
+            query: `durable ${petType} toy`,
+            price: "450",
+            category: "Gear",
+            imageUrl: "https://image.pollinations.ai/prompt/colorful%20pet%20toy%20rubber%20bone?nologo=true"
+        },
+        {
+            title: "Grooming Kit",
+            query: `${petType} grooming brush`,
+            price: "600",
+            category: "Gear",
+            imageUrl: "https://image.pollinations.ai/prompt/pet%20grooming%20brush%20comb?nologo=true"
+        },
+        {
+            title: "Nutritional Supplements",
+            query: `${petType} multivitamins`,
+            price: "550",
+            category: "Food",
+            imageUrl: "https://image.pollinations.ai/prompt/pet%20vitamin%20bottle%20supplement?nologo=true"
+        }
+    ];
+};
+
+// 4. POST HANDLER
 export async function POST(req) {
+  let petType = "Pet"; // Default for fallback
+
   try {
     await connectDB();
+    
     const { petId } = await req.json();
 
     if (!petId) return new Response(JSON.stringify({ error: "Pet ID required" }), { status: 400 });
 
     const pet = await Pet.findById(petId);
+    
     if (!pet || !pet.aiProfileString) {
       return new Response(JSON.stringify({ error: "Pet profile not found." }), { status: 400 });
     }
 
-    // --- UPDATED PROMPT: Ask for 12 items ---
+    petType = pet.type || "Pet"; // Capture type for fallback usage
+
+    // 5. PROMPT ENGINEERING
     const prompt = `
       Act as a professional personal shopper for this pet:
       "${pet.aiProfileString}"
       (Breed: ${pet.breed}, Type: ${pet.type}, Age: ${pet.age}, Energy: ${pet.energyLevel})
 
       Your Task:
-      Generate exactly 12 high-quality product recommendations available on Amazon India.
+      Generate exactly 8 high-quality product recommendations available on Amazon India.
       
-      **Constraint:**
-      - 6 items MUST be **Food/Nutrition/Treats** (Specific to breed/age, e.g., "Calcium bones", "Puppy kibble").
-      - 6 items MUST be **Toys/Gear/Grooming** (Specific to behavior, e.g., "Squeaky toy", "Shampoo", "Leash").
+      Constraint:
+      - 4 items MUST be Food/Nutrition.
+      - 4 items MUST be Toys/Gear.
       
       For EACH item, provide:
-      1. "title": A clean, short product name (Max 5-6 words).
-      2. "query": The precise Amazon search query.
+      1. "title": Short product name.
+      2. "query": Amazon search query.
       3. "price": Estimated price in INR.
-      4. "fallbackImagePrompt": A simple visual description for an AI image generator.
+      4. "fallbackImagePrompt": Visual description for AI image generator.
       5. "category": "Food" or "Gear".
 
-      **Respond ONLY with this JSON structure:**
+      Respond ONLY with this JSON structure:
       {
         "recommendations": [
           { "title": "...", "query": "...", "price": "...", "fallbackImagePrompt": "...", "category": "..." }
-          // ... total 12 items
         ]
       }
     `;
 
+    // 6. AI GENERATION
     const result = await textModel.generateContent(prompt);
     const response = await result.response;
     let text = response.text();
 
+    // 7. CLEANUP
     const jsonStartIndex = text.indexOf('{');
     const jsonEndIndex = text.lastIndexOf('}');
     if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
@@ -82,11 +145,12 @@ export async function POST(req) {
     try {
         aiData = JSON.parse(text);
     } catch (e) {
-        aiData = { recommendations: [] };
+        console.error("Failed to parse AI response");
+        // Trigger fallback manually if JSON fails
+        throw new Error("Invalid AI JSON"); 
     }
 
-    // Fetch Real Images in Parallel
-    // Note: Fetching 12 images might take 2-3 seconds, which is acceptable for a "generating" state.
+    // 8. IMAGE ENRICHMENT
     const enrichedRecommendations = await Promise.all(
       (aiData.recommendations || []).map(async (item) => {
         const realImage = await fetchRealAmazonImage(item.query);
@@ -102,7 +166,15 @@ export async function POST(req) {
     }), { status: 200 });
 
   } catch (err) {
-    console.error("Recommendation Error:", err);
-    return new Response(JSON.stringify({ recommendations: [] }), { status: 200 });
+    console.warn("⚠️ Marketplace Recommendation Error (Rate Limit/AI Fail). Using Fallback.", err.message);
+    
+    // --- FALLBACK LOGIC ---
+    // Return generic items so the user sees *something* instead of an empty screen
+    const fallbackData = getFallbackItems(petType);
+    
+    return new Response(JSON.stringify({ 
+        recommendations: fallbackData,
+        isFallback: true // Optional flag if you want to show a UI notice
+    }), { status: 200 });
   }
 }
