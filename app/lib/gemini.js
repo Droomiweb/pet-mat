@@ -3,27 +3,23 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // 1. LOAD KEYS
 // Support both a list of keys (GEMINI_API_KEYS) and the single legacy key (GEMINI_API_KEY)
-// Example in .env: GEMINI_API_KEYS="key1,key2,key3"
 const keysString = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || "";
 const keys = keysString.split(",").map((k) => k.trim()).filter((k) => k);
 
 if (keys.length === 0) {
-  console.warn("Warning: No Gemini API keys found in environment variables.");
+  console.warn("⚠️ Warning: No Gemini API keys found in environment variables.");
 }
 
 // 2. ROTATION LOGIC
-// This helper wraps the model to handle retries and key rotation automatically
 const createRotatedModel = (modelConfig) => {
   return {
     /**
-     * Wrapper for generateContent that rotates keys on 429 errors
+     * Wrapper for generateContent that rotates keys on 429 (Rate Limit) or 403 (Permission) errors
      */
     generateContent: async (...args) => {
-      // Start with a random key to balance load
       const startIndex = Math.floor(Math.random() * keys.length);
       let lastError = null;
 
-      // Try up to the number of available keys
       for (let i = 0; i < keys.length; i++) {
         const keyIndex = (startIndex + i) % keys.length;
         const currentKey = keys[keyIndex];
@@ -31,35 +27,30 @@ const createRotatedModel = (modelConfig) => {
         try {
           const genAI = new GoogleGenerativeAI(currentKey);
           const model = genAI.getGenerativeModel(modelConfig);
-          
           return await model.generateContent(...args);
         } catch (error) {
           lastError = error;
           
-          // Check if error is related to Rate Limiting (429) or Exhaustion
-          const isRateLimit = 
+          const shouldRotate = 
             error.message?.includes('429') || 
             error.status === 429 || 
+            error.message?.includes('403') || 
+            error.status === 403 ||
             error.message?.toLowerCase().includes('resource has been exhausted');
 
-          // If it's NOT a rate limit error, or if we've tried all keys, stop retrying.
-          if (!isRateLimit) {
-            throw error;
-          }
+          if (!shouldRotate) throw error;
 
-          console.warn(`[Gemini] Key ending in ...${currentKey.slice(-4)} hit rate limit. Rotating to next key...`);
-          // Loop continues to the next key
+          console.warn(`[Gemini] Key ending in ...${currentKey.slice(-4)} failed (${error.status || 'Error'}). Rotating...`);
         }
       }
-      
-      // If all keys failed
+      console.error("All Gemini API keys failed.");
       throw lastError;
     },
 
     /**
      * Wrapper for startChat.
-     * Note: We select a random key for the session initialization.
-     * Mid-chat rotation is difficult because session state is tied to the client.
+     * Picks a random key for the session.
+     * Ideal for stateless API routes where the chat is re-initialized every request.
      */
     startChat: (chatConfig) => {
       const randomKey = keys[Math.floor(Math.random() * keys.length)];
@@ -67,8 +58,10 @@ const createRotatedModel = (modelConfig) => {
       const model = genAI.getGenerativeModel(modelConfig);
       return model.startChat(chatConfig);
     },
-    
-    // Expose underlying helper if needed elsewhere
+
+    /**
+     * Helper to get the underlying model if needed
+     */
     getGenerativeModel: (config) => {
         const randomKey = keys[Math.floor(Math.random() * keys.length)];
         return new GoogleGenerativeAI(randomKey).getGenerativeModel(config);
@@ -77,7 +70,6 @@ const createRotatedModel = (modelConfig) => {
 };
 
 // 3. EXPORTS
-// We keep the same export names so your other files don't break.
 const textModel = createRotatedModel({ model: "gemini-flash-latest" });
 const visionModel = createRotatedModel({ model: "gemini-flash-latest" });
 
@@ -86,7 +78,7 @@ const fileToGenerativePart = (buffer, mimeType) => {
   return {
     inlineData: {
       data: buffer.toString("base64"),
-      mimeType,
+      mimeType
     },
   };
 };
