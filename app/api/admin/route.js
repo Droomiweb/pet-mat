@@ -76,6 +76,7 @@ export async function PATCH(req) {
 
     // --- ACTION: UPDATE PET STATUS ---
     // Manually verifying or rejecting a pet listing.
+    
     if (action === "updatePetStatus") {
       if (!petId || !['verified', 'rejected', 'pending'].includes(status)) {
         return new Response(JSON.stringify({ error: "Invalid status or petId" }), { status: 400 });
@@ -123,7 +124,7 @@ export async function PATCH(req) {
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
         
         // Call the endpoint we created: /api/admin/user/[uid]
-        const deleteResponse = await fetch(`${baseUrl}/api/admin/user/${targetUid}`, {
+        const deleteResponse =await fetch(`${baseUrl}/api/admin/user/${targetUid}`, {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',

@@ -143,8 +143,10 @@ const petSchema = new mongoose.Schema({
   adoptionLog: AdoptionLogSchema 
 });
 
-petSchema.index({ location: '2dsphere' });
-petSchema.index({ lastSeenLocation: '2dsphere' }); // Index for lost searches
+// CORRECTED: Removed index on non-existent 'location' field.
+// 'lastSeenLocation' index is sufficient for lost pets.
+// User location is handled via the User model.
+petSchema.index({ lastSeenLocation: '2dsphere' }); 
 
 const Pet = mongoose.models.Pet || mongoose.model("Pet", petSchema);
 export default Pet;

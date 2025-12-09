@@ -1,7 +1,5 @@
 // app/api/admin/confirm-litter/route.js
 
-// 1. IMPORT DEPENDENCIES
-// We import the database connection helper to ensure we can talk to MongoDB.
 import connectDB from "../../../lib/mongodb";
 // We import the Pet model to create new pet documents and update existing ones.
 import Pet from "../../../models/PetModel";
