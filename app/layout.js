@@ -5,7 +5,7 @@ import "./globals.css";
 import { AuthProvider } from "./auth-provider";
 import connectDB from "./lib/mongodb";
 import SystemSettings from "./models/SystemSettings";
-
+import { Analytics } from "@vercel/analytics/next"
 const poppins = Poppins({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
@@ -45,6 +45,7 @@ export default async function RootLayout({ children }) {
               {children}
           </NavbarrWrapper>
         </AuthProvider>
+        <Analytics/>
       </body>
     </html>
   );
