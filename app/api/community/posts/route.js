@@ -1,36 +1,31 @@
 // app/api/community/route.js
 
-// 1. IMPORTS
+// Standard imports
 import connectDB from "../../../lib/mongodb";
 import ForumPost from "../../../models/ForumPost";
 import cloudinary from "../../../lib/cloudinary";
 
-// 2. CACHE CONTROL
-// Next.js App Router caches GET requests by default. 
-// We disable this to ensure users always see the latest posts when they refresh the feed.
+// Disable caching
 export const dynamic = 'force-dynamic'; 
 
-// 3. GET HANDLER (Fetch Feed)
+// GET request handler
 export async function GET(req) {
   try {
     await connectDB();
 
-    // Fetch all posts, sorted by newest first (-1)
-    // .lean() converts Mongoose documents to plain JavaScript objects. 
-    // This is significantly faster for read-only operations.
+    // Fetch sorted posts
     const posts = await ForumPost.find({})
       .sort({ createdAt: -1 }) 
       .lean();
     
-    // 4. DATA NORMALIZATION (Crash Prevention)
-    // We process the data to ensure frontend stability.
+    // Normalize data structure
     const postsWithStats = posts.map(post => ({
       ...post,
-      // FIX: If 'likes' array is missing (legacy data), default to empty array.
+      // Default empty likes
       likes: post.likes || [], 
-      // Default media type if missing
+      // Default media type
       mediaType: post.mediaType || 'none', 
-      // Calculate specific counts for UI badges
+      // Calculate count stats
       replyCount: post.replies ? post.replies.length : 0,
       likeCount: post.likes ? post.likes.length : 0
     }));
@@ -46,13 +41,13 @@ export async function GET(req) {
   }
 }
 
-// 5. POST HANDLER (Create New Post)
+// POST request handler
 export async function POST(req) {
   try {
     await connectDB();
     const { title, content, authorId, authorName, mediaBase64, mediaType } = await req.json();
 
-    // Basic Validation
+    // Validate required fields
     if (!title || !content || !authorId) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
     }
@@ -60,23 +55,22 @@ export async function POST(req) {
     let mediaUrl = null;
     let finalMediaType = 'none';
 
-    // 6. MEDIA UPLOAD LOGIC
-    // If the user attached a photo/video, upload to Cloudinary.
+    // Upload media files
     if (mediaBase64 && mediaType) {
         try {
             const uploadRes = await cloudinary.uploader.upload(mediaBase64, {
-                folder: "community_posts", // Keep forum uploads separate from profile pics
-                resource_type: "auto" // Auto-detects if it's an image or video
+                folder: "community_posts", // Folder for posts
+                resource_type: "auto" // Auto-detect type
             });
             mediaUrl = uploadRes.secure_url;
-            finalMediaType = uploadRes.resource_type; // returns 'image' or 'video'
+            finalMediaType = uploadRes.resource_type; // 'image' or 'video'
         } catch (uploadErr) {
             console.error("Cloudinary Error:", uploadErr);
             return new Response(JSON.stringify({ error: "Image/Video upload failed" }), { status: 500 });
         }
     }
 
-    // 7. CREATE DOCUMENT
+    // Create new post
     const newPost = new ForumPost({
       title,
       content,
@@ -84,7 +78,7 @@ export async function POST(req) {
       authorName,
       mediaUrl,
       mediaType: finalMediaType,
-      // Initialize interaction fields to avoid null errors later
+      // Initialize interaction fields
       likes: [],
       shares: 0,
       replies: [] 

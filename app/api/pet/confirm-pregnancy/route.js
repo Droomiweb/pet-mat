@@ -1,36 +1,34 @@
 // app/api/pet/confirm-pregnancy/route.js
 
-// 1. IMPORTS
+// Standard imports
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
-// We need the text-based Gemini model to generate the long care plan
+// AI configuration
 import { textModel } from "../../../lib/gemini";
 
-// 2. POST HANDLER
+// POST request handler
 export async function POST(req) {
   try {
     await connectDB();
     
-    // We expect the Pet ID and the Owner's User ID (for security verification)
+    // Parse request data
     const { petId, userId } = await req.json();
 
-    // 3. VERIFICATION
+    // Verify ownership
     const pet = await Pet.findById(petId);
     if (!pet) {
         return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
     }
-    // Security: Only the owner can confirm their pet is pregnant.
+    // Check authorization
     if (pet.ownerId !== userId) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
     }
 
-    // 4. PROMPT ENGINEERING (The "Virtual Vet")
-    // We ask for a granular, day-by-day plan. 
-    // Note: For dogs/cats (~63 days), this generates a large JSON object.
+    // Define AI prompt
     const prompt = `
       Create a detailed, day-by-day pregnancy care plan for a **${pet.breed} ${pet.type}**.
       
-      1. Determine the average gestation period (in days) for this specific breed/type.
+      1. Determine the average gestation period (in days for this specific breed/type).
       2. For EACH day from Day 1 to the final day of gestation, provide:
          - "food": Dietary advice (e.g., increase calcium, specific nutrients).
          - "activity": Exercise recommendation (e.g., normal walk, rest, gentle play).
@@ -49,7 +47,7 @@ export async function POST(req) {
       Keep descriptions concise (1 sentence each) to ensure the response fits within token limits.
     `;
 
-    // 5. GENERATE CONTENT
+    // Generate care plan
     const result = await textModel.generateContent(prompt);
     const responseText = result.response.text()
         .replace(/```json/g, "")
@@ -64,18 +62,14 @@ export async function POST(req) {
         throw new Error("Failed to parse AI pregnancy plan.");
     }
 
-    // 6. UPDATE DATABASE
-    // We store the entire plan in the database so we don't have to re-generate it every time the user logs in.
+    // Update pet record
     pet.isPregnant = true;
-    pet.pregnancyStartDate = new Date(); // The "Day 1" timestamp
-    pet.pregnancyPlan = aiData.plan;     // The array of 60+ daily advice objects
+    pet.pregnancyStartDate = new Date(); // Set start date
+    pet.pregnancyPlan = aiData.plan;     // Save daily plan
     
-    // Note: ensure your PetModel schema has a field: 
-    // pregnancyPlan: [{ day: Number, food: String, activity: String, ... }]
-
     await pet.save();
 
-    // 7. SUCCESS RESPONSE
+    // Return success response
     return new Response(JSON.stringify({ 
         message: "Pregnancy confirmed and care plan generated!", 
         pet 

@@ -1,32 +1,27 @@
 // app/api/products/[id]/route.js
 
-// 1. IMPORTS
+// Standard imports
 import connectDB from "../../../lib/mongodb";
 import Product from "../../../models/ProductModel";
 
-// 2. GET HANDLER
-// This function handles GET requests to /api/products/:id
+// GET request handler
 export async function GET(req, context) {
   try {
-    // Ensure database connection is active
+    // Connect to database
     await connectDB();
 
-    // 3. EXTRACT ID
-    // In Next.js App Router, dynamic route parameters are passed via the second argument 'context'.
-    // We await params because in the latest Next.js versions, params can be a Promise.
+    // Extract product ID
     const { id } = await context.params;
 
-    // 4. FETCH PRODUCT
-    // .lean() converts the Mongoose document to a plain JavaScript object.
-    // This improves performance for read-only operations.
+    // Fetch product details
     const product = await Product.findById(id).lean();
 
-    // 5. HANDLE NOT FOUND
+    // Handle missing product
     if (!product) {
       return new Response(JSON.stringify({ error: "Product not found" }), { status: 404 });
     }
 
-    // 6. SUCCESS RESPONSE
+    // Return product data
     return new Response(JSON.stringify(product), {
       status: 200,
       headers: { "Content-Type": "application/json" }
@@ -35,11 +30,12 @@ export async function GET(req, context) {
   } catch (err) {
     console.error("Error fetching product:", err);
     
-    // Check for specific CastError (invalid Object ID format)
+    // Handle invalid ID
     if (err.name === 'CastError') {
         return new Response(JSON.stringify({ error: "Invalid Product ID format" }), { status: 400 });
     }
 
+    // Return server error
     return new Response(JSON.stringify({ error: "Internal Server Error" }), { status: 500 });
   }
 }

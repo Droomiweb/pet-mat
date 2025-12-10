@@ -1,23 +1,21 @@
 // app/api/test-verification/route.js
 
-// 1. IMPORTS
+// Standard imports
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { v2 as cloudinary } from "cloudinary";
 
-// 2. CONFIGURATION
-// Setup Cloudinary for temporary image hosting
+// Service configuration
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Setup Gemini Flash (Fast & Multimodal)
+// Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-// 3. HELPER: Age Calculation
-// Converts DD/MM/YYYY -> Decimal Age (e.g., 2.5 years)
+// Calculate age
 const calculateAgeInYears = (dobString) => {
     if (!dobString || dobString.toUpperCase() === 'N/A') return null;
     const parts = dobString.split('/');
@@ -28,34 +26,32 @@ const calculateAgeInYears = (dobString) => {
     
     if (isNaN(dob.getTime()) || dob > now) return null;
 
-    // Logic: Calculate total months difference, divide by 12
+    // Calculate age decimal
     const totalMonths = (now.getFullYear() - dob.getFullYear()) * 12 + (now.getMonth() - dob.getMonth()) + (now.getDate() < dob.getDate() ? -1 : 0);
     
     return Math.round((totalMonths / 12) * 10) / 10;
 };
 
-// 4. POST HANDLER (Simulation)
+// POST request handler
 export async function POST(req) {
   try {
-    // Parse test data
-    // ownerName is crucial for the "Name Match" security check
+    // Parse request data
     const { imageBase64, petName, petBreed, petAge, ownerName } = await req.json();
 
     if (!imageBase64 || !petName || !ownerName) {
       return new Response(JSON.stringify({ error: "Image, Pet Name, and Owner Name are required" }), { status: 400 });
     }
 
-    // --- A. UPLOAD ASSET ---
-    // We upload to a specific 'tests' folder in Cloudinary to keep it separate from real user data.
+    // Upload test image
     const uploadRes = await cloudinary.uploader.upload(imageBase64, {
       folder: "tests/verification",
       resource_type: 'auto',
     });
 
-    // Detect MIME type (Default to JPEG if unknown)
+    // Determine file type
     const mimeType = imageBase64.startsWith('data:application/pdf') ? 'application/pdf' : 'image/jpeg';
     
-    // Prepare payload for Gemini (removing the base64 header)
+    // Prepare image data
     const base64Data = imageBase64.split(",")[1] || imageBase64;
     const imagePart = {
       inlineData: {
@@ -64,8 +60,7 @@ export async function POST(req) {
       },
     };
 
-    // --- B. CONSTRUCT PROMPT ---
-    // This uses the exact same prompt logic as the production route to ensure the test is valid.
+    // Define AI prompt
     const prompt = `
       You are a specialized Pet Certificate Verification AI for a sandbox environment. Analyze the uploaded document (image or PDF) and compare it against the provided data.
       
@@ -98,29 +93,29 @@ export async function POST(req) {
       }
     `;
 
-    // --- C. CALL GEMINI ---
+    // Generate AI analysis
     const result = await model.generateContent([prompt, imagePart]);
     const responseText = result.response.text();
     
-    // Clean JSON (remove markdown)
+    // Parse AI response
     let cleanedText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
     const aiResult = JSON.parse(cleanedText);
 
-    // --- D. SERVER-SIDE PROCESSING ---
+    // Process verification logic
     
-    // 1. Owner Name Verification (Fuzzy Match)
+    // Verify owner name
     const extractedOwnerName = aiResult.extractedData?.ownerName?.toLowerCase() || '';
     const expectedOwnerName = ownerName.toLowerCase();
     
     const isSubstringMatch = extractedOwnerName.includes(expectedOwnerName) || 
                              expectedOwnerName.includes(extractedOwnerName);
                              
-    // Sanity check (prevent 1-letter matches)
+    // Validate match length
     const isSane = extractedOwnerName.length >= 3 || expectedOwnerName.length >= 3;
     
     const ownerNameMatch = isSubstringMatch && isSane;
 
-    // 2. Calculate "Trust Score" (For visualization purposes)
+    // Calculate confidence score
     let score = 0;
     let scoreReasons = [];
     
@@ -139,7 +134,7 @@ export async function POST(req) {
         scoreReasons.push("Vaccination Records Extracted (20%)");
     }
     
-    // 3. Final Decision Logic
+    // Determine final status
     let finalStatus;
     let finalReason;
 
@@ -151,10 +146,10 @@ export async function POST(req) {
         finalReason = "Owner Name Mismatch. Primary security check failed (Name on certificate does not match user name).";
     }
     
-    // 4. Age Calculation
+    // Calculate pet age
     const calculatedAge = calculateAgeInYears(aiResult.extractedData?.extractedDOB);
 
-    // 5. Parse Vaccinations (Active/Expired Logic)
+    // Process vaccination records
     const parsedVaccinations = (aiResult.vaccinationRecords || []).map(vax => {
         const parseDate = (dateStr) => {
             if (!dateStr || dateStr.toUpperCase() === 'N/A') return null;
@@ -174,7 +169,7 @@ export async function POST(req) {
         } else if (expiryDate < new Date()) {
             status = 'expired'; // Date passed
         } else if (expiryDate < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)) {
-            status = 'upcoming'; // Expires within 30 days
+            status = 'upcoming'; // Expires soon
         }
         
         return {
@@ -185,14 +180,13 @@ export async function POST(req) {
         };
     });
 
-    // --- E. RESPONSE ---
-    // Return all data needed to render the "Result Card" on the frontend.
+    // Return detailed results
     return new Response(JSON.stringify({
       success: true,
       certificateUrl: uploadRes.secure_url,
       ownerNameMatch: ownerNameMatch,
       calculatedAge: calculatedAge,
-      verificationScore: score, // UI can show a progress bar
+      verificationScore: score, // UI score
       scoreReasons: scoreReasons, 
       vaccinationHistory: parsedVaccinations,
       

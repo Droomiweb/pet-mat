@@ -1,7 +1,7 @@
 // app/api/ai-chat/route.js
 
-// 1. IMPORTS
-import { textModel } from "../../lib/gemini"; // Our Gemini AI configuration
+// Standard imports
+import { textModel } from "../../lib/gemini"; // AI configuration
 import connectDB from "../../lib/mongodb";
 import Pet from "../../models/PetModel";
 
@@ -9,19 +9,19 @@ export async function POST(req) {
   try {
     await connectDB();
     
-    // Parse the incoming request body
+    // Parse request body
     const { history, message, petId, image, mimeType } = await req.json();
 
     let contextPrompt = "";
     let currentMemory = "No history recorded yet.";
 
-    // 2. RETRIEVE PET CONTEXT (The "Memory" Fetch)
+    // Fetch pet context
     if (petId) {
         const pet = await Pet.findById(petId);
         if (pet) {
             currentMemory = pet.medicalHistoryLog || "No history recorded yet.";
             
-            // We construct a "System Context" string. 
+            // Build system context
             contextPrompt = `
             **ACTIVE PATIENT CONTEXT:**
             - Name: ${pet.name}
@@ -39,7 +39,7 @@ export async function POST(req) {
         }
     }
 
-    // 3. INITIALIZE CHAT
+    // Start chat session
     const chat = textModel.startChat({
       history: [
         ...history,
@@ -47,7 +47,7 @@ export async function POST(req) {
       ],
     });
 
-    // 4. SYSTEM INSTRUCTION
+    // Define AI rules
     const systemInstruction = `
       [SYSTEM PROTOCOLS]:
       1. **IDENTITY**: You are Dr. Paws, a professional AI Veterinarian.
@@ -64,7 +64,7 @@ export async function POST(req) {
     const textPart = `${message}\n\n${systemInstruction}`;
     let result;
 
-    // 5. SEND TO GEMINI (WITH RATE LIMIT HANDLING)
+    // Send AI message
     try {
         if (image) {
             const base64Data = image.split(",")[1] || image;
@@ -81,16 +81,14 @@ export async function POST(req) {
     } catch (aiError) {
         console.warn("⚠️ Dr. Paws AI Rate Limit Hit:", aiError.message);
         
-        // --- FALLBACK RESPONSE ---
-        // Instead of crashing with a 500 error, we return a 200 OK with a "Busy" message.
-        // The frontend will render this text as a message from the bot.
+        // Handle rate limits
         if (aiError.message.includes("429") || aiError.message.includes("Quota")) {
             return new Response(JSON.stringify({ 
                 text: "🚫 **High Traffic Alert:** I'm receiving too many requests right now! Please wait about 30 seconds and try asking me again. (Rate Limit Reached)" 
             }), { status: 200 });
         }
         
-        // For other AI errors, return a generic helpful message
+        // Handle connection errors
         return new Response(JSON.stringify({ 
             text: "My connection is a bit unstable. Please try again in a moment." 
         }), { status: 200 });
@@ -99,7 +97,7 @@ export async function POST(req) {
     const response = await result.response;
     const fullText = response.text();
 
-    // 6. PARSING AND CLEANUP
+    // Clean response text
     let finalText = fullText;
     
     const memoryRegex = /\|\|\s*MEMORY_UPDATE\s*\|\|\s*:\s*([\s\S]*)/i;
@@ -109,7 +107,7 @@ export async function POST(req) {
         finalText = fullText.replace(match[0], "").trim(); 
         const newMemoryFragment = match[1].trim();
 
-        // 7. UPDATE MONGODB
+        // Update medical log
         if (petId && newMemoryFragment) {
             const pet = await Pet.findById(petId);
             if (pet) {
@@ -123,12 +121,12 @@ export async function POST(req) {
         }
     }
 
-    // 8. RETURN RESPONSE
+    // Return API response
     return new Response(JSON.stringify({ text: finalText }), { status: 200 });
 
   } catch (error) {
     console.error("Dr. Paws Critical Error:", error);
-    // Only return 500 for actual server crashes (DB connection loss, etc.)
+    // Handle server errors
     return new Response(JSON.stringify({ error: "Dr. Paws is currently offline. Please try again." }), { status: 500 });
   }
 }

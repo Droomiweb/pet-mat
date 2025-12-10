@@ -1,11 +1,10 @@
 // app/api/ocr-tesseract/route.js
 
-// NOTE: We do NOT use a top-level import here.
-// Importing tesseract.js globally can cause build errors in Next.js Serverless functions
-// because the bundler tries to include the massive worker files unnecessarily.
+// Avoid global import
+// Tesseract causes build issues if imported globally in Next.js
 
 export async function POST(req) {
-  // 1. PARSE REQUEST
+  // Parse request data
   const { certificateUrl } = await req.json();
 
   if (!certificateUrl) {
@@ -14,21 +13,19 @@ export async function POST(req) {
 
   let worker;
   try {
-    // 2. DYNAMIC IMPORT (Server-Side)
-    // We import the library only when this specific API route is hit.
+    // Import Tesseract dynamically
     const tesseract = await import('tesseract.js');
 
-    // 3. CHECK API VERSION COMPATIBILITY
-    // Tesseract v5 uses createWorker factory pattern.
+    // Check API version
+    // Verify compatibility with v5 factory pattern
     if (typeof tesseract.createWorker === 'function') {
       
-      // --- CRITICAL FIX: Initialize Worker ---
-      // In newer versions (v5+), createWorker is async and MUST be awaited.
-      // If you don't await, 'worker' will be a Promise, not the worker object.
+      // Initialize worker
+      // Must await creation in newer versions
       worker = await tesseract.createWorker(); 
 
-      // 4. CONFIGURE LANGUAGE (English)
-      // Some versions require explicit loading and initialization of the language data.
+      // Configure language
+      // Initialize English language data
       if (typeof worker.load === 'function') {
         await worker.load();
       }
@@ -39,26 +36,26 @@ export async function POST(req) {
         await worker.initialize('eng');
       }
 
-      // 5. PERFORM OCR
-      // We pass the image URL directly. Tesseract will fetch and process it.
+      // Perform OCR
+      // Process image URL
       const res = await worker.recognize(certificateUrl);
       const text = res?.data?.text ?? '';
 
-      // 6. CLEANUP
-      // Always kill the worker to free up server memory.
+      // Terminate worker
+      // Free up memory
       if (typeof worker.terminate === 'function') {
         await worker.terminate();
       }
 
-      // Return the extracted text
+      // Return extracted text
       return new Response(JSON.stringify({ ocrText: text }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    // 7. FALLBACK FOR OLDER VERSIONS
-    // If createWorker doesn't exist (very old versions), try the simple recognize API.
+    // Legacy API fallback
+    // Handle older Tesseract versions
     if (typeof tesseract.recognize === 'function') {
       const res = await tesseract.recognize(certificateUrl, 'eng');
       const text = res?.data?.text ?? '';
@@ -69,15 +66,14 @@ export async function POST(req) {
       });
     }
 
-    // If neither API works, something is wrong with the installed package.
+    // Handle unsupported version
     throw new Error('Unsupported tesseract.js API shape. Please check version compatibility.');
 
   } catch (error) {
     console.error("Tesseract OCR Error:", error);
     
-    // 8. SAFETY CLEANUP
-    // If the process crashed halfway, ensure the worker is still killed
-    // to prevent "zombie" processes eating RAM.
+    // Ensure worker cleanup
+    // Terminate worker on error
     if (worker && typeof worker.terminate === 'function') {
       try { await worker.terminate(); } catch (e) { /* ignore cleanup errors */ }
     }

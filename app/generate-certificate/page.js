@@ -55,6 +55,12 @@ export default function CertificateGenerator() {
     color: "White & Grey",
     weight: "4.5 kg",
     microchip: "981020001234567",
+
+    // New Lineage Fields (Name & Breed)
+    sireName: "", 
+    sireBreed: "",
+    damName: "",  
+    damBreed: "",
     
     // Dynamic Vaccination Dates
     vax1Date: "25/11/2024", vax1Expiry: "25/11/2025",
@@ -67,6 +73,9 @@ export default function CertificateGenerator() {
     issueDate: new Date().toLocaleDateString('en-GB'),
     vetSignature: "Dr. Smith"
   });
+
+  // Toggle for Lineage
+  const [showLineage, setShowLineage] = useState(false);
 
   const handleSpeciesChange = (e) => {
     setFormData({
@@ -98,6 +107,7 @@ export default function CertificateGenerator() {
       clinicName, clinicAddress, clinicPhone, vetLicense,
       ownerName, ownerAddress, 
       petName, species, breed, sex, dob, color, weight, microchip,
+      sireName, sireBreed, damName, damBreed,
       issueDate, vetSignature 
     } = formData;
 
@@ -149,7 +159,7 @@ export default function CertificateGenerator() {
     drawField("Pet Name:", petName, rightX, y);
     y += 10;
 
-    // Row 2 - Address needs more space, so we handle it uniquely if needed, but here it fits
+    // Row 2
     drawField("Address:", ownerAddress, leftX, y);
     drawField("Species:", species, rightX, y);
     y += 10;
@@ -167,6 +177,17 @@ export default function CertificateGenerator() {
     // Row 5
     drawField("Weight:", weight, leftX, y);
     drawField("DOB / Age:", dob, rightX, y);
+    
+    // NEW Row 6: Lineage (Conditional)
+    if (showLineage) {
+        y += 10;
+        // Combine Name and Breed for the certificate line
+        const sireText = sireName + (sireBreed ? ` (${sireBreed})` : "");
+        const damText = damName + (damBreed ? ` (${damBreed})` : "");
+
+        drawField("Father (Sire):", sireText, leftX, y);
+        drawField("Mother (Dam):", damText, rightX, y);
+    }
     
     y += 15;
 
@@ -281,7 +302,7 @@ export default function CertificateGenerator() {
                         {/* PET NAME */}
                         <input name="petName" value={formData.petName} onChange={handleChange} className="input-field" placeholder="Pet Name" />
                         
-                        {/* OWNER ADDRESS (FIXED: ADDED BACK) */}
+                        {/* OWNER ADDRESS */}
                         <input name="ownerAddress" value={formData.ownerAddress} onChange={handleChange} className="input-field col-span-2" placeholder="Owner Address" />
                         
                         <select name="species" value={formData.species} onChange={handleSpeciesChange} className="input-field bg-blue-50 font-bold text-blue-800">
@@ -304,6 +325,66 @@ export default function CertificateGenerator() {
                         
                         <input name="microchip" value={formData.microchip} onChange={handleChange} className="input-field col-span-2" placeholder="Microchip ID (15 digits)" />
                     </div>
+
+                    {/* LINEAGE TOGGLE SECTION */}
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                        <div className="flex items-center justify-between mb-3">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <div className="relative">
+                                    <input 
+                                        type="checkbox" 
+                                        className="sr-only" 
+                                        checked={showLineage}
+                                        onChange={() => setShowLineage(!showLineage)}
+                                    />
+                                    <div className={`block w-10 h-6 rounded-full transition ${showLineage ? 'bg-purple-500' : 'bg-gray-300'}`}></div>
+                                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform ${showLineage ? 'translate-x-4' : ''}`}></div>
+                                </div>
+                                <span className="text-sm font-bold text-gray-600">Include Lineage (Parents)</span>
+                            </label>
+                        </div>
+
+                        {showLineage && (
+                            <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                                {/* Father (Sire) Row */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <input 
+                                        name="sireName" 
+                                        value={formData.sireName} 
+                                        onChange={handleChange} 
+                                        className="input-field border-purple-200 focus:ring-purple-400" 
+                                        placeholder="Father (Sire) Name" 
+                                    />
+                                    <input 
+                                        name="sireBreed" 
+                                        value={formData.sireBreed} 
+                                        onChange={handleChange} 
+                                        className="input-field border-purple-200 focus:ring-purple-400" 
+                                        placeholder="Father Breed" 
+                                    />
+                                </div>
+
+                                {/* Mother (Dam) Row */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <input 
+                                        name="damName" 
+                                        value={formData.damName} 
+                                        onChange={handleChange} 
+                                        className="input-field border-pink-200 focus:ring-pink-400" 
+                                        placeholder="Mother (Dam) Name" 
+                                    />
+                                    <input 
+                                        name="damBreed" 
+                                        value={formData.damBreed} 
+                                        onChange={handleChange} 
+                                        className="input-field border-pink-200 focus:ring-pink-400" 
+                                        placeholder="Mother Breed" 
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                 </div>
             </div>
 

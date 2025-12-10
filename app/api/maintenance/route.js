@@ -1,26 +1,21 @@
 // app/api/maintenance/route.js
 
-// 1. IMPORTS
+// Standard imports
 import connectDB from "../../lib/mongodb";
 import SystemSettings from "../../models/SystemSettings";
 
-// 2. CONSTANTS
-// We use a specific, hardcoded string for the ID.
-// This ensures we always modify the same "Global Settings" document 
-// rather than creating new ones every time we save.
+// Define settings ID
 const SYSTEM_SETTINGS_ID = 'website_settings';
 
-// 3. GET HANDLER
-// Checks the current status (Used by Middleware and Admin Dashboard)
+// GET request handler
 export async function GET() {
   try {
     await connectDB();
     
-    // Attempt to find the singleton document
+    // Find settings document
     const settings = await SystemSettings.findById(SYSTEM_SETTINGS_ID);
 
-    // Return the status.
-    // If settings is null (first run), default to false (Site is Live).
+    // Return status
     return new Response(JSON.stringify({ 
       isMaintenanceMode: settings?.isMaintenanceMode || false 
     }), {
@@ -34,22 +29,17 @@ export async function GET() {
   }
 }
 
-// 4. PATCH HANDLER
-// Toggles the status (Used by Admin Dashboard)
+// PATCH request handler
 export async function PATCH(req) {
   try {
     await connectDB();
     const { isMaintenanceMode } = await req.json();
 
-    // 5. UPSERT LOGIC
-    // findByIdAndUpdate is powerful here:
-    // - Arg 1: The ID to look for.
-    // - Arg 2: The data to update.
-    // - Arg 3: Options -> { new: true } returns the updated doc, { upsert: true } creates it if missing.
+    // Update or create
     const updatedSettings = await SystemSettings.findByIdAndUpdate(
       SYSTEM_SETTINGS_ID,
       { 
-        _id: SYSTEM_SETTINGS_ID, // Explicitly set ID for the creation case
+        _id: SYSTEM_SETTINGS_ID, // Set explicit ID
         isMaintenanceMode 
       },
       { new: true, upsert: true } 

@@ -1,37 +1,35 @@
 // app/api/ai-advisor/route.js
 
-// 1. IMPORTS
-import { textModel } from "../../lib/gemini"; // Our Gemini AI configuration
+// Standard imports
+import { textModel } from "../../lib/gemini"; // AI configuration
 import connectDB from "../../lib/mongodb";
 import Pet from "../../models/PetModel";
 
-// 2. HELPER FUNCTION: Resolve Parent Names
-// This function ensures we get the most accurate name available for the lineage check.
+// Resolve parent names
 const getParentName = async (id, nameStr) => {
-    // Priority 1: If we have a Database ID, fetch the live record.
+    // Check database ID
     if (id) {
         const p = await Pet.findById(id).select('name').lean();
         return p ? p.name : (nameStr || "Unknown");
     }
-    // Priority 2: Fallback to the text string entered manually.
-    // Priority 3: Default to "Unknown".
+    // Fallback to name
     return nameStr || "Unknown";
 };
 
-// 3. POST HANDLER
+// POST request handler
 export async function POST(req) {
   try {
-    // Ensure DB connection
+    // Connect to database
     await connectDB();
     
-    // We expect the IDs of the two pets being analyzed
+    // Parse request IDs
     const { petAId, petBId } = await req.json();
 
     if (!petAId || !petBId) {
         return new Response(JSON.stringify({ error: "IDs required" }), { status: 400 });
     }
 
-    // Fetch the full pet documents
+    // Fetch pet profiles
     const petA = await Pet.findById(petAId);
     const petB = await Pet.findById(petBId);
 
@@ -39,16 +37,14 @@ export async function POST(req) {
         return new Response(JSON.stringify({ error: "Pets not found" }), { status: 404 });
     }
 
-    // --- 4. DATA PREPARATION (Lineage) ---
-    // We resolve the names of all 4 grandparents to feed into the AI context.
+    // Prepare lineage data
     const petASire = await getParentName(petA.sireId, petA.sireName);
     const petADam = await getParentName(petA.damId, petA.damName);
     
     const petBSire = await getParentName(petB.sireId, petB.sireName);
     const petBDam = await getParentName(petB.damId, petB.damName);
 
-    // --- 5. CONSTRUCT CONTEXT FOR AI ---
-    // We format the data clearly so the LLM understands the "medical" and "genetic" context.
+    // Build AI context
     const inputData = `
       **Pet A (Your Pet):**
       - Name: ${petA.name} (${petA.breed})
@@ -61,8 +57,7 @@ export async function POST(req) {
       - Medical History: "${petB.medicalHistoryLog || 'None'}"
     `;
 
-    // --- 6. PROMPT ENGINEERING ---
-    // We enforce a strict JSON output format to make parsing easy.
+    // Define AI prompt
     const prompt = `
       Analyze mating compatibility between these two animals.
       
@@ -80,10 +75,10 @@ export async function POST(req) {
       Input Data: ${inputData}
     `;
 
-    // --- 7. GEMINI GENERATION ---
+    // Generate AI content
     const result = await textModel.generateContent(prompt);
     
-    // Clean the response (remove Markdown code blocks if Gemini adds them) to ensure valid JSON.
+    // Parse JSON response
     const responseText = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
     
     let aiData;
@@ -94,13 +89,11 @@ export async function POST(req) {
         throw new Error("AI response was not valid JSON");
     }
 
-    // --- 8. IMAGE GENERATION (Pollinations) ---
-    // We take the text description from Gemini and encode it into a URL for Pollinations AI.
-    // We add "photorealistic, cute, 8k" to ensure high quality style.
+    // Generate image URL
     const encodedPrompt = encodeURIComponent(aiData.imagePrompt + " photorealistic, cute, cinematic lighting, 8k");
     const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true&model=flux`;
 
-    // --- 9. RETURN RESPONSE ---
+    // Return API response
     return new Response(JSON.stringify({
       analysis: aiData.analysis,
       offspringImage: imageUrl

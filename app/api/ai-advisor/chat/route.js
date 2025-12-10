@@ -1,17 +1,16 @@
 // app/api/ai-advisor/chat/route.js
 
-// 1. IMPORTS
-import { textModel } from "../../../lib/gemini"; // The configured Google Gemini instance
+// Standard imports
+import { textModel } from "../../../lib/gemini"; // Gemini AI instance
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
 
-// 2. HELPER FUNCTION
-// Fetches pet data and formats the lineage strings for better AI readability.
+// Fetch pet details
 async function getPetDetails(petId) {
   const pet = await Pet.findById(petId).lean();
   if (!pet) return null;
 
-  // Logic: If names are missing but IDs exist, we know they are registered system pets.
+  // Handle missing names
   const sireInfo = pet.sireName || (pet.sireId ? "Registered (Name hidden)" : "Unknown");
   const damInfo = pet.damName || (pet.damId ? "Registered (Name hidden)" : "Unknown");
 
@@ -21,35 +20,28 @@ async function getPetDetails(petId) {
   };
 }
 
-// 3. POST HANDLER
+// POST request handler
 export async function POST(req) {
   try {
     await connectDB();
     
-    // We expect:
-    // - petAId: The ID of the current user's pet (The "Seeker")
-    // - petBId: The ID of the profile being viewed (The "Target")
-    // - history: Previous chat messages for context
-    // - message: The new question from the user
+    // Parse request body
     const { petAId, petBId, history, message } = await req.json();
 
     if (!petAId || !petBId) return new Response(JSON.stringify({ error: "IDs required" }), { status: 400 });
 
-    // 4. DATA RETRIEVAL
+    // Fetch pet profiles
     const petA = await getPetDetails(petAId); // User's Pet
     const petB = await getPetDetails(petBId); // Target Pet 
 
     if (!petA || !petB) return new Response(JSON.stringify({ error: "Pets not found" }), { status: 404 });
 
-    // 5. DATA FORMATTING
-    // Create a readable string for vaccinations so the AI can answer "Is he vaccinated?"
+    // Format vaccination list
     const vaxList = petB.vaccinationHistory && petB.vaccinationHistory.length > 0
         ? petB.vaccinationHistory.map(v => `- ${v.vaccineName} (Expires: ${new Date(v.expiryDate).toLocaleDateString()})`).join("\n")
         : "No vaccination records visible.";
 
-    // 6. SYSTEM PROMPT CONSTRUCTION
-    // We explicitly tell the AI its role and provide the raw data.
-    // We instruct it to prioritize the provided "MEDICAL HISTORY LOG".
+    // Define AI instructions
     const systemPrompt = `
       You are an expert Pet Advisor and Geneticist.
       The user (owner of Pet A) is asking about Pet B (the target pet).
@@ -81,18 +73,16 @@ export async function POST(req) {
       4. If asked about offspring, analyze compatibility based on Breed/Species.
     `;
 
-    // 7. INITIALIZE CHAT SESSION
-    // We "prime" the chat by inserting the system prompt as the first message in the history.
-    // This trick makes Gemini behave as if it already knows the context.
+    // Initialize chat history
     const chat = textModel.startChat({
       history: [
         { role: "user", parts: [{ text: systemPrompt }] },
         { role: "model", parts: [{ text: `I have reviewed ${petB.name}'s full profile, including medical logs and vaccinations. What would you like to know?` }] },
-        ...history // Append the actual user conversation so far
+        ...history // Add user history
       ]
     });
 
-    // 8. GENERATE RESPONSE
+    // Get AI response
     const result = await chat.sendMessage(message);
     const responseText = result.response.text();
 

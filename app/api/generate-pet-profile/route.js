@@ -1,39 +1,33 @@
 // app/api/generate-pet-profile/route.js
 
-// 1. IMPORTS
-import { textModel } from "../../lib/gemini"; // Our configured Google Gemini instance
+// Standard imports
+import { textModel } from "../../lib/gemini"; // AI configuration
 import connectDB from "../../lib/mongodb";
 import Pet from "../../models/PetModel";
 
-// 2. POST HANDLER
+// POST request handler
 export async function POST(req) {
   try {
-    // Parse request body
-    // petId: The ID of the pet document to update
-    // qaPairs: Array of {question, answer} objects from the frontend form
+    // Parse request data
     const { petId, qaPairs } = await req.json();
 
-    // 3. VALIDATION
+    // Validate input fields
     if (!petId || !qaPairs || qaPairs.length === 0) {
       return new Response(JSON.stringify({ error: "Pet ID and Q&A pairs are required" }), { status: 400 });
     }
 
-    // Connect to DB and find the pet
+    // Connect to database
     await connectDB();
+    // Find pet document
     const pet = await Pet.findById(petId);
     if (!pet) {
       return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
     }
     
-    // 4. DATA PREPARATION
-    // Convert the array of Q&A objects into a readable text block for the AI.
-    // Example output:
-    // Q: How active is your pet?
-    // A: Very active, runs all day.
+    // Format Q&A text
     const qaText = qaPairs.map(pair => `Q: ${pair.question}\nA: ${pair.answer}`).join("\n\n");
 
-    // 5. PROMPT ENGINEERING
-    // We give Gemini a specific persona (Pet Profiler) and strict output constraints.
+    // Define AI prompt
     const prompt = `I have a pet owner's answers to a questionnaire about their pet.
     
     Questionnaire:
@@ -51,14 +45,12 @@ export async function POST(req) {
       "energyLevel": "..."
     }`;
 
-    // 6. GENERATE CONTENT
+    // Generate AI content
     const result = await textModel.generateContent(prompt);
     const response = await result.response;
     let text = response.text();
 
-    // 7. CLEAN AND PARSE
-    // Gemini sometimes wraps JSON in markdown code blocks (e.g., ```json ... ```).
-    // We strip these out to ensure JSON.parse doesn't crash.
+    // Parse JSON response
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
     
     let data;
@@ -73,18 +65,18 @@ export async function POST(req) {
       throw new Error("AI failed to return all required fields.");
     }
     
-    // 8. UPDATE DATABASE
-    // We save the generated data directly to the pet's document.
+    // Update pet record
     pet.aiProfileString = data.aiProfileString;
     pet.temperament = data.temperament;
     pet.energyLevel = data.energyLevel;
     
     await pet.save();
     
-    // 9. SUCCESS RESPONSE
+    // Return success message
     return new Response(JSON.stringify({ message: "Profile created successfully", data }), { status: 200 });
 
   } catch (err) {
+    // Handle server errors
     console.error("Error generating profile:", err);
     return new Response(JSON.stringify({ error: "Failed to generate AI profile: " + err.message }), { status: 500 });
   }

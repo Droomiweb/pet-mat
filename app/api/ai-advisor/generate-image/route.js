@@ -1,14 +1,11 @@
 // app/api/ai-advisor/generate-image/route.js
 
-// 1. IMPORTS
-// We use the 'visionModel' specifically because we need the AI to analyze input images.
+// Standard imports
 import { visionModel } from "../../../lib/gemini"; 
 import connectDB from "../../../lib/mongodb";    
 import Pet from "../../../models/PetModel";      
 
-// 2. HELPER FUNCTION
-// Gemini Vision requires images to be sent as Base64 strings, not raw URLs.
-// This helper downloads the image from Cloudinary (or wherever) and converts it.
+// Convert image format
 async function fetchImageAsBase64(url) {
   try {
     const response = await fetch(url);
@@ -21,15 +18,15 @@ async function fetchImageAsBase64(url) {
   }
 }
 
-// 3. POST HANDLER
+// POST request handler
 export async function POST(req) {
   try {
     await connectDB();
     
-    // We expect the IDs of the two potential parents
+    // Parse parent IDs
     const { petAId, petBId } = await req.json();
 
-    // Fetch parent data from DB
+    // Fetch parent pets
     const petA = await Pet.findById(petAId);
     const petB = await Pet.findById(petBId);
 
@@ -37,20 +34,17 @@ export async function POST(req) {
         return new Response(JSON.stringify({ error: "Pets not found" }), { status: 404 });
     }
 
-    // 4. SPECIES CONSISTENCY LOGIC
-    // We must define what the "baby" is.
-    // Rule: If species match, use that. If they differ (e.g., Dog + Cat), default to Parent A (Mother).
+    // Determine species logic
     let babyTerm = "baby animal";
-    let targetSpecies = petA.type; // Default to Parent A's species
+    let targetSpecies = petA.type; // Default to mother
 
-    // Map species types to their young terms for better image prompts
+    // Set baby terminology
     if (targetSpecies === "Dog") babyTerm = "Puppy";
     else if (targetSpecies === "Cat") babyTerm = "Kitten";
     else if (targetSpecies === "Rabbit") babyTerm = "Bunny";
     else if (targetSpecies === "Bird") babyTerm = "Chick";
 
-    // 5. CONSTRUCT THE VISION PROMPT
-    // This prompt instructs Gemini on HOW to analyze the images.
+    // Define vision prompt
     const prompt = `
       You are an expert animal artist.
       
@@ -70,11 +64,10 @@ export async function POST(req) {
       Example: "A photorealistic, fluffy Golden Retriever puppy with white chest markings, soft cinematic lighting, 8k."
     `;
 
-    // Initialize the parts array with the text prompt
+    // Prepare input data
     const inputParts = [prompt];
 
-    // 6. ATTACH PARENT IMAGES
-    // We only attach the image if it exists and successfully converts to Base64.
+    // Attach parent images
     if (petA.imageUrls && petA.imageUrls.length > 0) {
         const imgA = await fetchImageAsBase64(petA.imageUrls[0]);
         if (imgA) inputParts.push({ inlineData: { data: imgA, mimeType: "image/jpeg" } });
@@ -85,25 +78,22 @@ export async function POST(req) {
         if (imgB) inputParts.push({ inlineData: { data: imgB, mimeType: "image/jpeg" } });
     }
 
-    // 7. STEP 1: GENERATE DESCRIPTION (Gemini)
-    // We ask Gemini to describe the imaginary offspring based on the parents' photos.
+    // Generate visual description
     const result = await visionModel.generateContent(inputParts);
     const response = await result.response;
     
-    // Clean the text to ensure it's a valid single-line prompt
+    // Sanitize prompt text
     const imageDescription = response.text().replace(/\n/g, " ").trim();
     
     console.log("Generated Offspring Prompt:", imageDescription);
 
-    // 8. STEP 2: GENERATE IMAGE URL (Pollinations)
-    // We use Pollinations AI as the rendering engine because it's free, fast, and requires no API key.
-    // 'Flux' is a specific model good for realism.
+    // Generate image URL
     const seed = Math.floor(Math.random() * 99999);
     const encodedPrompt = encodeURIComponent(imageDescription);
     
     const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true&seed=${seed}&model=flux`;
 
-    // Return the URL so the frontend can display it in an <img /> tag
+    // Return image link
     return new Response(JSON.stringify({ imageUrl }), { status: 200 });
 
   } catch (err) {

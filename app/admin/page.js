@@ -6,12 +6,12 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../auth-provider";
 import Link from "next/link";
 
-// --- ICONS ---
+// Icon components
 const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M19.916 4.626a.75.75 0 01.208 1.04l-9 13.5a.75.75 0 01-1.154.114l-6-6a.75.75 0 011.06-1.06l5.353 5.353 8.493-12.739a.75.75 0 011.04-.208z" clipRule="evenodd" /></svg>;
 const XMarkIcon = () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M5.47 5.47a.75.75 0 011.06 0L12 10.94l5.47-5.47a.75.75 0 111.06 1.06L13.06 12l5.47 5.47a.75.75 0 11-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 01-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 010-1.06z" clipRule="evenodd" /></svg>;
 const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M16.5 4.478v.227a48.816 48.816 0 013.878.512.75.75 0 11-.49 1.478l-.565 2.21a1.75 1.75 0 01-1.7 1.417H6.377a1.75 1.75 0 01-1.7-1.417l-.565-2.21a48.83 48.83 0 01-1.132-1.485 48.83 48.83 0 01-.357-.504.75.75 0 01.49-1.478A48.567 48.567 0 017.5 4.705v-.227c0-1.564 1.213-2.9 2.816-2.951a52.662 52.662 0 013.369 0c1.603.051 2.815 1.387 2.815 2.951zm-6.136-1.452a51.196 51.196 0 013.273 0C14.39 3.05 15 3.684 15 4.478v.113a49.488 49.488 0 00-6 0v-.113c0-.794.609-1.428 1.364-1.452zm-.355 5.945a.75.75 0 10-1.5.058l.347 9a.75.75 0 101.499-.058l-.346-9zm5.48.058a.75.75 0 10-1.498-.058l-.347 9a.75.75 0 001.5.058l.345-9z" clipRule="evenodd" /></svg>;
 
-// --- Litter Confirmation Modal ---
+// Litter Modal
 const LitterConfirmationModal = ({ data, onClose, onSubmit }) => {
   const { damPet, sirePet } = data;
   const [litter, setLitter] = useState([{ name: '', gender: 'Male' }]);
@@ -115,7 +115,7 @@ export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState("verification"); 
   const router = useRouter();
 
-  // --- DATA FETCHING ---
+  // Fetch admin data
   const fetchAllData = async () => {
     setPanelLoading(true);
     setError(null);
@@ -150,7 +150,7 @@ export default function AdminPanel() {
     }
   }, [user, isAdmin, authLoading, router]);
 
-  // --- HANDLERS ---
+  // Update pet status
   const handleStatusUpdate = async (petId, status) => {
     if(!confirm(`Mark pet as ${status}?`)) return;
     try {
@@ -164,6 +164,7 @@ export default function AdminPanel() {
     } catch (err) { console.error(err); }
   };
 
+  // Delete pet
   const handleDeletePet = async (petId) => {
     if (!confirm("Delete this pet permanently?")) return;
     try {
@@ -172,6 +173,7 @@ export default function AdminPanel() {
     } catch (err) { console.error(err); }
   };
 
+  // Toggle admin role
   const handleToggleAdminStatus = async (userId, makeAdmin) => {
     if (!confirm(`Change admin status for this user?`)) return;
     try {
@@ -184,6 +186,7 @@ export default function AdminPanel() {
     } catch (err) { console.error(err); }
   };
 
+  // Remove user
   const handleRemoveUser = async (targetUid, targetName) => {
     if (!confirm(`PERMANENTLY remove ${targetName}? This deletes the user and ALL their pets.`)) return;
     try {
@@ -197,6 +200,7 @@ export default function AdminPanel() {
     } catch (err) { console.error(err); }
   };
 
+  // Delete product
   const handleProductDelete = async (productId) => {
     if (!confirm("Delete this product?")) return;
     try {
@@ -209,6 +213,7 @@ export default function AdminPanel() {
     } catch (err) { console.error(err); }
   };
 
+  // Toggle maintenance mode
   const handleMaintenanceToggle = async () => {
     const newStatus = !isMaintenanceMode;
     if(!confirm(`Turn Maintenance Mode ${newStatus ? "ON" : "OFF"}?`)) return;
@@ -222,6 +227,7 @@ export default function AdminPanel() {
     } catch (err) { console.error(err); }
   };
 
+  // Handle litter submission
   const handleLitterSubmit = async (formData) => {
     try {
       const res = await fetch("/api/admin/confirm-litter", {
@@ -236,6 +242,7 @@ export default function AdminPanel() {
     } catch (err) { console.error(err); }
   };
 
+  // AI Analysis
   const fetchAIAnalysis = async (pet) => {
     if (!pet.certificateUrl) return alert("No certificate.");
     alert("Running AI Analysis...");
@@ -259,6 +266,7 @@ export default function AdminPanel() {
     } catch (e) { alert("AI Error"); }
   };
 
+  // OCR Analysis
   const fetchTesseractOcr = async (pet) => {
     if (!pet.certificateUrl) return alert("No certificate.");
     setOcrLoading(pet._id);
@@ -285,7 +293,7 @@ export default function AdminPanel() {
 
   if (!isAdmin) return null;
 
-  // --- RENDER HELPERS ---
+  // Helpers
   const TabButton = ({ id, label, count }) => (
     <button
       onClick={() => setActiveTab(id)}
@@ -303,7 +311,7 @@ export default function AdminPanel() {
     <div className="min-h-screen bg-[#E2F4EF] p-4 md:p-8 pb-24 relative">
       {modalData && <LitterConfirmationModal data={modalData} onClose={() => setModalData(null)} onSubmit={handleLitterSubmit} />}
 
-      {/* --- BACKGROUND --- */}
+      {/* Background blobs */}
       <div className="fixed inset-0 pointer-events-none opacity-30">
          <div className="absolute top-[-10%] right-[-5%] w-96 h-96 bg-purple-200 rounded-full blur-3xl"></div>
          <div className="absolute bottom-[-10%] left-[-5%] w-96 h-96 bg-blue-200 rounded-full blur-3xl"></div>
@@ -311,7 +319,7 @@ export default function AdminPanel() {
 
       <div className="max-w-7xl mx-auto relative z-10">
         
-        {/* --- HEADER --- */}
+        {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
             <div>
                 <h1 className="text-3xl font-extrabold text-[#333333]">Admin Dashboard</h1>
@@ -332,7 +340,7 @@ export default function AdminPanel() {
             </div>
         </div>
 
-        {/* --- TABS --- */}
+        {/* Tabs */}
         <div className="flex gap-3 overflow-x-auto pb-4 mb-4 no-scrollbar">
             <TabButton id="verification" label="Verification" count={pendingVerificationPets.length} />
             <TabButton id="users" label="Users" count={users.length} />
@@ -341,10 +349,10 @@ export default function AdminPanel() {
             <TabButton id="products" label="Products" count={products.length} />
         </div>
 
-        {/* --- CONTENT AREA --- */}
+        {/* Content */}
         <div className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-xl border border-white overflow-hidden min-h-[500px] p-1">
             
-            {/* 1. VERIFICATION QUEUE */}
+            {/* Verification Queue */}
             {activeTab === "verification" && (
                 <div className="p-6">
                     <h2 className="text-xl font-bold text-gray-700 mb-6 flex items-center gap-2">
@@ -384,7 +392,7 @@ export default function AdminPanel() {
                 </div>
             )}
 
-            {/* 2. USERS LIST (Responsive Card View) */}
+            {/* Users List */}
             {activeTab === "users" && (
                 <div className="p-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -413,7 +421,7 @@ export default function AdminPanel() {
                 </div>
             )}
 
-            {/* 3. LITTER REQUESTS */}
+            {/* Litter Requests */}
             {activeTab === "mating" && (
                 <div className="p-6">
                     {acceptedRequests.length === 0 ? <div className="text-center py-20 text-gray-400">No pending litters.</div> : (
@@ -438,7 +446,7 @@ export default function AdminPanel() {
                 </div>
             )}
 
-            {/* 4. ALL PETS & 5. PRODUCTS (Responsive Cards) */}
+            {/* All Pets / Products */}
             {(activeTab === "pets" || activeTab === "products") && (
                 <div className="p-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

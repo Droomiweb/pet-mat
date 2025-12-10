@@ -1,40 +1,38 @@
 // app/api/pet/[id]/route.js
 
-// 1. IMPORTS
+// Standard imports
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
 import User from "../../../models/User"; 
 import cloudinary from "../../../lib/cloudinary";
-// Firebase imports for real-time chat creation
+// Firebase imports
 import { db } from "../../../lib/firebase"; 
 import { collection, addDoc, serverTimestamp, doc, setDoc } from "firebase/firestore";
 // WhatsApp helper
 import { sendWhatsAppText } from "../../../lib/greenApi"; 
 
-// 2. HELPER: Conversation ID Generator
-// Ensures a unique, consistent ID for any pair of users discussing a specific pet.
-// Sorting UIDs prevents duplicate chats (A-B vs B-A).
+// Generate conversation ID
 const createConversationId = (petId, uid1, uid2) => {
     const sortedUIDs = [uid1, uid2].sort();
     return `${petId}_${sortedUIDs[0]}_${sortedUIDs[1]}`;
 };
 
-// 3. GET HANDLER (Fetch Single Pet Profile)
+// GET request handler
 export async function GET(req, context) {
   try {
     await connectDB();
     const { id } = await context.params;
     
-    // Fetch pet data as a plain object
+    // Fetch pet data
     const pet = await Pet.findById(id).lean();
     if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
-    // Fetch owner's location to display on the map if the pet doesn't have a specific one
+    // Fetch owner location
     const owner = await User.findOne({ firebaseUid: pet.ownerId }).select("location").lean();
 
     const responseData = {
       ...pet,
-      // Fallback logic: Use pet's location first, then owner's, then null
+      // Merge location data
       ownerLocation: owner ? owner.location : pet.location || null, 
     };
 
@@ -45,13 +43,13 @@ export async function GET(req, context) {
   }
 }
 
-// 4. PATCH HANDLER (Interactions: Requests, Messages, etc.)
+// PATCH request handler
 export async function PATCH(req, context) {
   try {
     await connectDB();
     const { id } = await context.params;
     
-    // Extract everything we might need from the body
+    // Parse request body
     const { 
       action, 
       requesterId, 
@@ -59,12 +57,12 @@ export async function PATCH(req, context) {
       requesterPetId, 
       requesterPetName, 
       messageText,
-      answers, // For adoption questionnaires
+      answers, // Questionnaire answers
       requestId, 
       newStatus 
     } = await req.json();
 
-    // Basic Authentication Check
+    // Validate user
     if (!requesterId || !requesterName) {
         return new Response(JSON.stringify({ error: "Authentication data missing." }), { status: 401 });
     }
@@ -72,13 +70,13 @@ export async function PATCH(req, context) {
     const pet = await Pet.findById(id);
     if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
-    // --- ACTION A: MATING REQUEST ---
+    // Handle mating request
     if (action === "matingRequest") {
       if (!requesterPetId || !requesterPetName) {
          return new Response(JSON.stringify({ error: "Requester pet details are required." }), { status: 400 });
       }
 
-      // Add to MongoDB History
+      // Add history log
       const newMatingRequest = { 
         requesterId, 
         requesterName, 
@@ -89,9 +87,9 @@ export async function PATCH(req, context) {
       };
       pet.matingHistory.push(newMatingRequest);
 
-      // Sync to Firestore (Start the chat)
+      // Sync Firestore chat
       if (messageText) {
-        // Legacy MongoDB Message (Optional backup)
+        // Legacy message log
         pet.messages.push({ 
             senderId: requesterId, 
             senderName: requesterName, 
@@ -101,14 +99,14 @@ export async function PATCH(req, context) {
 
         try {
             const conversationId = createConversationId(pet._id.toString(), requesterId, pet.ownerId);
-            // 1. Add the initial message
+            // Add initial message
             await addDoc(collection(db, "conversations", conversationId, "messages"), {
                 senderId: requesterId,
                 senderName: requesterName,
                 text: `Mating Request: ${messageText}`,
                 createdAt: serverTimestamp(),
             });
-            // 2. Create/Update the conversation metadata
+            // Update conversation metadata
             await setDoc(doc(db, "conversations", conversationId), {
                 petId: pet._id.toString(),
                 participants: [requesterId, pet.ownerId],
@@ -120,7 +118,7 @@ export async function PATCH(req, context) {
         }
       }
       
-      // WhatsApp Notification
+      // Send WhatsApp alert
       try {
         const ownerUser = await User.findOne({ firebaseUid: pet.ownerId }).select('phone name').lean();
         if (ownerUser && ownerUser.phone) {
@@ -135,7 +133,7 @@ export async function PATCH(req, context) {
       return new Response(JSON.stringify({ message: "Mating request sent!" }), { status: 200 });
     }
 
-    // --- ACTION B: SIMPLE MESSAGE (Legacy) ---
+    // Handle legacy message
     if (action === "addMessage") {
       if (!messageText) return new Response(JSON.stringify({ error: "Message text is required" }), { status: 400 });
       
@@ -150,27 +148,27 @@ export async function PATCH(req, context) {
       return new Response(JSON.stringify({ message: "Message added!" }), { status: 200 });
     }
 
-    // --- ACTION C: ADOPTION REQUEST ---
+    // Handle adoption request
     if (action === "adoptionRequest") {
       if (!messageText) return new Response(JSON.stringify({ error: "Reason for adoption required." }), { status: 400 });
 
-      // Check for duplicates
+      // Check duplicate requests
       const existingRequest = pet.adoptionRequests.find(
         (req) => req.requesterId === requesterId && req.status === "pending"
       );
       if (existingRequest) return new Response(JSON.stringify({ error: "Request already pending." }), { status: 400 });
 
-      // Add to MongoDB
+      // Save adoption application
       pet.adoptionRequests.push({
         requesterId,
         requesterName,
         message: messageText, 
-        answers: answers || [], // Save questionnaire answers
+        answers: answers || [], // Save answers
         status: "pending",
         requestedAt: new Date()
       });
       
-      // Add system message to MongoDB log
+      // Log system message
       pet.messages.push({
         senderId: "system",
         senderName: "System",
@@ -178,7 +176,7 @@ export async function PATCH(req, context) {
         sentAt: new Date()
       });
 
-      // Initialize Firestore Chat
+      // Initialize chat session
       try {
         const conversationId = createConversationId(pet._id.toString(), requesterId, pet.ownerId);
         await addDoc(collection(db, "conversations", conversationId, "messages"), {
@@ -197,7 +195,7 @@ export async function PATCH(req, context) {
         console.error("Error creating adoption chat:", fsError);
       }
 
-      // Send WhatsApp to Owner
+      // Notify owner WhatsApp
       try {
         const ownerUser = await User.findOne({ firebaseUid: pet.ownerId }).select('phone name').lean();
         if (ownerUser && ownerUser.phone) {
@@ -220,7 +218,7 @@ export async function PATCH(req, context) {
   }
 }
 
-// 5. DELETE HANDLER (Remove Pet)
+// DELETE request handler
 export async function DELETE(req, context) {
     try {
         await connectDB();
@@ -229,7 +227,7 @@ export async function DELETE(req, context) {
         const deleted = await Pet.findByIdAndDelete(id);
         if (!deleted) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
-        // Note: Ideally, delete images from Cloudinary here too using pet.imageUrls
+        // Note: Delete Cloudinary images here
         
         return new Response(JSON.stringify({ message: "Pet deleted successfully" }), { status: 200 });
     } catch (err) {

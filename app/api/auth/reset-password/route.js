@@ -1,34 +1,30 @@
 // app/api/auth/reset-password/route.js
 
-// 1. IMPORTS
+// Standard imports
 import connectDB from "../../../lib/mongodb";
 import User from "../../../models/User";
-// We import the initialized Admin SDK helper we created earlier
+// Import Firebase Admin
 import admin from "../../../lib/firebaseAdmin"; 
 
 export async function POST(req) {
   try {
     await connectDB();
     
-    // 2. PARSE REQUEST
-    // We expect the username (to find the user) and the new password they want.
+    // Parse request data
     const { username, newPassword } = await req.json();
 
     if (!username || !newPassword) {
       return new Response(JSON.stringify({ error: "Username and new password are required." }), { status: 400 });
     }
 
-    // 3. FIND USER IN MONGODB
-    // We need the 'firebaseUid' to tell Firebase which user to update.
+    // Find user record
     const user = await User.findOne({ username: username });
 
     if (!user) {
         return new Response(JSON.stringify({ error: "User not found." }), { status: 404 });
     }
     
-    // 4. RESET PASSWORD IN FIREBASE (Server-Side)
-    // This is the "God Mode" action. Because we are using the Admin SDK, 
-    // we don't need the old password to set a new one.
+    // Update Firebase password
     try {
         await admin.auth().updateUser(user.firebaseUid, {
             password: newPassword,
@@ -38,17 +34,18 @@ export async function POST(req) {
 
     } catch (firebaseErr) {
         console.error("Firebase update failed:", firebaseErr);
-        // Common error: Password must be at least 6 chars
+        // Handle weak password
         if (firebaseErr.code === 'auth/weak-password') {
              return new Response(JSON.stringify({ error: "Password is too weak. Must be at least 6 characters." }), { status: 400 });
         }
         return new Response(JSON.stringify({ error: "Failed to update security credentials." }), { status: 500 });
     }
     
-    // 5. SUCCESS RESPONSE
+    // Return success message
     return new Response(JSON.stringify({ message: "Password reset successfully. You may now log in." }), { status: 200 });
 
   } catch (err) {
+    // Handle server errors
     console.error("Error resetting password:", err);
     return new Response(JSON.stringify({ error: "Server error during password reset." }), { status: 500 });
   }

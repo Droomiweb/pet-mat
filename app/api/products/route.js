@@ -1,34 +1,32 @@
 // app/api/products/route.js
 
-// 1. IMPORTS
+// Standard imports
 import connectDB from "../../lib/mongodb";
 import Product from "../../models/ProductModel";
 import cloudinary from "../../lib/cloudinary";
 
-// 2. POST HANDLER (Create New Product)
+// POST request handler
 export async function POST(req) {
   try {
     await connectDB();
     
-    // Parse the incoming product data
+    // Parse product data
     const { name, description, price, images, ownerId, ownerName, contact, category } = await req.json();
 
-    // 3. VALIDATION
-    // Ensure all critical fields are present before attempting upload
+    // Validate required fields
     if (!name || !description || !price || !ownerId || !images || !images.length || !category) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
     }
 
-    // 4. IMAGE UPLOAD LOOP
-    // We expect an array of Base64 image strings. We upload them one by one.
+    // Upload product images
     const imageUrls = [];
     
     for (const base64Image of images) {
-      // Create a unique file name to prevent overwriting
+      // Generate unique filename
       const uniqueSuffix = Date.now(); 
       
       const upload = await cloudinary.uploader.upload(base64Image, {
-        folder: `products/${ownerId}`, // Organize by User ID
+        folder: `products/${ownerId}`, // Organize by user
         public_id: `product_${uniqueSuffix}`, 
         resource_type: "image"
       });
@@ -36,22 +34,22 @@ export async function POST(req) {
       imageUrls.push(upload.secure_url);
     }
 
-    // 5. CREATE DATABASE DOCUMENT
+    // Create product document
     const newProduct = new Product({
       name,
       description,
       price,
-      images: imageUrls, // Store the array of Cloudinary URLs
+      images: imageUrls, // Save image URLs
       ownerId,
       ownerName,
       contact,
-      category, // Important for marketplace filtering
+      category, 
       createdAt: new Date()
     });
 
     await newProduct.save();
 
-    // 6. SUCCESS RESPONSE
+    // Return success response
     return new Response(JSON.stringify({ message: "Product added successfully!", product: newProduct }), { status: 201 });
 
   } catch (err) {
@@ -60,13 +58,12 @@ export async function POST(req) {
   }
 }
 
-// 7. GET HANDLER (Fetch All Products)
+// GET request handler
 export async function GET(req) {
   try {
     await connectDB();
     
-    // Fetch all products, sorted by newest first
-    // .lean() is used for performance as we don't need Mongoose instance methods here
+    // Fetch sorted products
     const products = await Product.find({})
       .sort({ createdAt: -1 })
       .lean();

@@ -1,22 +1,19 @@
 // app/api/analyze-pet-image/route.js
 
-// 1. IMPORTS
-// We import the specific 'visionModel' (Gemini Pro Vision) which can "see" images.
+// Import vision model
 import { visionModel } from "../../lib/gemini";
 
 export async function POST(req) {
   try {
-    // 2. PARSE REQUEST
+    // Parse request data
     const { imageUrl, mimeType } = await req.json();
     
-    // Fail fast if no image data is provided
+    // Validate image data
     if (!imageUrl) {
         return new Response(JSON.stringify({ error: 'Image data required' }), { status: 400 });
     }
 
-    // 3. PREPARE IMAGE FOR AI
-    // The frontend sends a Data URI (e.g., "data:image/jpeg;base64,/9j/4AAQ...").
-    // Gemini needs ONLY the raw Base64 string after the comma.
+    // Format image data
     const base64Data = imageUrl.split(",")[1]; 
     
     const imagePart = { 
@@ -26,10 +23,7 @@ export async function POST(req) {
         } 
     };
 
-    // 4. CONSTRUCT THE PROMPT (The "Intelligence")
-    // We give the AI two specific jobs:
-    // Job A: Content Moderation (Is this a human?)
-    // Job B: Data Extraction (What breed is this?)
+    // Define analysis rules
     const prompt = `
       Analyze this image carefully.
 
@@ -50,14 +44,11 @@ export async function POST(req) {
       - Valid Pet: { "isHuman": false, "type": "Dog", "breed": "Golden Retriever" }
     `;
 
-    // 5. CALL GEMINI API
-    // We send both the text instructions and the image data.
+    // Call AI API
     const result = await visionModel.generateContent([prompt, imagePart]);
     const response = await result.response;
     
-    // 6. SANITIZE RESPONSE
-    // AI often wraps JSON in markdown backticks (```json ... ```).
-    // We remove these to ensure JSON.parse doesn't crash.
+    // Clean JSON response
     let text = response.text()
         .replace(/```json/g, "") // Remove start tag
         .replace(/```/g, "")     // Remove end tag
@@ -65,13 +56,11 @@ export async function POST(req) {
         
     const data = JSON.parse(text);
     
-    // 7. SUCCESS RESPONSE
+    // Return analysis result
     return new Response(JSON.stringify(data), { status: 200 });
 
   } catch (err) {
-    // 8. ERROR HANDLING (Graceful Fallback)
-    // If the API fails or the image is blurry/unreadable, we don't want the app to crash.
-    // Instead, we return "Unknown" so the user can manually select the breed in the UI.
+    // Handle analysis errors
     console.error("Gemini Analysis Error:", err);
     return new Response(JSON.stringify({ type: "Other", breed: "Unknown" }), { status: 200 });
   }

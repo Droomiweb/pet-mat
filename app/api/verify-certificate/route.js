@@ -1,52 +1,47 @@
 // app/api/verify-certificate/route.js
 
-// 1. IMPORTS
-// We import the pre-configured Vision model to ensure consistency with the rest of the app.
+// Standard imports
 import { visionModel } from "../../lib/gemini"; 
 
-// 2. HELPER FUNCTION: PREPARE IMAGE
-// Gemini Vision API requires the image data to be sent inline (Base64), not as a remote URL.
-// This function downloads the image from Cloudinary/AWS and converts it.
+// Prepare image data
 async function fetchAndEncodeImage(url) {
-  // Fetch the image from the provided URL
+  // Fetch image URL
   const response = await fetch(url);
   
   if (!response.ok) {
     throw new Error(`Failed to fetch image: ${response.statusText}`);
   }
   
-  // Convert response to a binary buffer
+  // Convert to buffer
   const buffer = await response.arrayBuffer();
   
-  // Determine content type (default to jpeg if missing)
+  // Get content type
   const contentType = response.headers.get("Content-Type") || "image/jpeg";
   
-  // Return the format expected by the Google Generative AI SDK
+  // Return AI format
   return {
     inlineData: {
-      data: Buffer.from(buffer).toString("base64"), // Convert binary to Base64 string
+      data: Buffer.from(buffer).toString("base64"), // Base64 encode
       mimeType: contentType,
     },
   };
 }
 
-// 3. POST HANDLER
+// POST request handler
 export async function POST(req) {
   try {
-    // Parse the request body
+    // Parse request data
     const { certificateUrl, petName, petAge, petBreed, ocrText } = await req.json();
 
-    // Basic Validation
+    // Validate required fields
     if (!certificateUrl || !petName || !petAge || !petBreed) {
       return new Response(JSON.stringify({ error: "Certificate URL, pet name, age, and breed are required" }), { status: 400 });
     }
 
-    // Prepare the image for the AI model
+    // Encode image data
     const imagePart = await fetchAndEncodeImage(certificateUrl);
     
-    // 4. PROMPT ENGINEERING
-    // We give the AI a dual role: Authenticator (Real vs Fake) and Data Verifier (Does it match?).
-    // We strictly enforce JSON output to make the result programmatically usable.
+    // Define AI prompt
     const prompt = `
     Analyze this pet certificate.
     User-provided data:
@@ -78,17 +73,15 @@ export async function POST(req) {
     }
     `;
 
-    // 5. AI GENERATION
-    // Send both the text prompt and the image data to Gemini
+    // Generate AI analysis
     const result = await visionModel.generateContent([prompt, imagePart]);
     const response = await result.response;
     let text = response.text();
 
-    // 6. RESPONSE CLEANUP
-    // Remove Markdown formatting (```json) if the AI added it.
+    // Clean JSON response
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
 
-    // 7. PARSE AND RETURN
+    // Parse AI result
     let aiJson;
     try {
       aiJson = JSON.parse(text);
@@ -97,13 +90,14 @@ export async function POST(req) {
       throw new Error("AI returned invalid JSON.");
     }
 
-    // Return the clean JSON object to the frontend
+    // Return analysis data
     return new Response(JSON.stringify({ aiAnalysis: aiJson }), { 
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
 
   } catch (error) {
+    // Handle verification errors
     console.error("Error with AI verification:", error);
     return new Response(JSON.stringify({ error: "AI verification failed", details: error.message }), { status: 500 });
   }

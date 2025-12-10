@@ -1,43 +1,37 @@
 // app/api/auth/verify-otp/route.js
 
-// 1. IMPORTS
+// Standard imports
 import connectDB from "../../../lib/mongodb";
 import User from "../../../models/User";
 
 export async function POST(req) {
   try {
-    // Ensure DB connection
+    // Connect to database
     await connectDB();
     
-    // 2. PARSE REQUEST
-    // We expect the username (to identify the user) and the 6-digit OTP code they typed.
+    // Parse request data
     const { username, otp } = await req.json();
 
+    // Validate required fields
     if (!username || !otp) {
         return new Response(JSON.stringify({ error: "Username and OTP are required." }), { status: 400 });
     }
 
-    // 3. FIND USER
+    // Find user record
     const user = await User.findOne({ username: username });
 
+    // Handle missing user
     if (!user) {
         return new Response(JSON.stringify({ error: "User not found." }), { status: 404 });
     }
     
-    // Capture current time for expiry comparison
+    // Get current time
     const now = new Date();
     
-    // 4. VERIFICATION LOGIC (The "Four Gates")
-    // Gate 1: !user.otpCode -> Did we even send one?
-    // Gate 2: user.otpCode !== otp -> Did they type it wrong?
-    // Gate 3: !user.otpExpiry -> Is data corrupted?
-    // Gate 4: user.otpExpiry < now -> Has time run out?
+    // Verify OTP validity
     if (!user.otpCode || user.otpCode !== otp || !user.otpExpiry || user.otpExpiry < now) {
         
-        // --- SECURITY MEASURE ---
-        // If they fail, we wipe the OTP immediately. 
-        // This prevents hackers from spamming guesses (Brute Force). 
-        // The user must request a new code.
+        // Clear invalid OTP
         user.otpCode = null;
         user.otpExpiry = null;
         await user.save(); 
@@ -45,16 +39,16 @@ export async function POST(req) {
         return new Response(JSON.stringify({ error: "Invalid or expired OTP. Please request a new one." }), { status: 400 });
     }
     
-    // 5. SUCCESS & CLEANUP
-    // The OTP was correct. Now we remove it so it can't be used a second time.
+    // Clear used OTP
     user.otpCode = null;
     user.otpExpiry = null;
     await user.save(); 
     
-    // Return success. The frontend should now redirect the user to the "Enter New Password" screen.
+    // Return success response
     return new Response(JSON.stringify({ message: "OTP verified successfully." }), { status: 200 });
 
   } catch (err) {
+    // Handle server errors
     console.error("Error verifying OTP:", err);
     return new Response(JSON.stringify({ error: "Server error during OTP verification." }), { status: 500 });
   }

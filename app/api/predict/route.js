@@ -1,21 +1,18 @@
 // app/api/predict/route.js
 
-// 1. IMPORTS
+// Standard imports
 import connectDB from "../../lib/mongodb";
 import Pet from "../../models/PetModel";
-import { textModel } from "../../lib/gemini"; // We use the text-based Gemini model here
+import { textModel } from "../../lib/gemini"; // AI configuration
 
-// 2. HELPER FUNCTION
-// This function fetches a pet by ID and formats its data into a string string 
-// that is easy for the AI to understand.
+// Format pet details
 const getPetDetails = async (petId) => {
-  // .lean() converts the Mongoose document to a plain JavaScript object (faster)
+  // Fetch pet object
   const pet = await Pet.findById(petId).lean();
   
   if (!pet) return null;
   
-  // Return a simplified string of traits for the AI prompt.
-  // We exclude irrelevant data like 'ownerId' or 'createdAt'.
+  // Return traits string
   return `
     - Breed: ${pet.breed}
     - Gender: ${pet.gender}
@@ -26,21 +23,20 @@ const getPetDetails = async (petId) => {
   `;
 };
 
-// 3. POST HANDLER
+// POST request handler
 export async function POST(req) {
   try {
     await connectDB();
     
-    // Parse the request body to get the IDs of the two parents
+    // Parse parent IDs
     const { petAId, petBId } = await req.json();
 
-    // Basic Validation
+    // Validate request
     if (!petAId || !petBId) {
       return new Response(JSON.stringify({ error: "Two pet IDs are required" }), { status: 400 });
     }
 
-    // 4. FETCH DATA
-    // Retrieve the formatted details for both pets using our helper
+    // Fetch parent profiles
     const petADetails = await getPetDetails(petAId);
     const petBDetails = await getPetDetails(petBId);
 
@@ -48,9 +44,7 @@ export async function POST(req) {
       return new Response(JSON.stringify({ error: "One or both pets not found" }), { status: 404 });
     }
 
-    // 5. PROMPT ENGINEERING
-    // We construct a detailed instruction for Gemini.
-    // We define the persona (Expert), the task (Predict offspring), and the output format (Appearance & Behavior).
+    // Define AI prompt
     const prompt = `
       You are a pet genetics and breeding expert. Based on the data for two parent pets, generate a prediction about their potential offspring.
       
@@ -69,13 +63,12 @@ export async function POST(req) {
       **Your Prediction:**
     `;
 
-    // 6. GENERATE CONTENT
-    // Send the prompt to Gemini
+    // Generate AI prediction
     const result = await textModel.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
 
-    // 7. SUCCESS RESPONSE
+    // Return API response
     return new Response(JSON.stringify({ prediction: text }), {
       status: 200,
       headers: { "Content-Type": "application/json" },

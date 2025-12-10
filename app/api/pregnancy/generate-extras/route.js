@@ -1,27 +1,21 @@
 // app/api/pregnancy/generate-extras/route.js
 
-// 1. IMPORTS
-import { textModel } from "../../../lib/gemini"; // Our configured Google Gemini instance
+// Standard imports
+import { textModel } from "../../../lib/gemini"; // AI configuration
 import { NextResponse } from "next/server";
 
-// 2. POST HANDLER
+// POST request handler
 export async function POST(req) {
   try {
-    // 3. PARSE REQUEST
-    // We expect:
-    // - action: 'meal_plan' OR 'fetus_visual'
-    // - petBreed/Type: Context for the AI (Chihuahua vs Great Dane matters!)
-    // - currentDay/totalDays: To calculate the specific development stage.
+    // Parse request data
     const { action, petBreed, petType, currentDay, totalDays } = await req.json();
 
-    // Basic Validation
+    // Validate required fields
     if (!action || !petBreed || !currentDay) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // ============================================================
-    // FEATURE 1: MEAL PLAN GENERATOR
-    // ============================================================
+    // Handle meal plan
     if (action === "meal_plan") {
       const prompt = `
         You are a veterinary nutritionist. Create a one-day healthy meal plan for a pregnant **${petBreed} ${petType}** who is at **Day ${currentDay}** of her ${totalDays}-day pregnancy.
@@ -38,20 +32,17 @@ export async function POST(req) {
         Keep it concise, encouraging, and safe.
       `;
 
-      // Call Gemini
+      // Generate AI content
       const result = await textModel.generateContent(prompt);
       const response = await result.response;
       
-      // Return the raw markdown string. The frontend will render this nicely.
+      // Return text response
       return NextResponse.json({ result: response.text() });
     }
 
-    // ============================================================
-    // FEATURE 2: BABY SIZE VISUALIZER
-    // ============================================================
+    // Handle visual comparison
     if (action === "fetus_visual") {
-      // Step A: Get the comparison object text from Gemini
-      // We ask for JSON so we can extract the object name cleanly for the image generator.
+      // Generate comparison text
       const textPrompt = `
         Compare the size of a ${petType} fetus at Day ${currentDay} (out of ${totalDays}) to a common fruit, vegetable, or seed.
         Examples: "Poppy seed", "Blueberry", "Lemon", "Avocado".
@@ -65,7 +56,7 @@ export async function POST(req) {
       
       const textResult = await textModel.generateContent(textPrompt);
       
-      // Clean up markdown code blocks if present
+      // Clean JSON response
       const textResponse = textResult.response.text()
         .replace(/```json/g, "")
         .replace(/```/g, "")
@@ -75,20 +66,18 @@ export async function POST(req) {
       try {
         data = JSON.parse(textResponse);
       } catch (e) {
-        // Fallback if AI output is broken
+        // Handle parsing errors
         data = { comparisonText: "Growing bigger every day!", objectName: "heart" };
       }
 
-      // Step B: Clean the object name
-      // Ensure we don't pass weird characters to the URL generator
+      // Sanitize object name
       const cleanObjectName = data.objectName.replace(/[^a-zA-Z0-9 ]/g, "");
 
-      // Step C: Generate Image URL via Pollinations
-      // We ask for a "cute minimalistic vector" style for a consistent app aesthetic.
+      // Generate image URL
       const imagePrompt = `cute ${cleanObjectName} minimalistic vector illustration, white background`;
       const encodedPrompt = encodeURIComponent(imagePrompt);
       
-      // Add a random seed to bypass browser caching so the user gets a fresh image if they refresh
+      // Randomize seed
       const randomSeed = Math.floor(Math.random() * 1000);
       
       const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true&seed=${randomSeed}`;

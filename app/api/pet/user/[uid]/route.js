@@ -1,41 +1,34 @@
 // app/api/pet/user/[uid]/route.js
 
-// 1. IMPORTS
+// Standard imports
 import connectDB from "./../../../../lib/mongodb";
 import Pet from "./../../../../models/PetModel";
 
-// 2. CONFIGURATION
-// These settings ensure the dashboard is always fresh.
-// "force-dynamic": Don't cache this at build time.
-// "revalidate = 0": Don't cache the data even for a second.
+// Disable caching
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// 3. GET HANDLER
+// GET request handler
 export async function GET(req, context) {
   try {
     await connectDB();
     
-    // We need the UID of the logged-in user to find their data.
-    // Note: Await params for Next.js 15 compatibility.
+    // Parse user ID
     const { uid } = await context.params;
 
-    // --- QUERY 1: MY PETS ---
-    // Fetch all pets where I am the owner.
+    // Fetch user pets
     const userPets = await Pet.find({ ownerId: uid }).lean();
 
-    // --- QUERY 2: PARTNER PETS ---
-    // Fetch pets I don't own, but am interacting with.
-    // Case A: I sent a mating request that is active (accepted/confirmed).
-    // Case B: I sent an adoption request that is approved.
+    // Fetch partner pets
+    // Pets I don't own but interact with
     const partnerPets = await Pet.find({
-      ownerId: { $ne: uid }, // Not mine
+      ownerId: { $ne: uid }, // Exclude own pets
       $or: [
         {
             "matingHistory": {
                 $elemMatch: {
                     requesterId: uid,
-                    // Only care if it's progressed beyond "pending"
+                    // Match active status
                     status: { $in: ['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'] }
                 }
             }
@@ -44,7 +37,7 @@ export async function GET(req, context) {
             "adoptionRequests": {
                 $elemMatch: {
                     requesterId: uid,
-                    // Only care if approved (waiting for handover)
+                    // Match approved status
                     status: { $in: ['approved'] } 
                 }
             }
@@ -52,14 +45,13 @@ export async function GET(req, context) {
       ]
     }).lean();
 
-    // 4. DATA TRANSFORMATION
-    // We use a Map (Key: ID, Value: Pet Object) to easily merge data.
+    // Format pet data
     const formattedPetsMap = {};
     
-    // Process User's Own Pets first
+    // Process user pets
     userPets.forEach(pet => {
         if (pet._id) {
-            // Clean up sub-documents (convert ObjectIDs to strings for JSON safety)
+            // Sanitize sub-documents
             const safeMatingHistory = (pet.matingHistory || []).map(item => ({
                 ...item,
                 _id: item._id ? item._id.toString() : null,
@@ -69,6 +61,7 @@ export async function GET(req, context) {
                 _id: item._id ? item._id.toString() : null
             }));
 
+            // Map pet details
             formattedPetsMap[pet._id.toString()] = {
                 _id: pet._id.toString(),
                 name: pet.name,
@@ -88,37 +81,37 @@ export async function GET(req, context) {
                 aiProfileString: pet.aiProfileString, 
                 vaccinationHistory: pet.vaccinationHistory || [],
                 
-                // Include adoptionLog for certificate generation
+                // Include adoption log
                 adoptionLog: pet.adoptionLog || null,
 
                 matingHistory: safeMatingHistory, 
                 adoptionRequests: safeAdoptionRequests, 
                 
-                // Initialize empty array for requests I sent regarding this pet
+                // Init outgoing requests
                 outgoingRequests: [] 
             };
         }
     });
 
-    // 5. ATTACH OUTGOING REQUESTS (Interactions)
+    // Process interactions
     if (Array.isArray(partnerPets)) {
         partnerPets.forEach(partnerPet => {
             
-            // LOGIC: Mating Requests I Sent
+            // Handle mating requests
             if (partnerPet.matingHistory) {
                 partnerPet.matingHistory.forEach(req => {
-                    // Check if this request belongs to me and is active
+                    // Verify request status
                     if (req.requesterId === uid && ['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'].includes(req.status)) {
                         
-                        // Find "My Pet" that I offered for mating
+                        // Identify source pet
                         const requesterPetIdStr = req.requesterPetId ? req.requesterPetId.toString() : null;
                         
-                        // If my pet is in the map, attach this info to it
+                        // Attach request info
                         if (requesterPetIdStr && formattedPetsMap[requesterPetIdStr]) {
                             formattedPetsMap[requesterPetIdStr].outgoingRequests.push({
                                 ...req,
                                 _id: req._id ? req._id.toString() : null,
-                                partnerId: partnerPet._id.toString(), // The ID of the dog we are mating with
+                                partnerId: partnerPet._id.toString(), // Partner pet ID
                                 partnerName: partnerPet.name,         
                                 requestType: 'mating',
                                 isOutgoing: true 
@@ -128,20 +121,19 @@ export async function GET(req, context) {
                 });
             }
             
-            // LOGIC: Adoption Requests I Sent (Approved)
+            // Handle adoption requests
             if (partnerPet.adoptionRequests) {
                 const adoptionReq = partnerPet.adoptionRequests.find(r => r.requesterId === uid && r.status === 'approved');
                 
                 if (adoptionReq) {
-                    // Since I don't own this pet yet, I create a temporary "Incoming" card
-                    // This allows me to see the "Confirm Handover" button on my dashboard.
+                    // Create incoming entry
                     formattedPetsMap[partnerPet._id.toString()] = {
                         _id: partnerPet._id.toString(),
                         name: partnerPet.name,
                         breed: partnerPet.breed,
                         type: partnerPet.type,
                         imageUrls: partnerPet.imageUrls || [],
-                        isIncomingAdoption: true, // Special flag for UI
+                        isIncomingAdoption: true, // UI Flag
                         adoptionRequests: [adoptionReq], 
                         ownerId: partnerPet.ownerId 
                     };
@@ -150,10 +142,10 @@ export async function GET(req, context) {
         });
     }
 
-    // Convert map back to array
+    // Convert to array
     const responsePets = Object.values(formattedPetsMap);
 
-    // 6. RESPONSE
+    // Return JSON response
     return new Response(JSON.stringify(responsePets), {
       status: 200,
       headers: { 
@@ -162,6 +154,7 @@ export async function GET(req, context) {
       },
     });
   } catch (err) {
+    // Handle server errors
     console.error("Error in GET /api/pet/user/[uid]:", err);
     return new Response(JSON.stringify({ error: "Internal Server Error" }), { status: 500 });
   }

@@ -1,74 +1,63 @@
 // app/api/reminders/check-and-notify/route.js
 
-// 1. IMPORTS
+// Standard imports
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
 import User from "../../../models/User";
 import { sendWhatsAppText } from "../../../lib/greenApi";
 import { NextResponse } from 'next/server';
 
-// 2. CONFIGURATION
-// How many days in advance should we warn the user?
+// Reminder config
 const NOTIFICATION_WINDOW_DAYS = 10;
 
-// 3. HELPER: UTC Normalization
-// This strips the time component (hours/mins/secs) from a date.
-// It effectively sets the clock to 00:00:00 UTC.
-// This is vital for accurate day-difference calculations.
+// Normalize dates
 const getStartOfDay = (date) => {
     const d = new Date(date);
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 };
 
-// 4. ROUTE HANDLER
-// We use GET here so you can easily test it by visiting the URL in your browser.
-// In strict production, you might change this to POST and require an API key header.
+// GET request handler
 export async function GET(req) { 
     try {
         await connectDB();
         
-        // Current Time Setup
+        // Set current date
         const now = new Date();
         const today = getStartOfDay(now);
         
-        // 5. FETCH RELEVANT PETS
-        // Efficiency: Only find pets that actually HAVE a history array that isn't empty.
-        // We utilize .select() to fetch only the fields we need (Owner ID, Name, Vax History).
+        // Fetch vaccinated pets
         const petsWithVax = await Pet.find({ 
             'vaccinationHistory': { $exists: true, $not: { $size: 0 } } 
         }).select('ownerId name vaccinationHistory').lean();
 
         let totalNotificationsSent = 0;
 
-        // 6. PROCESS EACH PET
+        // Process pets
         for (const pet of petsWithVax) {
             const ownerId = pet.ownerId;
             
-            // Fetch owner contact info
-            // Optimization: If you have 10,000 pets, fetching this one-by-one inside a loop 
-            // isn't the most efficient (O(N)), but for a scheduled job it's acceptable.
+            // Fetch owner details
             const owner = await User.findOne({ firebaseUid: ownerId }).select('phone name').lean();
             
-            // Skip if owner not found or has no phone number
+            // Validate contact info
             if (!owner || !owner.phone) continue;
 
             const fullPhoneNumber = `91${owner.phone}`; // Assuming India prefix
             
-            // 7. CHECK VACCINES
+            // Check vaccines
             for (let i = 0; i < pet.vaccinationHistory.length; i++) {
                 const vax = pet.vaccinationHistory[i];
                 const expiryDate = vax.expiryDate ? getStartOfDay(vax.expiryDate) : null;
                 const vaxName = vax.vaccineName;
                 
-                // Skip invalid dates
+                // Validate date
                 if (!expiryDate || isNaN(expiryDate.getTime())) continue;
 
-                // Calculate the difference in milliseconds, then convert to days
+                // Calculate days remaining
                 const diffTime = expiryDate.getTime() - today.getTime();
                 const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)); 
                 
-                // 8. SEND ALERT LOGIC
-                // Logic: Is it expiring soon (<= 10 days) AND is it not already expired (>= 0)?
+                // Check expiry window
                 if (diffDays <= NOTIFICATION_WINDOW_DAYS && diffDays >= 0) {
                     
                     const whatsappMessage = `
@@ -79,7 +68,7 @@ export async function GET(req) {
                         Please visit your vet soon for revaccination.
                     `.trim();
 
-                    // Send the message via Green API
+                    // Send WhatsApp alert
                     await sendWhatsAppText(fullPhoneNumber, whatsappMessage);
                     totalNotificationsSent++;
                     
@@ -88,7 +77,7 @@ export async function GET(req) {
             }
         }
 
-        // 9. SUCCESS RESPONSE
+        // Return success response
         return NextResponse.json({ 
             success: true, 
             message: `Reminder check complete. ${totalNotificationsSent} notifications triggered.`,

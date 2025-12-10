@@ -1,19 +1,19 @@
 // app/api/generate-questions/route.js
 
-// 1. IMPORTS
-import { textModel } from "../../lib/gemini"; // Our configured Google Gemini instance
+// Standard imports
+import { textModel } from "../../lib/gemini"; // AI configuration
 
-// 2. POST HANDLER
+// POST request handler
 export async function POST(req) {
-  // Define variables outside try block so fallback can access them if needed
+  // Initialize fallback variables
   let petName = "your pet"; 
   let petType = "pet";
   
   try {
-    // 3. PARSE REQUEST
+    // Parse request data
     const body = await req.json();
     
-    // Assign to local variables (with safety defaults)
+    // Set variable defaults
     petName = body.petName || "your pet";
     petType = body.petType || "pet";
     const petBreed = body.petBreed || "";
@@ -22,8 +22,7 @@ export async function POST(req) {
       return new Response(JSON.stringify({ error: "Pet name and type are required" }), { status: 400 });
     }
 
-    // 4. PROMPT ENGINEERING
-    // We explicitly ask for 2 categories of questions to get a well-rounded profile.
+    // Define AI prompt
     const prompt = `
       Generate exactly 10 short, simple, and engaging questions for a pet owner to build a profile for their ${petBreed} ${petType} named '${petName}'.
       
@@ -38,30 +37,27 @@ export async function POST(req) {
       { "questions": ["Question 1", "Question 2", ..., "Question 10"] }
     `;
 
-    // 5. CALL AI MODEL
+    // Generate AI content
     const result = await textModel.generateContent(prompt);
     const response = await result.response;
     
-    // 6. CLEAN & PARSE
-    // Remove potential Markdown code blocks (```json ... ```) added by the AI
+    // Parse JSON response
     let text = response.text().replace(/```json/g, "").replace(/```/g, "").trim();
     
     const data = JSON.parse(text);
 
-    // Validate the AI actually gave us an array
+    // Validate response format
     if (!data.questions || data.questions.length === 0) {
       throw new Error("AI failed to return valid questions.");
     }
     
-    // 7. SUCCESS RESPONSE
+    // Return success response
     return new Response(JSON.stringify(data), { status: 200 });
 
   } catch (err) {
     console.error("Error generating questions:", err);
     
-    // 8. FALLBACK MECHANISM (Critical for Reliability)
-    // If the AI fails (rate limit, server error, bad JSON), return these pre-written questions.
-    // We format strings dynamically here too, so it still looks personalized.
+    // Fallback questions list
     const fallback = {
         questions: [
             `How would you describe ${petName}'s personality in one sentence?`,
@@ -77,7 +73,7 @@ export async function POST(req) {
         ]
     };
     
-    // Return 200 OK even on error, so the frontend UI doesn't crash
+    // Return fallback response
     return new Response(JSON.stringify(fallback), { status: 200 }); 
   }
 }

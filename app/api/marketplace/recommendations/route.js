@@ -1,15 +1,15 @@
 // app/api/marketplace/recommendations/route.js
 
-// 1. IMPORTS
+// Standard imports
 import connectDB from "../../../lib/mongodb"; 
 import Pet from "../../../models/PetModel"; 
-import { textModel } from "../../../lib/gemini"; // Google Gemini AI instance
-import * as cheerio from 'cheerio'; // Library for parsing HTML (scraping)
+import { textModel } from "../../../lib/gemini"; // Gemini AI instance
+import * as cheerio from 'cheerio'; // HTML scraper
 
-// 2. CONFIGURATION
+// Dynamic config
 export const dynamic = 'force-dynamic';
 
-// 3. HELPER FUNCTION: Amazon Image Scraper
+// Scrape Amazon images
 async function fetchRealAmazonImage(query) {
   try {
     const url = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
@@ -33,8 +33,7 @@ async function fetchRealAmazonImage(query) {
   }
 }
 
-// --- NEW: FALLBACK DATA GENERATOR ---
-// Returns generic items so the page isn't empty when AI fails
+// Generate fallback items
 const getFallbackItems = (petType = "Pet") => {
     return [
         {
@@ -82,9 +81,9 @@ const getFallbackItems = (petType = "Pet") => {
     ];
 };
 
-// 4. POST HANDLER
+// POST request handler
 export async function POST(req) {
-  let petType = "Pet"; // Default for fallback
+  let petType = "Pet"; // Default fallback type
 
   try {
     await connectDB();
@@ -99,9 +98,9 @@ export async function POST(req) {
       return new Response(JSON.stringify({ error: "Pet profile not found." }), { status: 400 });
     }
 
-    petType = pet.type || "Pet"; // Capture type for fallback usage
+    petType = pet.type || "Pet"; // Set pet type
 
-    // 5. PROMPT ENGINEERING
+    // Define AI prompt
     const prompt = `
       Act as a professional personal shopper for this pet:
       "${pet.aiProfileString}"
@@ -129,12 +128,12 @@ export async function POST(req) {
       }
     `;
 
-    // 6. AI GENERATION
+    // Generate AI content
     const result = await textModel.generateContent(prompt);
     const response = await result.response;
     let text = response.text();
 
-    // 7. CLEANUP
+    // Clean JSON response
     const jsonStartIndex = text.indexOf('{');
     const jsonEndIndex = text.lastIndexOf('}');
     if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
@@ -146,11 +145,11 @@ export async function POST(req) {
         aiData = JSON.parse(text);
     } catch (e) {
         console.error("Failed to parse AI response");
-        // Trigger fallback manually if JSON fails
+        // Trigger fallback
         throw new Error("Invalid AI JSON"); 
     }
 
-    // 8. IMAGE ENRICHMENT
+    // Fetch item images
     const enrichedRecommendations = await Promise.all(
       (aiData.recommendations || []).map(async (item) => {
         const realImage = await fetchRealAmazonImage(item.query);
@@ -168,13 +167,12 @@ export async function POST(req) {
   } catch (err) {
     console.warn("⚠️ Marketplace Recommendation Error (Rate Limit/AI Fail). Using Fallback.", err.message);
     
-    // --- FALLBACK LOGIC ---
-    // Return generic items so the user sees *something* instead of an empty screen
+    // Use fallback data
     const fallbackData = getFallbackItems(petType);
     
     return new Response(JSON.stringify({ 
         recommendations: fallbackData,
-        isFallback: true // Optional flag if you want to show a UI notice
+        isFallback: true // Optional UI flag
     }), { status: 200 });
   }
 }

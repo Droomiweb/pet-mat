@@ -1,6 +1,6 @@
 // app/api/pet/requests/route.js
 
-// 1. IMPORTS
+// Standard imports
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
 import User from "../../../models/User"; 
@@ -8,22 +8,18 @@ import { db } from "../../../lib/firebase";
 import { collection, addDoc, serverTimestamp, doc, setDoc } from "firebase/firestore";
 import { sendWhatsAppText } from "../../../lib/greenApi"; 
 
-// 2. HELPER: Conversation ID Generator
-// Ensures the chat room ID is consistent regardless of who initiates it.
+// Generate conversation ID
 const createConversationId = (petId, uid1, uid2) => {
     const sortedUIDs = [uid1, uid2].sort();
     return `${petId}_${sortedUIDs[0]}_${sortedUIDs[1]}`;
 };
 
-// 3. PATCH HANDLER (Manage Requests)
+// PATCH request handler
 export async function PATCH(req) {
   try {
     await connectDB();
     
-    // Parse Payload
-    // requestType: 'mating' or 'adoption'
-    // newStatus: 'accepted', 'rejected', 'confirmHandover', etc.
-    // userId: The person currently performing the action (Owner or Requester)
+    // Parse request data
     const { ownerId, petId, requestId, requestType, newStatus, requesterId, userId } = await req.json();
 
     if (!petId || !requestType) {
@@ -33,20 +29,18 @@ export async function PATCH(req) {
     const pet = await Pet.findById(petId);
     if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
-    // ============================================================
-    // 1. MATING LOGIC
-    // ============================================================
+    // Handle mating requests
     if (requestType === 'mating') {
-      // Security: Only owner can accept/reject mating requests
+      // Verify ownership
       if (pet.ownerId !== ownerId) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
 
-      // Find the specific request in the subdocument array
+      // Find specific request
       let request;
-      // Try by ID first
+      // Try ID lookup
       if (requestId && typeof pet.matingHistory.id === 'function') {
         request = pet.matingHistory.id(requestId);
       }
-      // Fallback: Search manually by String ID or Requester ID
+      // Fallback lookup
       if (!request) {
           request = pet.matingHistory.find(r => r._id?.toString() === requestId);
           if (!request && requesterId) {
@@ -58,16 +52,16 @@ export async function PATCH(req) {
 
       if (!request) return new Response(JSON.stringify({ error: "Mating request not found" }), { status: 404 });
       
-      // Update Status
+      // Update status
       request.status = newStatus;
       pet.markModified('matingHistory'); 
 
-      // If Accepted -> Trigger Notifications
+      // Handle acceptance
       if (newStatus === 'accepted') {
           const targetRequesterId = request.requesterId; 
           const conversationId = createConversationId(petId, ownerId, targetRequesterId);
           
-          // A. Create Firestore Chat (System Message)
+          // Update Firestore chat
           try {
               await addDoc(collection(db, "conversations", conversationId, "messages"), {
                   senderId: "system",
@@ -85,7 +79,7 @@ export async function PATCH(req) {
               console.error("Firestore error:", fsError);
           }
 
-          // B. Send WhatsApp Notification
+          // Send WhatsApp alert
           try {
             const requesterUser = await User.findOne({ firebaseUid: targetRequesterId }).select('phone name').lean();
             if (requesterUser && requesterUser.phone) {
@@ -98,12 +92,10 @@ export async function PATCH(req) {
           }
       }
     
-    // ============================================================
-    // 2. ADOPTION LOGIC
-    // ============================================================
+    // Handle adoption requests
     } else if (requestType === 'adoption') {
       
-      // Find the adoption request
+      // Find specific request
       let request;
       if (requestId && typeof pet.adoptionRequests.id === 'function') {
          request = pet.adoptionRequests.id(requestId);
@@ -117,15 +109,14 @@ export async function PATCH(req) {
       }
       if (!request) return new Response(JSON.stringify({ error: "Adoption request not found" }), { status: 404 });
 
-      // --- A. STATUS UPDATE (Approve/Reject) ---
-      // This is the initial step by the Owner.
+      // Handle status update
       if (newStatus === 'approved' || newStatus === 'rejected') {
           if (pet.ownerId !== ownerId) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
           
           request.status = newStatus;
           
           if (newStatus === 'approved') {
-              // Notify Requester that they are approved
+              // Notify via Firestore
               const conversationId = createConversationId(petId, ownerId, request.requesterId);
               try {
                   await addDoc(collection(db, "conversations", conversationId, "messages"), {
@@ -142,7 +133,7 @@ export async function PATCH(req) {
                   }, { merge: true });
               } catch (e) {}
 
-              // Send WhatsApp
+              // Send WhatsApp alert
               try {
                   const requesterUser = await User.findOne({ firebaseUid: request.requesterId }).select('phone name').lean();
                   if (requesterUser && requesterUser.phone) {
@@ -154,12 +145,11 @@ export async function PATCH(req) {
           }
       }
 
-      // --- B. HANDOVER CONFIRMATION LOGIC ---
-      // This happens AFTER meetup. Both parties must click "Confirm Handover".
+      // Handle handover confirmation
       else if (newStatus === 'confirmHandover') {
           if (!userId) return new Response(JSON.stringify({ error: "User ID required for handover" }), { status: 400 });
 
-          // Determine who is clicking and set their flag
+          // Identify confirmant
           if (userId === pet.ownerId) {
               request.ownerConfirmedHandover = true;
           } else if (userId === request.requesterId) {
@@ -168,14 +158,14 @@ export async function PATCH(req) {
               return new Response(JSON.stringify({ error: "Unauthorized to confirm handover" }), { status: 403 });
           }
 
-          // IF BOTH have confirmed -> EXECUTE TRANSFER
+          // Check mutual confirmation
           if (request.ownerConfirmedHandover && request.requesterConfirmedHandover) {
               
-              // 1. Fetch Previous Owner Name (for the certificate generation)
+              // Fetch previous owner
               const previousOwner = await User.findOne({ firebaseUid: pet.ownerId }).select('name').lean();
               const previousOwnerName = previousOwner ? previousOwner.name : "Previous Owner";
 
-              // 2. Create the immutable Adoption Log
+              // Create adoption log
               pet.adoptionLog = {
                   previousOwnerId: pet.ownerId,
                   previousOwnerName: previousOwnerName,
@@ -185,18 +175,18 @@ export async function PATCH(req) {
                   certificateId: `CERT-${pet._id.toString().slice(-6)}-${Date.now().toString().slice(-6)}`
               };
 
-              // 3. TRANSFER OWNERSHIP
-              pet.ownerId = request.requesterId; // The requester is now the owner
-              pet.listingType = 'None'; // Pet is no longer for sale/adoption
+              // Transfer ownership
+              pet.ownerId = request.requesterId; // New owner
+              pet.listingType = 'None'; // Remove listing
               
-              // 4. Cleanup: Reject any other pending requests for this pet
+              // Reject other requests
               pet.adoptionRequests.forEach(r => {
                   if (r._id.toString() !== request._id.toString() && r.status === 'pending') {
                       r.status = 'rejected';
                   }
               });
               
-              // 5. Add system log
+              // Log system message
               pet.messages.push({
                   senderId: "system",
                   senderName: "System",
@@ -212,6 +202,7 @@ export async function PATCH(req) {
       return new Response(JSON.stringify({ error: "Invalid request type" }), { status: 400 });
     }
 
+    // Save changes
     await pet.save();
     return new Response(JSON.stringify({ message: `Request updated`, pet }), { status: 200 });
 
