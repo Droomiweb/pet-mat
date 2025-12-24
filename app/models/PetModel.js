@@ -143,9 +143,18 @@ const petSchema = new mongoose.Schema({
   adoptionLog: AdoptionLogSchema 
 });
 
-// CORRECTED: Removed index on non-existent 'location' field.
-// 'lastSeenLocation' index is sufficient for lost pets.
-// User location is handled via the User model.
+// === UPGRADE: Performance Indexes ===
+// Adding indexes significantly speeds up common queries
+petSchema.index({ ownerId: 1 });
+petSchema.index({ type: 1 });
+petSchema.index({ breed: 1 });
+petSchema.index({ listingType: 1 });
+petSchema.index({ verificationStatus: 1 });
+petSchema.index({ isLost: 1 });
+// Composite index for common filtering combo
+petSchema.index({ type: 1, breed: 1, listingType: 1 }); 
+// ------------------------------------
+
 petSchema.index({ lastSeenLocation: '2dsphere' }); 
 
 const Pet = mongoose.models.Pet || mongoose.model("Pet", petSchema);

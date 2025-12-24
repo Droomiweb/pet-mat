@@ -399,6 +399,11 @@ export async function GET(req) {
     const listingType = searchParams.get("listingType");
     const isLostFilter = searchParams.get("isLost") === "true";
 
+    // Pagination Params (Defaults: Page 1, 20 items per page)
+    const page = parseInt(searchParams.get("page")) || 1;
+    const limit = parseInt(searchParams.get("limit")) || 20;
+    const skip = (page - 1) * limit;
+
     const petQuery = {};
 
     // Apply lost filter
@@ -412,53 +417,72 @@ export async function GET(req) {
       if (listingType) petQuery.listingType = listingType;
 
       // Apply safety rules
-      // 1. Exclude pregnant pets
       petQuery.isPregnant = { $ne: true };
-      // 2. Verified pets only
       petQuery.verificationStatus = "verified";
-      // 3. Exclude lost pets
       petQuery.isLost = { $ne: true }; 
-      // 4. Exclude adopted pets
       petQuery.adoptionRequests = {
         $not: { $elemMatch: { status: "approved" } },
       };
 
-      // Filter mated females
-      // Find successfully mated pets
+      // Filter mated females logic
       const matedRequesterIds = await Pet.distinct(
         "matingHistory.requesterPetId",
         { "matingHistory.status": "mated" }
       );
       
-      // Exclude mated females
-      petQuery.$or = [
-        { gender: { $ne: "Female" } },
+      // We combine existing query with the complex OR logic for mated/gender checks
+      petQuery.$and = [
+        // Preserve any existing conditions
+        { ...petQuery }, 
         {
-          $and: [
-            { "matingHistory.status": { $ne: "mated" } },
-            { _id: { $nin: matedRequesterIds } },
-          ],
-        },
+          $or: [
+            { gender: { $ne: "Female" } },
+            {
+              $and: [
+                { "matingHistory.status": { $ne: "mated" } },
+                { _id: { $nin: matedRequesterIds } },
+              ],
+            },
+          ]
+        }
       ];
+      
+      // Clean up the initial flat properties if they are now wrapped in $and
+      // (Optimization: In a simple case we can leave them, but to be safe vs overwrites)
+      // Actually, standard practice: keep simple filters top-level, only complex logic in $and or $or.
+      // The implementation below merges them effectively.
     }
 
-    let pets = await Pet.find(petQuery).sort({ createdAt: -1 }).lean();
-
-    // Filter by city
-    // Filter based on user location
+    // === UPGRADE: Location Filter Optimized ===
+    // Filter by city BEFORE querying Pets
     if (city) {
       const usersInCity = await User.find(
         { "location.city": city },
         "firebaseUid"
       ).lean();
+      
       const userUids = usersInCity.map((u) => u.firebaseUid);
-      // Filter memory results
-      pets = pets.filter((pet) => userUids.includes(pet.ownerId));
+      
+      // Add this restriction to the database query
+      if (petQuery.ownerId) {
+        // If there was already an exclude filter or other owner filter
+        petQuery.ownerId = { $in: userUids, ...petQuery.ownerId }; 
+      } else {
+        petQuery.ownerId = { $in: userUids };
+      }
     }
 
-    // Attach location data
+    // === UPGRADE: Pagination & Lean ===
+    let pets = await Pet.find(petQuery)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    // Attach location data (Still required as location is on User model)
     const petsWithLocation = await Promise.all(
       pets.map(async (pet) => {
+        // Note: For high scale, consider denormalizing city into Pet model
         const owner = await User.findOne(
           { firebaseUid: pet.ownerId },
           "location"
@@ -479,14 +503,18 @@ export async function GET(req) {
           ownerId: pet.ownerId,
           isLost: pet.isLost,
           lastSeenDate: pet.lastSeenDate,
-          location: owner?.location || null, // Attach owner location
+          location: owner?.location || null, 
         };
       })
     );
 
     return new Response(JSON.stringify(petsWithLocation), {
       status: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "X-Total-Count": pets.length.toString(), // Useful for frontend
+        "X-Page": page.toString()
+      },
     });
   } catch (err) {
     console.error("Error fetching pets:", err);

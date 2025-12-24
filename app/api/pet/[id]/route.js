@@ -50,6 +50,7 @@ export async function PATCH(req, context) {
     const { id } = await context.params;
     
     // Parse request body
+    const body = await req.json();
     const { 
       action, 
       requesterId, 
@@ -58,17 +59,79 @@ export async function PATCH(req, context) {
       requesterPetName, 
       messageText,
       answers, // Questionnaire answers
-      requestId, 
-      newStatus 
-    } = await req.json();
+      
+      // For Update Certificate
+      certificateImage, // Base64 string
+      vaccineName,
+      vaccinationDate,
+      expiryDate
+    } = body;
 
     // Validate user
-    if (!requesterId || !requesterName) {
+    if (!requesterId) {
         return new Response(JSON.stringify({ error: "Authentication data missing." }), { status: 401 });
     }
     
     const pet = await Pet.findById(id);
     if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
+
+    // --- HANDLE: TRANSFER TO ADOPTION ---
+    if (action === "transferToAdoption") {
+        if (pet.ownerId !== requesterId) {
+            return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
+        }
+        
+        pet.listingType = "Adoption";
+        // Optionally, you could reset mating-specific fields here if desired, 
+        // but keeping history is usually better.
+        
+        await pet.save();
+        return new Response(JSON.stringify({ message: "Pet listing changed to Adoption successfully!" }), { status: 200 });
+    }
+
+    // --- HANDLE: UPDATE CERTIFICATE & VACCINATION ---
+    if (action === "updateCertificate") {
+        if (pet.ownerId !== requesterId) {
+            return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
+        }
+
+        try {
+            // 1. Upload to Cloudinary
+            const uploadRes = await cloudinary.uploader.upload(certificateImage, {
+                folder: "pet_certificates",
+            });
+
+            // 2. Create Vaccination Record
+            const newVaccine = {
+                vaccineName,
+                vaccinationDate: new Date(vaccinationDate),
+                expiryDate: new Date(expiryDate),
+                status: 'active'
+            };
+
+            // 3. Update Pet Fields
+            pet.certificateUrl = uploadRes.secure_url;
+            pet.vaccinationHistory.push(newVaccine);
+            pet.verificationStatus = "pending"; // Reset status for admin review
+            
+            // Clear previous rejection reason if any
+            if (pet.certificateAnalysis) {
+                pet.certificateAnalysis.reason = null;
+                pet.certificateAnalysis.status = "pending";
+            }
+
+            // 4. Log to Medical History
+            const logEntry = `\n[${new Date().toLocaleDateString()}] Certificate updated. Added ${vaccineName} (Exp: ${new Date(expiryDate).toLocaleDateString()}).`;
+            pet.medicalHistoryLog = (pet.medicalHistoryLog || "") + logEntry;
+
+            await pet.save();
+            return new Response(JSON.stringify({ message: "Health record updated successfully!" }), { status: 200 });
+
+        } catch (error) {
+            console.error("Certificate update error:", error);
+            return new Response(JSON.stringify({ error: "Failed to upload certificate" }), { status: 500 });
+        }
+    }
 
     // Handle mating request
     if (action === "matingRequest") {

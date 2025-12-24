@@ -57,6 +57,18 @@ const SearchIcon = () => (
   </svg>
 );
 
+const DocumentIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+  </svg>
+);
+
+const ExchangeIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+  </svg>
+);
+
 // --- AVATAR OPTIONS ---
 const AVATAR_OPTIONS = [
   "https://api.dicebear.com/9.x/adventurer/svg?seed=Felix",
@@ -90,6 +102,17 @@ export default function Profile() {
   // Avatar modal
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [avatarSaving, setAvatarSaving] = useState(false);
+
+  // Certificate Upload Modal
+  const [showCertModal, setShowCertModal] = useState(false);
+  const [selectedPetId, setSelectedPetId] = useState(null);
+  const [certForm, setCertForm] = useState({
+    file: null,
+    vaccineName: "",
+    vaccinationDate: "",
+    expiryDate: ""
+  });
+  const [certUploading, setCertUploading] = useState(false);
 
   // --- FETCH DATA ---
   const fetchUserPets = useCallback(async () => {
@@ -178,6 +201,59 @@ export default function Profile() {
     }
   };
 
+  // Certificate Upload Handlers
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCertForm(prev => ({ ...prev, file: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleUpdateCertificate = async (e) => {
+    e.preventDefault();
+    if (!selectedPetId || !certForm.file) return;
+    
+    setCertUploading(true);
+    try {
+        const res = await fetch(`/api/pet/${selectedPetId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                action: "updateCertificate",
+                requesterId: user.uid,
+                certificateImage: certForm.file,
+                vaccineName: certForm.vaccineName,
+                vaccinationDate: certForm.vaccinationDate,
+                expiryDate: certForm.expiryDate
+            })
+        });
+
+        if (res.ok) {
+            alert("Health record updated successfully! Verification status reset to pending.");
+            setShowCertModal(false);
+            setCertForm({ file: null, vaccineName: "", vaccinationDate: "", expiryDate: "" });
+            fetchUserPets();
+        } else {
+            const data = await res.json();
+            alert(`Failed: ${data.error}`);
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error uploading certificate.");
+    } finally {
+        setCertUploading(false);
+    }
+  };
+
+  const openCertModal = (petId) => {
+    setSelectedPetId(petId);
+    setShowCertModal(true);
+  };
+
   const handleConfirmPregnancy = async (petId) => {
     if (!confirm(`Confirm pregnancy for this pet? This will start the Pregnancy Tracker.`)) return;
     setActionLoading(petId);
@@ -262,6 +338,34 @@ export default function Profile() {
     }
   };
 
+  const handleTransferToAdoption = async (petId) => {
+    if (!confirm("Change listing to ADOPTION?\n\nThis pet will be moved to the Adoption section. This action allows others to apply for adoption.")) return;
+    setActionLoading(petId);
+    try {
+        const res = await fetch(`/api/pet/${petId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                action: "transferToAdoption",
+                requesterId: user.uid
+            })
+        });
+
+        if (res.ok) {
+            alert("Pet listing changed to Adoption successfully!");
+            fetchUserPets();
+        } else {
+            const data = await res.json();
+            alert(`Failed: ${data.error}`);
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error changing listing type.");
+    } finally {
+        setActionLoading(null);
+    }
+  };
+
   const handleDeletePost = async (postId) => {
     if (!confirm("Delete this post?")) return;
     try {
@@ -321,6 +425,45 @@ export default function Profile() {
               ))}
             </div>
             <p className="text-center text-xs text-gray-400 mt-4">Select an avatar to update your profile instantly.</p>
+          </div>
+        </div>
+      )}
+
+      {/* UPDATE CERTIFICATE MODAL */}
+      {showCertModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl border-4 border-white">
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-extrabold text-gray-800">Update Health Record</h3>
+                <button onClick={() => setShowCertModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            
+            <form onSubmit={handleUpdateCertificate} className="space-y-4">
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Certificate Image</label>
+                    <input type="file" accept="image/*" onChange={handleFileChange} required className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                </div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Vaccine Name</label>
+                    <input type="text" placeholder="e.g. Rabies, DHPP" required className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-[#4A90E2]" value={certForm.vaccineName} onChange={e => setCertForm({...certForm, vaccineName: e.target.value})} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Date Administered</label>
+                        <input type="date" required className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-[#4A90E2]" value={certForm.vaccinationDate} onChange={e => setCertForm({...certForm, vaccinationDate: e.target.value})} />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Expiry Date</label>
+                        <input type="date" required className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-[#4A90E2]" value={certForm.expiryDate} onChange={e => setCertForm({...certForm, expiryDate: e.target.value})} />
+                    </div>
+                </div>
+                <div className="bg-blue-50 p-3 rounded-xl text-xs text-blue-600">
+                    ℹ️ Uploading a new certificate will reset your verification status to <strong>Pending</strong> until reviewed.
+                </div>
+                <button type="submit" disabled={certUploading} className="w-full bg-[#4A90E2] text-white py-3 rounded-xl font-bold shadow-lg hover:bg-[#3A75B9] transition disabled:opacity-50 flex justify-center items-center gap-2">
+                    {certUploading ? <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin"></div> : "Update & Submit"}
+                </button>
+            </form>
           </div>
         </div>
       )}
@@ -496,6 +639,14 @@ export default function Profile() {
 
                                 <div className="flex flex-col items-end gap-1">
                                   {!isIncoming && <PetStatusBadge status={pet.verificationStatus} />}
+                                  
+                                  {/* VERIFICATION FAILURE REASON */}
+                                  {pet.verificationStatus === 'rejected' && pet.certificateAnalysis?.reason && (
+                                    <div className="text-[10px] text-red-500 bg-red-50 px-2 py-1 rounded max-w-[150px] text-right leading-tight">
+                                        Reason: {pet.certificateAnalysis.reason}
+                                    </div>
+                                  )}
+
                                   {pet.isPregnant && (
                                     <span className="bg-pink-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
                                       PREGNANT
@@ -506,37 +657,61 @@ export default function Profile() {
                             </div>
                           </div>
 
-                          {/* ACTION BUTTONS */}
-                          <div className="flex flex-wrap gap-3 mt-6 pt-5 border-t border-gray-100 relative z-10">
+                          {/* ACTION BUTTONS - BEAUTIFIED GRID LAYOUT */}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 pt-5 border-t border-gray-100 relative z-10">
+                            {/* 1. View Profile - Always visible */}
                             <Link
                               href={`/pet/${pet._id}`}
-                              className="flex-1 py-2.5 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-600 hover:bg-white hover:border-[#4A90E2] hover:text-[#4A90E2] transition-colors text-center text-sm flex items-center justify-center gap-2 shadow-sm"
+                              className="col-span-2 md:col-span-1 py-2.5 bg-gray-50 hover:bg-white border border-gray-200 rounded-xl font-bold text-gray-600 hover:border-[#4A90E2] hover:text-[#4A90E2] transition-all text-sm flex items-center justify-center gap-2 shadow-sm"
                             >
-                              <SearchIcon /> View Full Profile
+                              <SearchIcon /> Profile
                             </Link>
 
+                            {/* 2. Update Health - Conditional */}
+                            {!isIncoming && (
+                              <button
+                                onClick={() => openCertModal(pet._id)}
+                                className="col-span-1 py-2.5 bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-xl font-bold text-blue-600 transition-all text-sm flex items-center justify-center gap-2 shadow-sm"
+                              >
+                                <DocumentIcon /> Health
+                              </button>
+                            )}
+
+                            {/* 3. Switch Listing - Conditional */}
+                            {!isIncoming && pet.listingType === "Mating" && (
+                              <button
+                                onClick={() => handleTransferToAdoption(pet._id)}
+                                disabled={actionLoading === pet._id}
+                                className="col-span-1 py-2.5 bg-purple-50 hover:bg-purple-100 border border-purple-100 rounded-xl font-bold text-purple-600 transition-all text-sm flex items-center justify-center gap-2 shadow-sm"
+                              >
+                                <ExchangeIcon /> Switch
+                              </button>
+                            )}
+
+                            {/* 4. Lost Mode - Conditional */}
                             {!isIncoming && (
                               <button
                                 onClick={() => handleReportLost(pet)}
                                 disabled={actionLoading === pet._id}
-                                className={`flex-1 py-2.5 rounded-xl font-bold text-white transition-colors text-sm shadow-sm flex items-center justify-center gap-2 ${
+                                className={`col-span-1 py-2.5 rounded-xl font-bold text-white transition-all text-sm shadow-sm flex items-center justify-center gap-2 ${
                                   pet.isLost
-                                    ? "bg-green-500 hover:bg-green-600"
-                                    : "bg-red-500 hover:bg-red-600"
+                                    ? "bg-emerald-500 hover:bg-emerald-600 border border-emerald-600"
+                                    : "bg-amber-500 hover:bg-amber-600 border border-amber-600"
                                 }`}
                               >
-                                {pet.isLost ? "Found ✅" : <><AlertIcon /> Lost</>}
+                                {pet.isLost ? "Found" : <><AlertIcon /> Lost?</>}
                               </button>
                             )}
 
+                            {/* 5. Delete - Conditional - Last item in grid or separate if needed */}
                             {!isIncoming && (
                               <button
                                 onClick={() => handleDeletePet(pet._id)}
                                 disabled={actionLoading === pet._id}
-                                className="w-12 py-2.5 bg-white border border-gray-200 text-red-400 rounded-xl font-bold hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors flex items-center justify-center shadow-sm"
+                                className="col-span-2 md:col-span-1 md:col-start-4 py-2.5 bg-white border border-red-100 text-red-400 rounded-xl font-bold hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all flex items-center justify-center gap-2 shadow-sm"
                                 title="Remove Pet"
                               >
-                                <TrashIcon />
+                                <TrashIcon /> Remove
                               </button>
                             )}
                           </div>
