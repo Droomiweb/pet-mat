@@ -131,7 +131,7 @@ export default function MarketplacePage() {
         <div className="flex flex-col md:flex-row justify-between items-end mb-10 gap-6">
             <div>
                 <h1 className="text-4xl font-extrabold text-[#333333] flex items-center gap-3">
-                    Marketplace <span className="bg-[#50E3C2] text-white text-xs px-2 py-1 rounded-lg align-top -mt-4 rotate-12 shadow-sm">Beta</span>
+                    Marketplace  {/*<span className="bg-[#50E3C2] text-white text-xs px-2 py-1 rounded-lg align-top -mt-4 rotate-12 shadow-sm">Beta</span>*/}
                 </h1>
                 <p className="text-gray-500 mt-2 font-medium">Curated essentials for your furry family members.</p>
             </div>

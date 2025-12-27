@@ -1,18 +1,23 @@
-// app/components/VetMap.js
-"use client";
+'use client';
+
 import { useEffect, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// --- ICON ASSETS ---
-// Fix for Next.js Leaflet asset loading issue
-import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
-import iconUrl from 'leaflet/dist/images/marker-icon.png';
-import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
+// --- ICON CONFIGURATION ---
 
-// 3. ICON DEFINITIONS
-// Red Icon for Vets
+// 1. Fix for Default Leaflet Markers in Next.js
+// We manually unset the broken default icon and merge options with CDN links.
+// This prevents the "marker-icon.png" 404 errors.
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+    iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+});
+
+// 2. Red Icon for Vets (Using CDN)
 const vetIcon = new L.Icon({
     iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
     shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -22,21 +27,20 @@ const vetIcon = new L.Icon({
     shadowSize: [41, 41]
 });
 
-// Blue Icon for User
+// 3. Blue Icon for User (Using CDN)
 const userIcon = new L.Icon({
-    iconRetinaUrl: iconRetinaUrl.src,
-    iconUrl: iconUrl.src,
-    shadowUrl: shadowUrl.src,
+    iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+    iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
     iconSize: [25, 41],
     iconAnchor: [12, 41],
     popupAnchor: [1, -34],
     shadowSize: [41, 41],
 });
 
-// 4. COMPONENT
 export default function VetMap({ coords, radius, hospitals, userDataName, usingLiveLocation, selectedHospital }) {
-    const mapRef = useRef(null); // Reference to the map instance
-    const markerRefs = useRef({}); // Reference to store markers by ID
+    const mapRef = useRef(null); 
+    const markerRefs = useRef({}); 
 
     // EFFECT: Fly to a specific hospital when clicked in the sidebar list
     useEffect(() => {
@@ -102,7 +106,7 @@ export default function VetMap({ coords, radius, hospitals, userDataName, usingL
                     key={vet.id} 
                     position={[vet.lat, vet.lng]} 
                     icon={vetIcon}
-                    ref={(el) => (markerRefs.current[vet.id] = el)} // Store ref for programmatic access
+                    ref={(el) => (markerRefs.current[vet.id] = el)} 
                 >
                     <Popup>
                         <div className="min-w-[180px] text-center">
@@ -114,8 +118,7 @@ export default function VetMap({ coords, radius, hospitals, userDataName, usingL
                                 <p className="text-xs font-semibold text-green-600 mb-2">📞 {vet.phone}</p>
                             )}
                             
-                            {/* --- URL FIX --- */}
-                            {/* Standard Google Maps Direction Intent */}
+                            {/* --- URL FIX: Updated to valid Google Maps Directions Link --- */}
                             <a 
                                 href={`https://www.google.com/maps/dir/?api=1&destination=${vet.lat},${vet.lng}`}
                                 target="_blank"

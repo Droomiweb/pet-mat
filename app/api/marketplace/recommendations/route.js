@@ -107,11 +107,11 @@ export async function POST(req) {
       (Breed: ${pet.breed}, Type: ${pet.type}, Age: ${pet.age}, Energy: ${pet.energyLevel})
 
       Your Task:
-      Generate exactly 8 high-quality product recommendations available on Amazon India.
+      Generate exactly 16 high-quality product recommendations available on Amazon India.
       
       Constraint:
-      - 4 items MUST be Food/Nutrition.
-      - 4 items MUST be Toys/Gear.
+      - 8 items MUST be Food/Nutrition.
+      - 8 items MUST be Toys/Gear.
       
       For EACH item, provide:
       1. "title": Short product name.

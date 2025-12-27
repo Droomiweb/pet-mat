@@ -11,8 +11,8 @@ export async function GET(req, context) {
   try {
     await connectDB();
     
-    // Extract postId
-    const { postId } = context.params;
+    // FIX: Await params before accessing properties
+    const { postId } = await context.params;
 
     // Fetch and populate
     const post = await ForumPost.findById(postId)
@@ -43,7 +43,10 @@ export async function GET(req, context) {
 export async function PATCH(req, context) {
     try {
         await connectDB();
-        const { postId } = context.params;
+        
+        // FIX: Await params before accessing properties
+        const { postId } = await context.params;
+        
         // Parse request action
         const { action, userId } = await req.json(); 
 
@@ -87,7 +90,9 @@ export async function PATCH(req, context) {
 export async function DELETE(req, context) {
   try {
     await connectDB();
-    const { postId } = context.params;
+    
+    // FIX: Await params before accessing properties
+    const { postId } = await context.params;
     
     // Get user ID
     const { userId } = await req.json(); 
