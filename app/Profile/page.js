@@ -338,21 +338,30 @@ export default function Profile() {
     }
   };
 
-  const handleTransferToAdoption = async (petId) => {
-    if (!confirm("Change listing to ADOPTION?\n\nThis pet will be moved to the Adoption section. This action allows others to apply for adoption.")) return;
+  // --- NEW: GENERIC LISTING SWITCHER ---
+  const handleChangeListingType = async (petId, newType) => {
+    const actionMap = {
+        'Mating': "List for MATING?",
+        'Adoption': "List for ADOPTION?",
+        'None': "Unlist this pet?"
+    };
+    
+    if (!confirm(`Switch listing to ${newType}?\n\n${newType === 'Adoption' ? 'Note: This will move the pet to the Adoption section.' : newType === 'Mating' ? 'Note: This will move the pet to the Mating section.' : ''}`)) return;
+    
     setActionLoading(petId);
     try {
         const res = await fetch(`/api/pet/${petId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                action: "transferToAdoption",
-                requesterId: user.uid
+                action: "changeListingType",
+                requesterId: user.uid,
+                newType: newType
             })
         });
 
         if (res.ok) {
-            alert("Pet listing changed to Adoption successfully!");
+            alert(`Pet listing changed to ${newType} successfully!`);
             fetchUserPets();
         } else {
             const data = await res.json();
@@ -677,14 +686,19 @@ export default function Profile() {
                               </button>
                             )}
 
-                            {/* 3. Switch Listing - Conditional */}
-                            {!isIncoming && pet.listingType === "Mating" && (
+                            {/* 3. Switch Listing (Generic) */}
+                            {!isIncoming && (
                               <button
-                                onClick={() => handleTransferToAdoption(pet._id)}
+                                onClick={() => {
+                                    if (pet.listingType === 'Mating') handleChangeListingType(pet._id, 'Adoption');
+                                    else if (pet.listingType === 'Adoption') handleChangeListingType(pet._id, 'Mating');
+                                    else handleChangeListingType(pet._id, 'Mating'); // Default for 'None' -> Mating
+                                }}
                                 disabled={actionLoading === pet._id}
                                 className="col-span-1 py-2.5 bg-purple-50 hover:bg-purple-100 border border-purple-100 rounded-xl font-bold text-purple-600 transition-all text-sm flex items-center justify-center gap-2 shadow-sm"
                               >
-                                <ExchangeIcon /> Switch
+                                <ExchangeIcon />
+                                {pet.listingType === 'Mating' ? 'To Adoption' : pet.listingType === 'Adoption' ? 'To Mating' : 'List Mating'}
                               </button>
                             )}
 

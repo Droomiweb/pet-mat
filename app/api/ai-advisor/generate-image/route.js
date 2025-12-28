@@ -4,6 +4,7 @@
 import { visionModel } from "../../../lib/gemini"; 
 import connectDB from "../../../lib/mongodb";    
 import Pet from "../../../models/PetModel";      
+import GeneratedImage from "../../../models/GeneratedImage"; // Import the model
 
 // Convert image format
 async function fetchImageAsBase64(url) {
@@ -23,10 +24,29 @@ export async function POST(req) {
   try {
     await connectDB();
     
-    // Parse parent IDs
-    const { petAId, petBId } = await req.json();
+    // Parse body
+    const { petAId, petBId, userId, regenerate } = await req.json();
 
-    // Fetch parent pets
+    if (!petAId || !petBId || !userId) {
+        return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
+    }
+
+    // 1. Check if image already exists in DB (unless regenerating)
+    if (!regenerate) {
+        const existingImage = await GeneratedImage.findOne({ 
+            parentAId: petAId, 
+            parentBId: petBId 
+        }).sort({ createdAt: -1 }); // Get latest
+
+        if (existingImage) {
+            return new Response(JSON.stringify({ 
+                imageUrl: existingImage.imageUrl, 
+                fromCache: true 
+            }), { status: 200 });
+        }
+    }
+
+    // 2. Fetch parent pets for generation
     const petA = await Pet.findById(petAId);
     const petB = await Pet.findById(petBId);
 
@@ -38,15 +58,14 @@ export async function POST(req) {
     let babyTerm = "baby animal";
     let targetSpecies = petA.type; // Default to mother
 
-    // Set baby terminology
     if (targetSpecies === "Dog") babyTerm = "Puppy";
     else if (targetSpecies === "Cat") babyTerm = "Kitten";
     else if (targetSpecies === "Rabbit") babyTerm = "Bunny";
     else if (targetSpecies === "Bird") babyTerm = "Chick";
 
-    // Define vision prompt
+    // 3. Define ENHANCED vision prompt
     const prompt = `
-      You are an expert animal artist.
+      You are an expert animal photographer and geneticist.
       
       **TASK**: Describe the visual appearance of a **${babyTerm}** (${petA.breed} mix).
       
@@ -54,14 +73,16 @@ export async function POST(req) {
       **PARENT 2**: ${petB.breed} (${petB.type})
       **REQUIRED SPECIES**: ${targetSpecies} (${babyTerm})
       
-      **STRICT VISUAL RULES**:
-      1. **SPECIES PRIORITY**: The offspring MUST be a ${targetSpecies} (${babyTerm}). DO NOT create a hybrid of different species (e.g., do NOT mix a dog and a cat). If parents are different species, ignore Parent 2's species traits and focus on Parent 1.
-      2. **BREED CONSISTENCY**: If both parents are the same breed (e.g., both Persian Cats), the offspring MUST look like a purebred of that breed.
-      3. **TRAIT BLENDING**: Analyze the images provided. Pick up specific visual traits: fur color, pattern, ear shape. Blend these into the baby.
+      **VISUAL REQUIREMENTS (STRICT):**
+      1. **FULL BODY SHOT**: The image must show the ENTIRE animal from head to paws. Do not crop the head or feet. Center the subject.
+      2. **REALISM**: Photorealistic, 8k resolution, cinematic lighting, highly detailed fur/feathers.
+      3. **BACKGROUND**: Soft, blurred natural background (bokeh) to emphasize the pet.
+      4. **TRAITS**: Blend the coat colors and patterns of the parents naturally.
+      5. **ASPECT RATIO**: Square 1:1.
       
       **OUTPUT FORMAT**:
       Return ONLY the raw image prompt string.
-      Example: "A photorealistic, fluffy Golden Retriever puppy with white chest markings, soft cinematic lighting, 8k."
+      Example: "A full-body studio shot of a fluffy Golden Retriever puppy with white paws, sitting on grass, soft lighting, 8k, wide angle."
     `;
 
     // Prepare input data
@@ -81,20 +102,27 @@ export async function POST(req) {
     // Generate visual description
     const result = await visionModel.generateContent(inputParts);
     const response = await result.response;
-    
-    // Sanitize prompt text
     const imageDescription = response.text().replace(/\n/g, " ").trim();
     
-    console.log("Generated Offspring Prompt:", imageDescription);
+    console.log("Generated Prompt:", imageDescription);
 
-    // Generate image URL
+    // 4. Generate Image URL (Pollinations)
     const seed = Math.floor(Math.random() * 99999);
-    const encodedPrompt = encodeURIComponent(imageDescription);
+    const encodedPrompt = encodeURIComponent(imageDescription + " --ar 1:1 --no-crop");
     
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true&seed=${seed}&model=flux`;
+    // Explicitly requesting 1024x1024
+    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true&seed=${seed}&model=flux&width=1024&height=1024`;
 
-    // Return image link
-    return new Response(JSON.stringify({ imageUrl }), { status: 200 });
+    // 5. Save to Database
+    await GeneratedImage.create({
+        userId: userId,
+        parentAId: petAId,
+        parentBId: petBId,
+        imageUrl: imageUrl,
+        promptUsed: imageDescription
+    });
+
+    return new Response(JSON.stringify({ imageUrl, fromCache: false }), { status: 200 });
 
   } catch (err) {
     console.error("Image Gen Error:", err);

@@ -64,7 +64,10 @@ export async function PATCH(req, context) {
       certificateImage, // Base64 string
       vaccineName,
       vaccinationDate,
-      expiryDate
+      expiryDate,
+
+      // For Listing Change
+      newType 
     } = body;
 
     // Validate user
@@ -75,18 +78,24 @@ export async function PATCH(req, context) {
     const pet = await Pet.findById(id);
     if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
-    // --- HANDLE: TRANSFER TO ADOPTION ---
-    if (action === "transferToAdoption") {
+    // --- HANDLE: CHANGE LISTING TYPE (Mating ↔ Adoption ↔ None) ---
+    if (action === "changeListingType") {
         if (pet.ownerId !== requesterId) {
             return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
         }
         
-        pet.listingType = "Adoption";
-        // Optionally, you could reset mating-specific fields here if desired, 
-        // but keeping history is usually better.
+        const validTypes = ['Mating', 'Adoption', 'None'];
+        if (!validTypes.includes(newType)) {
+             return new Response(JSON.stringify({ error: "Invalid listing type" }), { status: 400 });
+        }
+
+        pet.listingType = newType;
+        
+        // Optional: If switching to Adoption, you might want to reset mating fields, 
+        // but generally preserving history is safer.
         
         await pet.save();
-        return new Response(JSON.stringify({ message: "Pet listing changed to Adoption successfully!" }), { status: 200 });
+        return new Response(JSON.stringify({ message: `Listing changed to ${newType} successfully!` }), { status: 200 });
     }
 
     // --- HANDLE: UPDATE CERTIFICATE & VACCINATION ---

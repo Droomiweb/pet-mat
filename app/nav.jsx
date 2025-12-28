@@ -4,9 +4,11 @@ import { useState, useEffect, Fragment } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "./auth-provider";
-import { auth } from "./lib/firebase";
+import { auth, db } from "./lib/firebase";
 import { useRouter, usePathname } from "next/navigation";
-import { Dialog, Disclosure, Menu, Transition } from "@headlessui/react";
+import { Dialog, Menu, Transition } from "@headlessui/react";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { motion } from "framer-motion"; // --- IMPORT ANIMATION LIBRARY ---
 
 // --- ICONS ---
 const MenuIcon = (props) => (<svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>);
@@ -20,15 +22,17 @@ const VetIcon = () => <span className="text-lg">🏥</span>;
 const AdoptionIcon = () => <span className="text-lg">🏠</span>;
 const HeartIcon = () => <span className="text-lg">❤️</span>;
 
-export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
+export default function Navbar({ reminderCount = 0 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [pregnantPetId, setPregnantPetId] = useState(null);
   const [showNoPregnancyModal, setShowNoPregnancyModal] = useState(false);
+  const [realtimeUnreadCount, setRealtimeUnreadCount] = useState(0);
 
-  // FIX: Get userData here so we can access the custom avatar
-  const { user, userData } = useAuth(); 
-  
+  // --- NEW: Track hover state for sliding animation ---
+  const [hoveredPath, setHoveredPath] = useState(null);
+
+  const { user, userData } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -39,7 +43,30 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // --- CHECK FOR PREGNANT PET ---
+  // --- REALTIME UNREAD MESSAGES ---
+  useEffect(() => {
+    if (!user) {
+        setRealtimeUnreadCount(0);
+        return;
+    }
+    const q = query(
+        collection(db, "conversations"),
+        where("participants", "array-contains", user.uid)
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        let totalUnread = 0;
+        snapshot.docs.forEach(doc => {
+            const data = doc.data();
+            if (data.unreadCounts && typeof data.unreadCounts[user.uid] === 'number') {
+                totalUnread += data.unreadCounts[user.uid];
+            }
+        });
+        setRealtimeUnreadCount(totalUnread);
+    }, (error) => console.error(error));
+    return () => unsubscribe();
+  }, [user]);
+
+  // --- CHECK PREGNANCY ---
   useEffect(() => {
     if (user) {
       const checkPregnancy = async () => {
@@ -49,8 +76,7 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
           if (res.ok) {
             const pets = await res.json();
             const pregnant = pets.find(p => p.isPregnant);
-            if (pregnant) setPregnantPetId(pregnant._id);
-            else setPregnantPetId(null);
+            setPregnantPetId(pregnant ? pregnant._id : null);
           }
         } catch (e) { console.error(e); }
       };
@@ -67,14 +93,10 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
   const handlePregnancyClick = (e) => {
     e.preventDefault();
     setMobileMenuOpen(false);
-    if (pregnantPetId) {
-        router.push(`/pregnancy-tracker/${pregnantPetId}`);
-    } else {
-        setShowNoPregnancyModal(true);
-    }
+    if (pregnantPetId) router.push(`/pregnancy-tracker/${pregnantPetId}`);
+    else setShowNoPregnancyModal(true);
   };
 
-  // --- NAVIGATION CONFIG ---
   const mainNavItems = [
     { name: "Home", href: "/" },
     { name: "Community", href: "/community" }, 
@@ -88,9 +110,7 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
   ];
 
   const isActive = (href) => pathname === href;
-  const getBadgeText = (count) => (count > 9 ? '9+' : count);
-
-  // FIX: Helper to determine the correct profile image
+  const getBadgeText = (count) => (count > 99 ? '99+' : count);
   const profileImageSrc = userData?.avatar || user?.photoURL || "/imgs/profile.jpg";
 
   return (
@@ -99,18 +119,12 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
       {showNoPregnancyModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl text-center animate-in zoom-in duration-200">
-                <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
-                    🤰
-                </div>
+                <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">🤰</div>
                 <h3 className="text-2xl font-bold text-gray-800 mb-2">Pregnancy Tracker</h3>
-                <p className="text-gray-600 mb-6">
-                    This feature tracks day-by-day gestation for pets confirmed as pregnant. 
-                    <br/><br/>
-                    To activate it, go to <strong>My Profile</strong>, select a female pet, and click <strong>"Confirm Pregnancy"</strong>.
-                </p>
+                <p className="text-gray-600 mb-6">This feature tracks day-by-day gestation for pets confirmed as pregnant. Activate it in your Profile.</p>
                 <div className="flex gap-2 justify-center">
                     <button onClick={() => setShowNoPregnancyModal(false)} className="px-6 py-2 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition">Close</button>
-                    <Link href="/Profile" onClick={() => setShowNoPregnancyModal(false)} className="px-6 py-2 rounded-xl font-bold text-white bg-[#4A90E2] hover:bg-[#3A75B9] transition shadow-lg">Go to Profile</Link>
+                    <Link href="/Profile" className="px-6 py-2 rounded-xl font-bold text-white bg-[#4A90E2] hover:bg-[#3A75B9] transition shadow-lg">Go to Profile</Link>
                 </div>
             </div>
         </div>
@@ -128,21 +142,12 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
             
             {/* 1. LOGO */}
             <div className="flex items-center gap-4">
-                {/* Mobile Toggle */}
-                <button className="lg:hidden text-gray-600 hover:text-[#4A90E2] p-1 rounded-lg hover:bg-blue-50 transition-colors" onClick={() => setMobileMenuOpen(true)}>
+                <button className="lg:hidden text-gray-600 hover:text-[#4A90E2] p-1 rounded-lg" onClick={() => setMobileMenuOpen(true)}>
                     <MenuIcon className="w-7 h-7" />
                 </button>
-
                 <Link href="/" className="flex items-center gap-2 group">
                     <div className="relative w-9 h-9 transition-transform duration-300 group-hover:scale-110">
-                        {/* --- FIXED: Use Image with your custom icon.svg --- */}
-                        {/* Ensure icon.svg is placed in the 'public' folder */}
-                        <Image 
-                            src="/icon.svg" 
-                            alt="PetLink Logo" 
-                            fill 
-                            className="object-contain drop-shadow-sm"
-                        />
+                        <Image src="/icon.svg" alt="PetLink Logo" fill className="object-contain drop-shadow-sm" />
                     </div>
                     <span className="text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-[#4A90E2] to-[#50E3C2] hidden sm:block">
                         PetLink
@@ -150,24 +155,42 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
                 </Link>
             </div>
 
-            {/* 2. DESKTOP MENU */}
-            <div className="hidden lg:flex items-center gap-1 bg-white/50 rounded-full px-2 py-1 border border-gray-100 shadow-sm backdrop-blur-sm">
-                {mainNavItems.map(item => (
-                    <Link 
-                        key={item.name} 
-                        href={item.href} 
-                        className={`px-5 py-2 rounded-full text-sm font-bold transition-all duration-300 ${
-                            isActive(item.href) 
-                            ? "bg-gradient-to-r from-[#4A90E2] to-[#50E3C2] text-white shadow-md" 
-                            : "text-gray-600 hover:text-[#4A90E2] hover:bg-white"
-                        }`}
-                    >
-                        {item.name}
-                    </Link>
-                ))}
+            {/* 2. DESKTOP MENU (SLIDING ANIMATION) */}
+            <div className="hidden lg:flex items-center gap-1 bg-white/50 rounded-full px-2 py-1 border border-gray-100 shadow-sm backdrop-blur-sm relative" onMouseLeave={() => setHoveredPath(null)}>
+                
+                {mainNavItems.map(item => {
+                    // Determine if this item should show the highlight
+                    // It shows if: (It's hovered) OR (It's active AND nothing else is hovered)
+                    const isHovered = hoveredPath === item.href;
+                    const isCurrent = isActive(item.href);
+                    const showHighlight = isHovered || (isCurrent && hoveredPath === null);
 
-                {/* "Explore" Dropdown */}
-                <Menu as="div" className="relative">
+                    return (
+                        <Link 
+                            key={item.name} 
+                            href={item.href}
+                            onMouseEnter={() => setHoveredPath(item.href)}
+                            className="relative px-5 py-2 rounded-full text-sm font-bold transition-colors duration-300 z-10"
+                        >
+                            {/* The Sliding Pill */}
+                            {showHighlight && (
+                                <motion.span
+                                    layoutId="nav-pill"
+                                    className="absolute inset-0 bg-gradient-to-r from-[#4A90E2] to-[#50E3C2] rounded-full -z-10 shadow-md"
+                                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                />
+                            )}
+                            
+                            {/* Text Color Logic */}
+                            <span className={`relative z-20 transition-colors duration-200 ${showHighlight ? "text-white" : "text-gray-600 group-hover:text-[#4A90E2]"}`}>
+                                {item.name}
+                            </span>
+                        </Link>
+                    );
+                })}
+
+                {/* Dropdown (Separate from sliding pill for simplicity, or can be added similarly) */}
+                <Menu as="div" className="relative ml-1">
                     <Menu.Button className="flex items-center gap-1 px-5 py-2 rounded-full text-sm font-bold text-gray-600 hover:text-[#4A90E2] hover:bg-white transition-all outline-none">
                         Explore <ChevronDownIcon className="w-4 h-4" />
                     </Menu.Button>
@@ -181,13 +204,9 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
                         leaveTo="opacity-0 translate-y-2"
                     >
                         <Menu.Items className="absolute top-full right-0 mt-4 w-64 bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 p-2 ring-1 ring-black/5 focus:outline-none">
-                            
                             <Menu.Item>
                                 {({ active }) => (
-                                    <button 
-                                        onClick={handlePregnancyClick}
-                                        className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-left ${active ? 'bg-pink-50' : ''}`}
-                                    >
+                                    <button onClick={handlePregnancyClick} className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-left ${active ? 'bg-pink-50' : ''}`}>
                                         <div className="p-2 bg-pink-100 rounded-lg text-pink-500"><HeartIcon /></div>
                                         <div>
                                             <p className="text-sm font-bold text-gray-800">Pregnancy Tracker</p>
@@ -196,7 +215,6 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
                                     </button>
                                 )}
                             </Menu.Item>
-
                             {subMenuItems.map(item => (
                                 <Menu.Item key={item.name}>
                                     {({ active }) => (
@@ -225,23 +243,14 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
 
                         <Link href="/reminders" className="relative p-2.5 rounded-full bg-gray-100 hover:bg-blue-50 text-gray-600 hover:text-[#4A90E2] transition-colors group">
                             <BellIcon className="w-6 h-6" />
-                            {reminderCount > 0 && (
-                                <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white ring-2 ring-white group-hover:ring-blue-50 transition-all">
-                                    {getBadgeText(reminderCount)}
-                                </span>
-                            )}
+                            {reminderCount > 0 && <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white ring-2 ring-white">{getBadgeText(reminderCount)}</span>}
                         </Link>
                         
                         <Link href="/messages" className="relative p-2.5 rounded-full bg-gray-100 hover:bg-blue-50 text-gray-600 hover:text-[#4A90E2] transition-colors group">
                             <MessageIcon className="w-6 h-6" />
-                            {unreadMessageCount > 0 && (
-                                <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-green-500 text-[10px] font-bold text-white ring-2 ring-white group-hover:ring-blue-50 transition-all">
-                                    {getBadgeText(unreadMessageCount)}
-                                </span>
-                            )}
+                            {realtimeUnreadCount > 0 && <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-green-500 text-[10px] font-bold text-white ring-2 ring-white">{getBadgeText(realtimeUnreadCount)}</span>}
                         </Link>
 
-                        {/* FIX: Use profileImageSrc to show custom avatar */}
                         <Link href="/Profile" className="relative w-10 h-10 rounded-full border-2 border-white shadow-md hover:ring-2 hover:ring-[#4A90E2] transition-all ml-1 overflow-hidden bg-gray-200">
                             <Image src={profileImageSrc} alt="Profile" fill className="object-cover" />
                         </Link>
@@ -255,7 +264,7 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
             </div>
         </nav>
 
-        {/* --- MOBILE SLIDING MENU DRAWER --- */}
+        {/* --- MOBILE MENU (UNCHANGED) --- */}
         <Transition.Root show={mobileMenuOpen} as={Fragment}>
             <Dialog as="div" className="relative z-50 lg:hidden" onClose={setMobileMenuOpen}>
                 <Transition.Child
@@ -281,71 +290,37 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
                         leaveTo="-translate-x-full"
                     >
                         <Dialog.Panel className="relative mr-16 flex w-full max-w-xs flex-1 flex-col bg-white/95 backdrop-blur-xl shadow-2xl h-full">
-                            
                             <div className="flex items-center justify-between px-6 py-6 border-b border-gray-100">
                                 <div className="flex items-center gap-2">
-                                    <div className="relative w-8 h-8">
-                                        <Image src="/icon.svg" alt="PetLink" fill className="object-contain" />
-                                    </div>
+                                    <div className="relative w-8 h-8"><Image src="/icon.svg" alt="PetLink" fill className="object-contain" /></div>
                                     <span className="text-xl font-extrabold text-gray-800 tracking-tight">PetLink</span>
                                 </div>
-                                <button onClick={() => setMobileMenuOpen(false)} className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors">
-                                    <XIcon className="w-6 h-6" />
-                                </button>
+                                <button onClick={() => setMobileMenuOpen(false)} className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"><XIcon className="w-6 h-6" /></button>
                             </div>
-
                             <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8">
                                 <div>
                                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Menu</p>
                                     <div className="space-y-1">
                                         {mainNavItems.map((item) => (
-                                            <Link 
-                                                key={item.name} 
-                                                href={item.href} 
-                                                onClick={() => setMobileMenuOpen(false)}
-                                                className={`block px-4 py-3 rounded-xl font-bold text-lg transition-all ${
-                                                    isActive(item.href) 
-                                                    ? 'bg-blue-50 text-[#4A90E2]' 
-                                                    : 'text-gray-600 hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                {item.name}
-                                            </Link>
+                                            <Link key={item.name} href={item.href} onClick={() => setMobileMenuOpen(false)} className={`block px-4 py-3 rounded-xl font-bold text-lg transition-all ${isActive(item.href) ? 'bg-blue-50 text-[#4A90E2]' : 'text-gray-600 hover:bg-gray-50'}`}>{item.name}</Link>
                                         ))}
                                     </div>
                                 </div>
-
                                 <div>
                                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Explore</p>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <button onClick={handlePregnancyClick} className="flex flex-col items-center justify-center p-4 bg-pink-50 rounded-2xl hover:bg-pink-100 transition active:scale-95">
-                                            <span className="text-2xl mb-1">❤️</span>
-                                            <span className="text-xs font-bold text-pink-600">Pregnancy</span>
-                                        </button>
+                                        <button onClick={handlePregnancyClick} className="flex flex-col items-center justify-center p-4 bg-pink-50 rounded-2xl hover:bg-pink-100 transition active:scale-95"><span className="text-2xl mb-1">❤️</span><span className="text-xs font-bold text-pink-600">Pregnancy</span></button>
                                         {subMenuItems.map(item => (
-                                            <Link 
-                                                key={item.name} 
-                                                href={item.href} 
-                                                onClick={() => setMobileMenuOpen(false)}
-                                                className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-2xl hover:bg-blue-50 transition active:scale-95"
-                                            >
-                                                <item.icon />
-                                                <span className="text-xs font-bold text-gray-700 mt-1 text-center leading-tight">{item.name}</span>
-                                            </Link>
+                                            <Link key={item.name} href={item.href} onClick={() => setMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-2xl hover:bg-blue-50 transition active:scale-95"><item.icon /><span className="text-xs font-bold text-gray-700 mt-1 text-center leading-tight">{item.name}</span></Link>
                                         ))}
                                     </div>
                                 </div>
                             </div>
-
                             <div className="p-6 border-t border-gray-200 bg-gray-50/50">
                                 {user ? (
                                     <div className="space-y-3">
-                                        <Link href="/Addpet" onClick={() => setMobileMenuOpen(false)} className="flex items-center justify-center w-full py-3.5 rounded-xl bg-[#333333] text-white font-bold shadow-lg hover:bg-black transition-all">
-                                            + Register New Pet
-                                        </Link>
-                                        <button onClick={handleLogout} className="w-full py-3 rounded-xl text-red-500 font-bold hover:bg-red-50 transition-colors">
-                                            Sign Out
-                                        </button>
+                                        <Link href="/Addpet" onClick={() => setMobileMenuOpen(false)} className="flex items-center justify-center w-full py-3.5 rounded-xl bg-[#333333] text-white font-bold shadow-lg hover:bg-black transition-all">+ Register New Pet</Link>
+                                        <button onClick={handleLogout} className="w-full py-3 rounded-xl text-red-500 font-bold hover:bg-red-50 transition-colors">Sign Out</button>
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-2 gap-3">
@@ -354,7 +329,6 @@ export default function Navbar({ unreadMessageCount = 0, reminderCount = 0 }) {
                                     </div>
                                 )}
                             </div>
-
                         </Dialog.Panel>
                     </Transition.Child>
                 </div>

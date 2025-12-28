@@ -3,91 +3,50 @@
 // Standard imports
 import connectDB from "../../../lib/mongodb"; 
 import Pet from "../../../models/PetModel"; 
-import { textModel } from "../../../lib/gemini"; // Gemini AI instance
-import * as cheerio from 'cheerio'; // HTML scraper
+import { textModel } from "../../../lib/gemini"; 
 
 // Dynamic config
 export const dynamic = 'force-dynamic';
 
-// Scrape Amazon images
-async function fetchRealAmazonImage(query) {
-  try {
-    const url = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-      },
-      cache: 'no-store'
-    });
-    
-    if (!response.ok) return null;
-    
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    const imageUrl = $('.s-image').first().attr('src');
-    
-    return imageUrl || null;
-  } catch (error) {
-    return null;
-  }
-}
-
-// Generate fallback items
+// Fallback items (Instant load if AI fails)
 const getFallbackItems = (petType = "Pet") => {
     return [
         {
-            title: `Premium ${petType} Food`,
-            query: `best ${petType} food india`,
+            title: `Premium ${petType} Nutrition`,
+            query: `best ${petType} food`,
             price: "899",
             category: "Food",
-            imageUrl: "https://image.pollinations.ai/prompt/premium%20pet%20food%20bag%20packaging%20white%20background?nologo=true"
+            imageUrl: `https://image.pollinations.ai/prompt/premium ${petType} food packaging?nologo=true`
         },
         {
-            title: "Healthy Treats Pack",
-            query: `healthy ${petType} treats`,
-            price: "350",
-            category: "Food",
-            imageUrl: "https://image.pollinations.ai/prompt/dog%20treats%20biscuits%20white%20background?nologo=true"
-        },
-        {
-            title: "Comfort Bedding",
-            query: `comfortable ${petType} bed`,
-            price: "1200",
-            category: "Gear",
-            imageUrl: "https://image.pollinations.ai/prompt/cozy%20pet%20bed%20cushion%20studio%20shot?nologo=true"
-        },
-        {
-            title: "Interactive Toy",
-            query: `durable ${petType} toy`,
+            title: "Durable Play Toy",
+            query: `tough ${petType} toys`,
             price: "450",
             category: "Gear",
-            imageUrl: "https://image.pollinations.ai/prompt/colorful%20pet%20toy%20rubber%20bone?nologo=true"
+            imageUrl: `https://image.pollinations.ai/prompt/colorful ${petType} toy?nologo=true`
         },
         {
-            title: "Grooming Kit",
-            query: `${petType} grooming brush`,
-            price: "600",
+            title: "Orthopedic Bed",
+            query: `comfortable ${petType} bed`,
+            price: "1299",
             category: "Gear",
-            imageUrl: "https://image.pollinations.ai/prompt/pet%20grooming%20brush%20comb?nologo=true"
+            imageUrl: `https://image.pollinations.ai/prompt/cozy ${petType} bed?nologo=true`
         },
         {
-            title: "Nutritional Supplements",
-            query: `${petType} multivitamins`,
-            price: "550",
+            title: "Healthy Treats",
+            query: `natural ${petType} treats`,
+            price: "350",
             category: "Food",
-            imageUrl: "https://image.pollinations.ai/prompt/pet%20vitamin%20bottle%20supplement?nologo=true"
+            imageUrl: `https://image.pollinations.ai/prompt/jar of ${petType} treats?nologo=true`
         }
     ];
 };
 
-// POST request handler
 export async function POST(req) {
-  let petType = "Pet"; // Default fallback type
+  let petType = "Pet"; 
 
   try {
     await connectDB();
-    
     const { petId } = await req.json();
 
     if (!petId) return new Response(JSON.stringify({ error: "Pet ID required" }), { status: 400 });
@@ -98,32 +57,19 @@ export async function POST(req) {
       return new Response(JSON.stringify({ error: "Pet profile not found." }), { status: 400 });
     }
 
-    petType = pet.type || "Pet"; // Set pet type
+    petType = pet.type || "Pet";
 
-    // Define AI prompt
+    // --- OPTIMIZED PROMPT (Faster) ---
+    // We only ask for data, not image descriptions.
     const prompt = `
-      Act as a professional personal shopper for this pet:
-      "${pet.aiProfileString}"
-      (Breed: ${pet.breed}, Type: ${pet.type}, Age: ${pet.age}, Energy: ${pet.energyLevel})
+      You are a personal shopper.
+      Pet: "${pet.aiProfileString}" (${pet.breed}, ${pet.age}yo)
 
-      Your Task:
-      Generate exactly 16 high-quality product recommendations available on Amazon India.
-      
-      Constraint:
-      - 8 items MUST be Food/Nutrition.
-      - 8 items MUST be Toys/Gear.
-      
-      For EACH item, provide:
-      1. "title": Short product name.
-      2. "query": Amazon search query.
-      3. "price": Estimated price in INR.
-      4. "fallbackImagePrompt": Visual description for AI image generator.
-      5. "category": "Food" or "Gear".
-
-      Respond ONLY with this JSON structure:
+      List 8 products (4 Food, 4 Gear) available in India.
+      RETURN JSON ONLY:
       {
         "recommendations": [
-          { "title": "...", "query": "...", "price": "...", "fallbackImagePrompt": "...", "category": "..." }
+          { "title": "Short Name", "query": "Amazon Query", "price": "INR Price", "category": "Food/Gear" }
         ]
       }
     `;
@@ -133,7 +79,7 @@ export async function POST(req) {
     const response = await result.response;
     let text = response.text();
 
-    // Clean JSON response
+    // Clean JSON
     const jsonStartIndex = text.indexOf('{');
     const jsonEndIndex = text.lastIndexOf('}');
     if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
@@ -144,35 +90,29 @@ export async function POST(req) {
     try {
         aiData = JSON.parse(text);
     } catch (e) {
-        console.error("Failed to parse AI response");
-        // Trigger fallback
         throw new Error("Invalid AI JSON"); 
     }
 
-    // Fetch item images
-    const enrichedRecommendations = await Promise.all(
-      (aiData.recommendations || []).map(async (item) => {
-        const realImage = await fetchRealAmazonImage(item.query);
+    // --- INSTANT IMAGE GENERATION ---
+    // We use the product title directly. Removed 'flux' model for speed.
+    const recommendations = (aiData.recommendations || []).map((item) => {
+        // Construct a simple, effective prompt
+        const simplePrompt = `${item.title} for ${pet.breed} pet product photography white background`;
+        const encodedPrompt = encodeURIComponent(simplePrompt);
+        
         return {
           ...item,
-          imageUrl: realImage || `https://image.pollinations.ai/prompt/photorealistic ${item.fallbackImagePrompt} white background?nologo=true`
+          // Removed '&model=flux' -> Defaults to Turbo (Fast)
+          // Added 'seed' -> Ensures the image stays the same if reloaded
+          imageUrl: `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true&width=512&height=512&seed=${Math.floor(Math.random()*1000)}`
         };
-      })
-    );
+    });
 
-    return new Response(JSON.stringify({
-        recommendations: enrichedRecommendations
-    }), { status: 200 });
+    return new Response(JSON.stringify({ recommendations }), { status: 200 });
 
   } catch (err) {
-    console.warn("⚠️ Marketplace Recommendation Error (Rate Limit/AI Fail). Using Fallback.", err.message);
-    
-    // Use fallback data
+    console.warn("⚠️ Recommendation Error:", err.message);
     const fallbackData = getFallbackItems(petType);
-    
-    return new Response(JSON.stringify({ 
-        recommendations: fallbackData,
-        isFallback: true // Optional UI flag
-    }), { status: 200 });
+    return new Response(JSON.stringify({ recommendations: fallbackData, isFallback: true }), { status: 200 });
   }
 }

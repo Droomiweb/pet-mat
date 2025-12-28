@@ -1,88 +1,89 @@
 // app/api/ai-advisor/chat/route.js
 
-// Standard imports
-import { textModel } from "../../../lib/gemini"; // Gemini AI instance
+import { textModel } from "../../../lib/gemini"; 
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
 
-// Fetch pet details
+// Helper to safely get pet details
 async function getPetDetails(petId) {
-  const pet = await Pet.findById(petId).lean();
-  if (!pet) return null;
-
-  // Handle missing names
-  const sireInfo = pet.sireName || (pet.sireId ? "Registered (Name hidden)" : "Unknown");
-  const damInfo = pet.damName || (pet.damId ? "Registered (Name hidden)" : "Unknown");
-
-  return {
-    ...pet,
-    lineageInfo: `Sire: ${sireInfo}, Dam: ${damInfo}`
-  };
+  if (!petId) return null;
+  try {
+    const pet = await Pet.findById(petId).lean();
+    if (!pet) return null;
+    const sireInfo = pet.sireName || (pet.sireId ? "Registered" : "Unknown");
+    const damInfo = pet.damName || (pet.damId ? "Registered" : "Unknown");
+    return { ...pet, lineageInfo: `Sire: ${sireInfo}, Dam: ${damInfo}` };
+  } catch (e) {
+    console.error("Error fetching pet:", e);
+    return null;
+  }
 }
 
-// POST request handler
 export async function POST(req) {
   try {
     await connectDB();
     
-    // Parse request body
-    const { petAId, petBId, history, message } = await req.json();
+    // We still accept userId for potential future logging, but we removed the strict blocking
+    const { petAId, petBId, history, message, userId } = await req.json();
 
-    if (!petAId || !petBId) return new Response(JSON.stringify({ error: "IDs required" }), { status: 400 });
+    if (!petAId || !petBId) {
+        return new Response(JSON.stringify({ error: "Pet IDs required" }), { status: 400 });
+    }
 
-    // Fetch pet profiles
-    const petA = await getPetDetails(petAId); // User's Pet
-    const petB = await getPetDetails(petBId); // Target Pet 
+    const petA = await getPetDetails(petAId);
+    const petB = await getPetDetails(petBId);
 
     if (!petA || !petB) return new Response(JSON.stringify({ error: "Pets not found" }), { status: 404 });
 
-    // Format vaccination list
-    const vaxList = petB.vaccinationHistory && petB.vaccinationHistory.length > 0
+    // --- RESTORED DATA ACCESS ---
+    // The AI is given full access to medical logs so it can answer user questions accurately.
+    
+    const vaxList = petB.vaccinationHistory?.length > 0
         ? petB.vaccinationHistory.map(v => `- ${v.vaccineName} (Expires: ${new Date(v.expiryDate).toLocaleDateString()})`).join("\n")
         : "No vaccination records visible.";
 
-    // Define AI instructions
-    const systemPrompt = `
-      You are an expert Pet Advisor and Geneticist.
-      The user (owner of Pet A) is asking about Pet B (the target pet).
-
-      **TARGET PET (PET B) DETAILS:**
-      - Name: ${petB.name}
-      - Species: ${petB.type}
-      - Breed: ${petB.breed}
-      - Age: ${petB.age}
-      - Lineage: ${petB.lineageInfo}
-      
-      **MEDICAL HISTORY LOG (From Dr. Paws):**
-      """
-      ${petB.medicalHistoryLog || "No specific medical issues recorded."}
-      """
-
-      **VACCINATION STATUS:**
-      ${vaxList}
-
-      **USER'S PET (PET A - For Compatibility Context):**
-      - Name: ${petA.name}
-      - Breed: ${petA.breed}
-      - Species: ${petA.type}
-
-      **INSTRUCTIONS:**
-      1. Answer questions specifically about Pet B's health, history, or traits using the data above.
-      2. If the user asks about "medical details", "surgery", or "illness", YOU MUST summarize the "MEDICAL HISTORY LOG" provided above.
-      3. If the log is empty/default, state that no history is available.
-      4. If asked about offspring, analyze compatibility based on Breed/Species.
+    const medicalContext = `
+    **PET B DETAILED HEALTH RECORDS**:
+    - Medical History Log: ${petB.medicalHistoryLog || "Healthy, no major issues recorded."}
+    - Vaccination Status: \n${vaxList}
+    - Weight: ${petB.weight || "Unknown"} kg
+    - Energy Level: ${petB.energyLevel || "Unknown"}
+    - Age: ${petB.age} years
+    - Gender: ${petB.gender}
+    - Lineage: ${petB.lineageInfo}
     `;
 
-    // Initialize chat history
+    // Sanitize history to prevent 400 errors from empty messages
+    const validHistory = (history || []).filter(item => {
+      return item.role && item.parts && item.parts[0] && item.parts[0].text && item.parts[0].text.trim() !== "";
+    });
+
+    const systemPrompt = `
+      You are **Dr. Paws**, a warm, enthusiastic, and highly expert Veterinarian and Geneticist.
+      
+      **CONTEXT**:
+      You are analyzing a potential match/interaction between:
+      1. **User's Pet (Pet A)**: ${petA.name} (${petA.breed}, ${petA.gender})
+      2. **Target Pet (Pet B)**: ${petB.name} (${petB.breed}, ${petB.gender})
+      
+      ${medicalContext}
+      
+      **INSTRUCTIONS**:
+      - You HAVE access to Pet B's medical logs and vaccinations. Use this information to answer the user's questions accurately.
+      - If the user asks about health, use the 'Medical History Log' to give a specific answer.
+      - If the medical log mentions issues (e.g., "Hip Dysplasia", "Recent Surgery"), politely inform the user as it impacts breeding/play dates.
+      - **Tone**: Professional, friendly, and transparent.
+    `;
+
+    // Start Chat
     const chat = textModel.startChat({
       history: [
         { role: "user", parts: [{ text: systemPrompt }] },
-        { role: "model", parts: [{ text: `I have reviewed ${petB.name}'s full profile, including medical logs and vaccinations. What would you like to know?` }] },
-        ...history // Add user history
+        { role: "model", parts: [{ text: `Hello! I'm Dr. Paws. I've got ${petB.name}'s file right here. What a lovely ${petB.breed}! How can I help you?` }] },
+        ...validHistory
       ]
     });
 
-    // Get AI response
     const result = await chat.sendMessage(message);
     const responseText = result.response.text();
 
@@ -90,6 +91,6 @@ export async function POST(req) {
 
   } catch (err) {
     console.error("Advisor Error:", err);
-    return new Response(JSON.stringify({ error: "Failed to generate advice" }), { status: 500 });
+    return new Response(JSON.stringify({ error: "Dr. Paws is taking a quick break. Please try again." }), { status: 500 });
   }
 }

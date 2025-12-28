@@ -1,9 +1,7 @@
 // app/api/chat/route.js
 
-// Standard imports
 import { db } from "../../lib/firebase"; 
-// Firestore methods
-import { collection, addDoc, serverTimestamp, doc, setDoc, increment } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, setDoc, increment, getDoc, deleteDoc, getDocs, writeBatch } from "firebase/firestore";
 import connectDB from "../../lib/mongodb";
 import Pet from "../../models/PetModel";
 import { v2 as cloudinary } from "cloudinary";
@@ -117,5 +115,53 @@ export async function POST(req) {
   } catch (err) {
     console.error("Error sending message:", err);
     return new Response(JSON.stringify({ error: "Failed to send message" }), { status: 500 });
+  }
+}
+
+// --- NEW DELETE METHOD ---
+export async function DELETE(req) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const conversationId = searchParams.get("conversationId");
+    const userId = searchParams.get("userId");
+
+    if (!conversationId || !userId) {
+      return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
+    }
+
+    // 1. Verify ownership (Optional but recommended)
+    const convRef = doc(db, "conversations", conversationId);
+    const convSnap = await getDoc(convRef);
+
+    if (convSnap.exists()) {
+        const data = convSnap.data();
+        if (!data.participants || !data.participants.includes(userId)) {
+            return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
+        }
+    } else {
+        return new Response(JSON.stringify({ error: "Conversation not found" }), { status: 404 });
+    }
+
+    // 2. Delete all messages in subcollection
+    // Firestore requires deleting documents individually or in batches
+    const messagesRef = collection(db, "conversations", conversationId, "messages");
+    const messagesSnap = await getDocs(messagesRef);
+
+    const batch = writeBatch(db);
+    messagesSnap.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+    });
+
+    // 3. Delete the conversation document itself
+    batch.delete(convRef);
+
+    // Commit changes
+    await batch.commit();
+
+    return new Response(JSON.stringify({ success: true, message: "Conversation deleted" }), { status: 200 });
+
+  } catch (error) {
+    console.error("Delete Chat Error:", error);
+    return new Response(JSON.stringify({ error: "Failed to delete chat" }), { status: 500 });
   }
 }

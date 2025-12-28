@@ -9,7 +9,6 @@ import Image from "next/image";
 // --- ICONS ---
 const ShoppingBagIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>;
 const SparklesIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" /></svg>;
-const FilterIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg>;
 
 // --- SKELETON LOADER ---
 const ProductSkeleton = () => (
@@ -27,7 +26,7 @@ const ProductSkeleton = () => (
 export default function MarketplacePage() {
   const [myPets, setMyPets] = useState([]);
   const [selectedPetId, setSelectedPetId] = useState("");
-  const [activeCategory, setActiveCategory] = useState("All"); // All, Food, Gear
+  const [activeCategory, setActiveCategory] = useState("All"); 
   
   const [recData, setRecData] = useState({ recommendations: [] });
   const [recLoading, setRecLoading] = useState(false);
@@ -46,7 +45,6 @@ export default function MarketplacePage() {
             if (res.ok) {
                 const data = await res.json();
                 setMyPets(data);
-                // Default select first pet if available and not already set
                 if (data.length > 0 && !selectedPetId) {
                     setSelectedPetId(data[0]._id);
                 }
@@ -55,9 +53,9 @@ export default function MarketplacePage() {
     };
     
     fetchUserPets();
-  }, [user, authLoading, selectedPetId]); // Added selectedPetId dep to prevent overwrite loop if logic changes
+  }, [user, authLoading, selectedPetId]); 
 
-  // 2. Fetch Recommendations when Pet Changes
+  // 2. Fetch Recommendations
   useEffect(() => {
     const fetchRecommendations = async () => {
         if (!selectedPetId) return;
@@ -65,10 +63,8 @@ export default function MarketplacePage() {
         const pet = myPets.find(p => p._id === selectedPetId);
         if (!pet) return;
 
-        // Reset Data
         setRecData({ recommendations: [] });
         
-        // If profile exists, fetch
         if (pet.aiProfileString) {
             setRecLoading(true);
             try {
@@ -94,14 +90,11 @@ export default function MarketplacePage() {
   // Filter Logic
   const filteredProducts = recData.recommendations.filter(item => {
       if (activeCategory === "All") return true;
-      // Map "Food" category from API to "Nutrition" tab
       if (activeCategory === "Nutrition") return item.category === "Food";
-      // Map "Gear" category from API to "Toys & Gear" tab
       if (activeCategory === "Toys & Gear") return item.category !== "Food"; 
       return true;
   });
 
-  // --- RENDER ---
   if (authLoading) return null;
 
   if (!user) {
@@ -127,20 +120,17 @@ export default function MarketplacePage() {
     <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-8 pb-20">
       <div className="max-w-7xl mx-auto">
         
-        {/* --- HEADER SECTION --- */}
+        {/* --- HEADER --- */}
         <div className="flex flex-col md:flex-row justify-between items-end mb-10 gap-6">
             <div>
                 <h1 className="text-4xl font-extrabold text-[#333333] flex items-center gap-3">
-                    Marketplace  {/*<span className="bg-[#50E3C2] text-white text-xs px-2 py-1 rounded-lg align-top -mt-4 rotate-12 shadow-sm">Beta</span>*/}
+                    Marketplace 
                 </h1>
                 <p className="text-gray-500 mt-2 font-medium">Curated essentials for your furry family members.</p>
             </div>
-            
-            {/* ADD PRODUCT BUTTON (Only visible if you want users to add products, otherwise keep it for admins) */}
-            {/* <Link href="/Add-product" className="...">+ Add Listing</Link> */}
         </div>
 
-        {/* --- PET SELECTOR BAR --- */}
+        {/* --- PET SELECTOR --- */}
         {myPets.length > 0 && (
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-8 overflow-x-auto">
                 <div className="flex items-center gap-4 min-w-max">
@@ -175,13 +165,12 @@ export default function MarketplacePage() {
             </div>
         )}
 
-        {/* --- MAIN CONTENT AREA --- */}
+        {/* --- CONTENT --- */}
         {!selectedPet ? (
             <div className="text-center py-20 text-gray-500">
                 <p>No pets found. <Link href="/Addpet" className="text-[#4A90E2] font-bold hover:underline">Add a pet</Link> to start shopping.</p>
             </div>
         ) : !selectedPet.aiProfileString ? (
-            // NO PROFILE STATE
             <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-3xl p-10 text-white text-center shadow-xl relative overflow-hidden">
                 <div className="relative z-10 max-w-2xl mx-auto">
                     <h2 className="text-3xl font-bold mb-4">Unlock Personal Shopper 🛍️</h2>
@@ -195,12 +184,8 @@ export default function MarketplacePage() {
                         <SparklesIcon /> Create Profile
                     </Link>
                 </div>
-                {/* Decorative circles */}
-                <div className="absolute top-0 left-0 w-64 h-64 bg-white opacity-10 rounded-full -translate-x-1/2 -translate-y-1/2"></div>
-                <div className="absolute bottom-0 right-0 w-96 h-96 bg-white opacity-10 rounded-full translate-x-1/3 translate-y-1/3"></div>
             </div>
         ) : (
-            // RECOMMENDATIONS VIEW
             <div>
                 {/* Categories */}
                 <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
@@ -236,10 +221,12 @@ export default function MarketplacePage() {
                                     }`}>
                                         {item.category === 'Food' ? 'Nutrition' : 'Gear'}
                                     </span>
+                                    {/* Using standard img for faster external loading without optimization overhead */}
                                     <img 
                                         src={item.imageUrl} 
                                         alt={item.title}
                                         className="max-h-full max-w-full object-contain mix-blend-multiply transition-transform duration-500 group-hover:scale-110"
+                                        loading="lazy"
                                     />
                                 </div>
 
