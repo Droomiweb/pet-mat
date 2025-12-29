@@ -198,6 +198,22 @@ export async function POST(req) {
   try {
     await connectDB();
 
+    // 1. Authorization Setup: Get the authenticated user's ID
+    // Note: We assume the authenticating middleware provides the user's secure ID 
+    // (e.g., Firebase UID) in a header like X-Auth-User-ID.
+    const authenticatedUserId = req.headers.get("X-Auth-User-ID");
+    
+    if (!authenticatedUserId) {
+        console.warn("[SECURITY] Attempted Pet Creation without X-Auth-User-ID header.");
+        return new Response(
+            JSON.stringify({ error: "Authentication required to create a pet." }),
+            { status: 401 }
+        );
+    }
+
+    // 2. Parse request body
+    const body = await req.json();
+
     const {
       name,
       type,
@@ -210,9 +226,19 @@ export async function POST(req) {
       imagesBase64,
       ownerId,
       ownerName,
-    } = await req.json();
+    } = body;
 
-    // Validate input fields
+    // 3. Primary Impersonation Check (FIX APPLIED HERE)
+    // Ensure the ownerId provided in the request body matches the ID of the authenticated requester.
+    if (ownerId !== authenticatedUserId) {
+        console.error(`[SECURITY VIOLATION] Impersonation attempt: User ${authenticatedUserId} tried to register pet for owner ${ownerId}.`);
+        return new Response(
+            JSON.stringify({ error: "Forbidden: The specified ownerId does not match the authenticated user." }),
+            { status: 403 }
+        );
+    }
+
+    // 4. Validate input fields
     if (
       !name || !type || !userProvidedAge || !breed || !gender ||
       !listingType || !certificateBase64 || !imagesBase64 || !ownerId || !ownerName
@@ -375,6 +401,15 @@ export async function POST(req) {
     );
   } catch (err) {
     console.error("Error adding pet:", err);
+    // Handle JSON parsing error specifically if req.json() fails
+    if (err.type === 'invalid_json') {
+      return new Response(
+        JSON.stringify({
+          error: "Invalid JSON format in request body.",
+        }),
+        { status: 400 }
+      );
+    }
     return new Response(
       JSON.stringify({
         error: err.message || "Failed to add pet due to server error.",
@@ -523,3 +558,4 @@ export async function GET(req) {
     });
   }
 }
+```
