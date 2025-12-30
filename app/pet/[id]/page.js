@@ -285,13 +285,72 @@ export default function PetDetailPage() {
     window.open(`http://googleusercontent.com/maps.google.com/?q=${lat},${lng}`, "_blank");
   };
 
-  const generateCertificate = () => {
+  const generateCertificate = async () => {
     setCertLoading(true);
-    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    doc.setFontSize(22);
-    doc.text(`Official PetLink Certificate: ${pet.name}`, 105, 100, { align: "center" });
-    doc.save(`${pet.name}_Certificate.pdf`);
-    setCertLoading(false);
+
+    try {
+      // 1. Check if we have a stored certificate URL
+      const fileUrl = pet.certificateUrl; // from Cloudinary
+
+      if (fileUrl) {
+        try {
+          // Attempt 1: Fetch blob for clean filename download
+          const response = await fetch(fileUrl, { mode: 'cors' });
+          if (!response.ok) throw new Error("Fetch failed");
+
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          const ext = fileUrl.split('.').pop().split('?')[0] || "jpg";
+          link.download = `${pet.name}_Official_Certificate.${ext}`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+        } catch (fetchErr) {
+          console.warn("CORS/Fetch error, falling back to direct link:", fetchErr);
+          // Attempt 2: Direct open (Browser handles it)
+          window.open(fileUrl, "_blank");
+        }
+      } else {
+        // Fallback: Generate the generic PDF if no file is uploaded
+        const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+
+        // Fancy Border
+        doc.setLineWidth(2);
+        doc.setDrawColor(74, 144, 226);
+        doc.rect(10, 10, 277, 190);
+
+        doc.setFontSize(30);
+        doc.setTextColor(74, 144, 226);
+        doc.text("PetLink Certificate", 148.5, 40, { align: "center" });
+
+        doc.setFontSize(16);
+        doc.setTextColor(100);
+        doc.text("This certifies that", 148.5, 60, { align: "center" });
+
+        doc.setFontSize(40);
+        doc.setTextColor(0);
+        doc.text(pet.name, 148.5, 80, { align: "center" });
+
+        doc.setFontSize(14);
+        doc.text(`(Breed: ${pet.breed} | Age: ${pet.age})`, 148.5, 95, { align: "center" });
+
+        doc.setFontSize(12);
+        doc.text("Is a registered member of the PetLink Community.", 148.5, 120, { align: "center" });
+
+        doc.text(`Owner ID: ${pet.ownerId}`, 20, 180);
+        doc.text(`Date: ${new Date().toLocaleDateString()}`, 220, 180);
+
+        doc.save(`${pet.name}_Generated_Certificate.pdf`);
+      }
+    } catch (e) {
+      console.error("Certificate download failed:", e);
+      alert("Failed to download certificate. Please try again.");
+    } finally {
+      setCertLoading(false);
+    }
   };
 
   // --- AI HANDLERS ---

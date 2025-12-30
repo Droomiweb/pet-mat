@@ -31,14 +31,14 @@ export async function POST(req) {
     try {
       const tesseract = await import("tesseract.js");
       const worker = await tesseract.createWorker();
-      
+
       // Initialize language (English)
       await worker.loadLanguage("eng");
       await worker.initialize("eng");
-      
+
       const { data: { text } } = await worker.recognize(certificateUrl);
       ocrText = text;
-      
+
       await worker.terminate();
     } catch (ocrErr) {
       console.error("OCR Failed:", ocrErr);
@@ -71,43 +71,43 @@ export async function POST(req) {
     const result = await textModel.generateContent(prompt);
     const response = await result.response;
     let aiJson = response.text().replace(/```json|```/g, "").trim(); // Clean cleanup
-    
+
     let aiData;
     try {
-        aiData = JSON.parse(aiJson);
+      aiData = JSON.parse(aiJson);
     } catch (e) {
-        throw new Error("AI failed to parse document structure.");
+      throw new Error("AI failed to parse document structure.");
     }
 
     if (!aiData.isValid || !aiData.vaccineName || !aiData.expiryDate) {
-        return new Response(JSON.stringify({ 
-            error: "Verification Failed", 
-            details: aiData.reason || "Could not clearly identify vaccine name or date." 
-        }), { status: 422 });
+      return new Response(JSON.stringify({
+        error: "Verification Failed",
+        details: aiData.reason || "Could not clearly identify vaccine name or date."
+      }), { status: 422 });
     }
 
     // 4. UPDATE DATABASE
     const newVaccineRecord = {
-        vaccineName: aiData.vaccineName,
-        vaccinationDate: new Date(), // Assuming uploaded today
-        expiryDate: new Date(aiData.expiryDate),
-        status: 'active'
+      vaccineName: aiData.vaccineName,
+      vaccinationDate: new Date(), // Assuming uploaded today
+      expiryDate: new Date(aiData.expiryDate),
+      status: 'active'
     };
 
     const updatedPet = await Pet.findByIdAndUpdate(
-        petId,
-        { 
-            $push: { vaccinationHistory: newVaccineRecord },
-            // Optionally save the certificate URL if you have a field for it
-            // $set: { lastCertificateUrl: certificateUrl } 
-        },
-        { new: true }
+      petId,
+      {
+        $push: { vaccinationHistory: newVaccineRecord },
+        // Save the certificate URL so it can be downloaded later
+        $set: { certificateUrl: certificateUrl }
+      },
+      { new: true }
     );
 
-    return new Response(JSON.stringify({ 
-        success: true, 
-        message: "Health record updated successfully!",
-        record: newVaccineRecord 
+    return new Response(JSON.stringify({
+      success: true,
+      message: "Health record updated successfully!",
+      record: newVaccineRecord
     }), { status: 200 });
 
   } catch (error) {
