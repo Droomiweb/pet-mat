@@ -2,9 +2,8 @@ import mongoose from "mongoose";
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
-if (!MONGODB_URI) {
-  throw new Error("❌ MONGODB_URI is not defined in .env.local");
-}
+// MONGODB_URI check moved inside connectDB to prevent build crash
+
 
 /**
  * Global is used here to maintain a cached connection across hot reloads
@@ -18,6 +17,10 @@ if (!cached) {
 }
 
 async function connectDB() {
+  if (!MONGODB_URI) {
+    throw new Error("❌ MONGODB_URI is not defined in .env.local");
+  }
+
   if (cached.conn) {
     // Return the cached connection if it exists
     return cached.conn;
@@ -34,7 +37,7 @@ async function connectDB() {
       return mongoose;
     });
   }
-  
+
   try {
     // Wait for the connection promise to resolve
     cached.conn = await cached.promise;
@@ -43,7 +46,7 @@ async function connectDB() {
     console.error("MongoDB connection error:", err);
     throw err;
   }
-  
+
   return cached.conn;
 }
 

@@ -43,14 +43,14 @@ export default async function RootLayout({ children }) {
   const isMaintenanceMode = await getCachedMaintenanceStatus();
 
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={poppins.className}>
         <AuthProvider>
           <NavbarrWrapper isMaintenanceMode={isMaintenanceMode}>
-              {children}
+            {children}
           </NavbarrWrapper>
         </AuthProvider>
-        <Analytics/>
+        <Analytics />
       </body>
     </html>
   );

@@ -1,10 +1,11 @@
 // app/api/ai-advisor/generate-image/route.js
 
 // Standard imports
-import { visionModel } from "../../../lib/gemini"; 
-import connectDB from "../../../lib/mongodb";    
-import Pet from "../../../models/PetModel";      
-import GeneratedImage from "../../../models/GeneratedImage"; // Import the model
+import { visionModel } from "../../../lib/gemini";
+import connectDB from "../../../lib/mongodb";
+import Pet from "../../../models/PetModel";
+import GeneratedImage from "../../../models/GeneratedImage";
+import cloudinary from "../../../lib/cloudinary";
 
 // Convert image format
 async function fetchImageAsBase64(url) {
@@ -23,27 +24,27 @@ async function fetchImageAsBase64(url) {
 export async function POST(req) {
   try {
     await connectDB();
-    
+
     // Parse body
     const { petAId, petBId, userId, regenerate } = await req.json();
 
     if (!petAId || !petBId || !userId) {
-        return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
+      return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
     }
 
     // 1. Check if image already exists in DB (unless regenerating)
     if (!regenerate) {
-        const existingImage = await GeneratedImage.findOne({ 
-            parentAId: petAId, 
-            parentBId: petBId 
-        }).sort({ createdAt: -1 }); // Get latest
+      const existingImage = await GeneratedImage.findOne({
+        parentAId: petAId,
+        parentBId: petBId
+      }).sort({ createdAt: -1 }); // Get latest
 
-        if (existingImage) {
-            return new Response(JSON.stringify({ 
-                imageUrl: existingImage.imageUrl, 
-                fromCache: true 
-            }), { status: 200 });
-        }
+      if (existingImage) {
+        return new Response(JSON.stringify({
+          imageUrl: existingImage.imageUrl,
+          fromCache: true
+        }), { status: 200 });
+      }
     }
 
     // 2. Fetch parent pets for generation
@@ -51,7 +52,7 @@ export async function POST(req) {
     const petB = await Pet.findById(petBId);
 
     if (!petA || !petB) {
-        return new Response(JSON.stringify({ error: "Pets not found" }), { status: 404 });
+      return new Response(JSON.stringify({ error: "Pets not found" }), { status: 404 });
     }
 
     // Determine species logic
@@ -90,39 +91,65 @@ export async function POST(req) {
 
     // Attach parent images
     if (petA.imageUrls && petA.imageUrls.length > 0) {
-        const imgA = await fetchImageAsBase64(petA.imageUrls[0]);
-        if (imgA) inputParts.push({ inlineData: { data: imgA, mimeType: "image/jpeg" } });
+      const imgA = await fetchImageAsBase64(petA.imageUrls[0]);
+      if (imgA) inputParts.push({ inlineData: { data: imgA, mimeType: "image/jpeg" } });
     }
 
     if (petB.imageUrls && petB.imageUrls.length > 0) {
-        const imgB = await fetchImageAsBase64(petB.imageUrls[0]);
-        if (imgB) inputParts.push({ inlineData: { data: imgB, mimeType: "image/jpeg" } });
+      const imgB = await fetchImageAsBase64(petB.imageUrls[0]);
+      if (imgB) inputParts.push({ inlineData: { data: imgB, mimeType: "image/jpeg" } });
     }
 
     // Generate visual description
     const result = await visionModel.generateContent(inputParts);
     const response = await result.response;
     const imageDescription = response.text().replace(/\n/g, " ").trim();
-    
+
     console.log("Generated Prompt:", imageDescription);
 
     // 4. Generate Image URL (Pollinations)
     const seed = Math.floor(Math.random() * 99999);
     const encodedPrompt = encodeURIComponent(imageDescription + " --ar 1:1 --no-crop");
-    
+
     // Explicitly requesting 1024x1024
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true&seed=${seed}&model=flux&width=1024&height=1024`;
+    let pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true&seed=${seed}&model=flux&width=1024&height=1024`;
+
+    console.log("Fetching image from:", pollinationsUrl);
+
+    const imageRes = await fetch(pollinationsUrl, {
+      headers: process.env.POLLINATIONS_API_KEY ? { "Authorization": `Bearer ${process.env.POLLINATIONS_API_KEY}` } : {}
+    });
+
+    if (!imageRes.ok) throw new Error(`Pollinations API Failed: ${imageRes.statusText}`);
+
+    const buffer = Buffer.from(await imageRes.arrayBuffer());
+
+    const uploadToCloudinary = () => {
+      return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          { folder: "pet_generated_art" },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        uploadStream.end(buffer);
+      });
+    };
+
+    const cloudinaryResult = await uploadToCloudinary();
+    const finalImageUrl = cloudinaryResult.secure_url;
 
     // 5. Save to Database
     await GeneratedImage.create({
-        userId: userId,
-        parentAId: petAId,
-        parentBId: petBId,
-        imageUrl: imageUrl,
-        promptUsed: imageDescription
+      userId: userId,
+      parentAId: petAId,
+      parentBId: petBId,
+      imageUrl: finalImageUrl,
+      promptUsed: imageDescription
     });
 
-    return new Response(JSON.stringify({ imageUrl, fromCache: false }), { status: 200 });
+    return new Response(JSON.stringify({ imageUrl: finalImageUrl, fromCache: false }), { status: 200 });
 
   } catch (err) {
     console.error("Image Gen Error:", err);

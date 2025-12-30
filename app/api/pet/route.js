@@ -7,6 +7,7 @@ import User from "../../models/User";
 import { v2 as cloudinary } from "cloudinary";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
+import { verifyAuth } from "../../lib/auth-middleware";
 
 // Service configuration
 cloudinary.config({
@@ -205,17 +206,27 @@ export async function POST(req) {
       breed,
       gender,
       listingType,
-      certificateBase64,
       certificateMimeType,
       imagesBase64,
-      ownerId,
       ownerName,
     } = await req.json();
+
+    // Verify Authentication
+    let decodedToken;
+    try {
+      decodedToken = await verifyAuth(req);
+    } catch (authError) {
+      return new Response(JSON.stringify({ error: authError.message }), { status: 401 });
+    }
+
+    // Enforce ownerId from token
+    const ownerId = decodedToken.uid;
 
     // Validate input fields
     if (
       !name || !type || !userProvidedAge || !breed || !gender ||
-      !listingType || !certificateBase64 || !imagesBase64 || !ownerId || !ownerName
+      !name || !type || !userProvidedAge || !breed || !gender ||
+      !listingType || !certificateBase64 || !imagesBase64 || !ownerName
     ) {
       return new Response(
         JSON.stringify({ error: "All fields are required" }),
@@ -419,7 +430,7 @@ export async function GET(req) {
       // Apply safety rules
       petQuery.isPregnant = { $ne: true };
       petQuery.verificationStatus = "verified";
-      petQuery.isLost = { $ne: true }; 
+      petQuery.isLost = { $ne: true };
       petQuery.adoptionRequests = {
         $not: { $elemMatch: { status: "approved" } },
       };
@@ -429,11 +440,11 @@ export async function GET(req) {
         "matingHistory.requesterPetId",
         { "matingHistory.status": "mated" }
       );
-      
+
       // We combine existing query with the complex OR logic for mated/gender checks
       petQuery.$and = [
         // Preserve any existing conditions
-        { ...petQuery }, 
+        { ...petQuery },
         {
           $or: [
             { gender: { $ne: "Female" } },
@@ -446,7 +457,7 @@ export async function GET(req) {
           ]
         }
       ];
-      
+
       // Clean up the initial flat properties if they are now wrapped in $and
       // (Optimization: In a simple case we can leave them, but to be safe vs overwrites)
       // Actually, standard practice: keep simple filters top-level, only complex logic in $and or $or.
@@ -460,13 +471,13 @@ export async function GET(req) {
         { "location.city": city },
         "firebaseUid"
       ).lean();
-      
+
       const userUids = usersInCity.map((u) => u.firebaseUid);
-      
+
       // Add this restriction to the database query
       if (petQuery.ownerId) {
         // If there was already an exclude filter or other owner filter
-        petQuery.ownerId = { $in: userUids, ...petQuery.ownerId }; 
+        petQuery.ownerId = { $in: userUids, ...petQuery.ownerId };
       } else {
         petQuery.ownerId = { $in: userUids };
       }
@@ -503,14 +514,14 @@ export async function GET(req) {
           ownerId: pet.ownerId,
           isLost: pet.isLost,
           lastSeenDate: pet.lastSeenDate,
-          location: owner?.location || null, 
+          location: owner?.location || null,
         };
       })
     );
 
     return new Response(JSON.stringify(petsWithLocation), {
       status: 200,
-      headers: { 
+      headers: {
         "Content-Type": "application/json",
         "X-Total-Count": pets.length.toString(), // Useful for frontend
         "X-Page": page.toString()

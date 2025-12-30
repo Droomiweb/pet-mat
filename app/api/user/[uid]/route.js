@@ -3,15 +3,16 @@
 // 1. IMPORTS
 import connectDB from "./../../../lib/mongodb";
 import User from "./../../../models/User";
+import { verifyAuth } from "./../../../lib/auth-middleware";
 
 // 2. GET HANDLER (Fetch User Profile)
 export async function GET(req, context) {
   try {
     await connectDB();
-    
+
     // Extract the Firebase UID from the URL parameters
     const { uid } = await context.params;
-    
+
     // Find the user using the external Firebase ID
     const user = await User.findOne({ firebaseUid: uid }).lean();
 
@@ -22,12 +23,12 @@ export async function GET(req, context) {
     // 3. DATA CLEANUP
     // Remove Mongoose-specific fields that the frontend doesn't need.
     const { _id, __v, ...rest } = user;
-    
+
     // Explicitly handle isAdmin default (false if undefined)
-    return new Response(JSON.stringify({ 
-        _id: _id.toString(), 
-        ...rest, 
-        isAdmin: user.isAdmin || false 
+    return new Response(JSON.stringify({
+      _id: _id.toString(),
+      ...rest,
+      isAdmin: user.isAdmin || false
     }), { status: 200 });
 
   } catch (err) {
@@ -41,12 +42,25 @@ export async function PATCH(req, context) {
   try {
     await connectDB();
     const { uid } = await context.params;
-    
+
+    // Verify Authentication
+    let decodedToken;
+    try {
+      decodedToken = await verifyAuth(req);
+    } catch (authError) {
+      return new Response(JSON.stringify({ error: authError.message }), { status: 401 });
+    }
+
+    // Ensure the requester is modifying their own profile
+    if (decodedToken.uid !== uid) {
+      return new Response(JSON.stringify({ error: "Forbidden: You can only update your own profile" }), { status: 403 });
+    }
+
     // We expect a JSON body with the new Cloudinary URL
     const { avatar } = await req.json();
 
     if (!avatar) {
-        return new Response(JSON.stringify({ error: "Avatar URL is required" }), { status: 400 });
+      return new Response(JSON.stringify({ error: "Avatar URL is required" }), { status: 400 });
     }
 
     // 5. ATOMIC UPDATE

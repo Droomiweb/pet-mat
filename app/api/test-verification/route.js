@@ -13,23 +13,23 @@ cloudinary.config({
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 // Calculate age
 const calculateAgeInYears = (dobString) => {
-    if (!dobString || dobString.toUpperCase() === 'N/A') return null;
-    const parts = dobString.split('/');
-    if (parts.length !== 3) return null;
-    
-    const dob = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-    const now = new Date();
-    
-    if (isNaN(dob.getTime()) || dob > now) return null;
+  if (!dobString || dobString.toUpperCase() === 'N/A') return null;
+  const parts = dobString.split('/');
+  if (parts.length !== 3) return null;
 
-    // Calculate age decimal
-    const totalMonths = (now.getFullYear() - dob.getFullYear()) * 12 + (now.getMonth() - dob.getMonth()) + (now.getDate() < dob.getDate() ? -1 : 0);
-    
-    return Math.round((totalMonths / 12) * 10) / 10;
+  const dob = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+  const now = new Date();
+
+  if (isNaN(dob.getTime()) || dob > now) return null;
+
+  // Calculate age decimal
+  const totalMonths = (now.getFullYear() - dob.getFullYear()) * 12 + (now.getMonth() - dob.getMonth()) + (now.getDate() < dob.getDate() ? -1 : 0);
+
+  return Math.round((totalMonths / 12) * 10) / 10;
 };
 
 // POST request handler
@@ -50,7 +50,7 @@ export async function POST(req) {
 
     // Determine file type
     const mimeType = imageBase64.startsWith('data:application/pdf') ? 'application/pdf' : 'image/jpeg';
-    
+
     // Prepare image data
     const base64Data = imageBase64.split(",")[1] || imageBase64;
     const imagePart = {
@@ -96,88 +96,88 @@ export async function POST(req) {
     // Generate AI analysis
     const result = await model.generateContent([prompt, imagePart]);
     const responseText = result.response.text();
-    
+
     // Parse AI response
     let cleanedText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
     const aiResult = JSON.parse(cleanedText);
 
     // Process verification logic
-    
+
     // Verify owner name
     const extractedOwnerName = aiResult.extractedData?.ownerName?.toLowerCase() || '';
     const expectedOwnerName = ownerName.toLowerCase();
-    
-    const isSubstringMatch = extractedOwnerName.includes(expectedOwnerName) || 
-                             expectedOwnerName.includes(extractedOwnerName);
-                             
+
+    const isSubstringMatch = extractedOwnerName.includes(expectedOwnerName) ||
+      expectedOwnerName.includes(extractedOwnerName);
+
     // Validate match length
     const isSane = extractedOwnerName.length >= 3 || expectedOwnerName.length >= 3;
-    
+
     const ownerNameMatch = isSubstringMatch && isSane;
 
     // Calculate confidence score
     let score = 0;
     let scoreReasons = [];
-    
+
     if (ownerNameMatch) {
-        score += 60;
-        scoreReasons.push("Owner Name Match (60%)");
+      score += 60;
+      scoreReasons.push("Owner Name Match (60%)");
     }
 
     if (aiResult.extractedData?.extractedDOB && aiResult.extractedData.extractedDOB.toUpperCase() !== 'N/A') {
-        score += 20;
-        scoreReasons.push("DOB Extracted (20%)");
+      score += 20;
+      scoreReasons.push("DOB Extracted (20%)");
     }
-    
+
     if (aiResult.vaccinationRecords?.length > 0) {
-        score += 20;
-        scoreReasons.push("Vaccination Records Extracted (20%)");
+      score += 20;
+      scoreReasons.push("Vaccination Records Extracted (20%)");
     }
-    
+
     // Determine final status
     let finalStatus;
     let finalReason;
 
     if (ownerNameMatch) {
-        finalStatus = 'verified';
-        finalReason = `Owner name matched, and key certificate data was successfully extracted. Auto-verified with ${score}% match score.`;
+      finalStatus = 'verified';
+      finalReason = `Owner name matched, and key certificate data was successfully extracted. Auto-verified with ${score}% match score.`;
     } else {
-        finalStatus = 'rejected';
-        finalReason = "Owner Name Mismatch. Primary security check failed (Name on certificate does not match user name).";
+      finalStatus = 'rejected';
+      finalReason = "Owner Name Mismatch. Primary security check failed (Name on certificate does not match user name).";
     }
-    
+
     // Calculate pet age
     const calculatedAge = calculateAgeInYears(aiResult.extractedData?.extractedDOB);
 
     // Process vaccination records
     const parsedVaccinations = (aiResult.vaccinationRecords || []).map(vax => {
-        const parseDate = (dateStr) => {
-            if (!dateStr || dateStr.toUpperCase() === 'N/A') return null;
-            const parts = dateStr.split('/');
-            if (parts.length === 3) {
-                return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-            }
-            return null;
-        };
-
-        const vaxDate = parseDate(vax.vaccinationDate);
-        const expiryDate = parseDate(vax.expiryDate);
-
-        let status = 'active';
-        if (!expiryDate || isNaN(expiryDate.getTime())) {
-            status = 'needs-review'; // Date missing
-        } else if (expiryDate < new Date()) {
-            status = 'expired'; // Date passed
-        } else if (expiryDate < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)) {
-            status = 'upcoming'; // Expires soon
+      const parseDate = (dateStr) => {
+        if (!dateStr || dateStr.toUpperCase() === 'N/A') return null;
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+          return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
         }
-        
-        return {
-            vaccineName: vax.vaccineName || 'Unknown',
-            vaccinationDate: vaxDate?.toISOString() || 'N/A',
-            expiryDate: expiryDate?.toISOString() || 'N/A',
-            status: status,
-        };
+        return null;
+      };
+
+      const vaxDate = parseDate(vax.vaccinationDate);
+      const expiryDate = parseDate(vax.expiryDate);
+
+      let status = 'active';
+      if (!expiryDate || isNaN(expiryDate.getTime())) {
+        status = 'needs-review'; // Date missing
+      } else if (expiryDate < new Date()) {
+        status = 'expired'; // Date passed
+      } else if (expiryDate < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)) {
+        status = 'upcoming'; // Expires soon
+      }
+
+      return {
+        vaccineName: vax.vaccineName || 'Unknown',
+        vaccinationDate: vaxDate?.toISOString() || 'N/A',
+        expiryDate: expiryDate?.toISOString() || 'N/A',
+        status: status,
+      };
     });
 
     // Return detailed results
@@ -187,9 +187,9 @@ export async function POST(req) {
       ownerNameMatch: ownerNameMatch,
       calculatedAge: calculatedAge,
       verificationScore: score, // UI score
-      scoreReasons: scoreReasons, 
+      scoreReasons: scoreReasons,
       vaccinationHistory: parsedVaccinations,
-      
+
       analysis: {
         petName: aiResult.extractedData?.petName,
         ownerName: aiResult.extractedData?.ownerName,
