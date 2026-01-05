@@ -152,12 +152,26 @@ export default function Main() {
     }
   };
 
-  // useEffect: run when auth settles or filters change
+  // useEffect: run when auth settles or filters change, and set up polling
   useEffect(() => {
     if (!authLoading) {
+      // Initial Fetch
       fetchUserPets();
       fetchPets();
-      fetchLostPets(); // include lost pets fetch
+      fetchLostPets();
+
+      // Polling for Matches (Every 60s)
+      // This ensures online users see new matches if a new pet is registered
+      const intervalId = setInterval(() => {
+        if (user) {
+          // We only re-fetch user pets to update suggestions. 
+          // Note: fetchUserPets calls fetchSuggestionsForPet internally.
+          // Optimization: We could separate them, but this is cleaner for now.
+          fetchUserPets(); 
+        }
+      }, 60000); // 60 seconds
+
+      return () => clearInterval(intervalId);
     }
   }, [authLoading, user, filters]); // (userData.city is indirectly handled when auth/user stabilises)
 

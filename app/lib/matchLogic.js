@@ -10,7 +10,7 @@ export async function findMatches(petId) {
         }
 
         // --- CACHE CHECK ---
-        const CACHE_DURATION = 60 * 60 * 1000; // 1 Hour
+        const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 Hours
         const now = new Date();
 
         if (
@@ -199,5 +199,136 @@ export async function findMatches(petId) {
     } catch (err) {
         console.error("Error in logic findMatches:", err);
         throw err;
+    }
+}
+
+/**
+ * TRIGGER: Called when a NEW pet is registered.
+ * Finds all *other* pets that might be looking for this new pet,
+ * runs a quick check, and inserts this new pet into their cache
+ * if they match.
+ */
+export async function integrateNewPetIntoMatches(newPet) {
+    try {
+        if (!newPet || !newPet.listingType === 'Mating') return;
+
+        // 1. Find candidates (Reverse of findMatches)
+        // We look for pets that WOULD include this newPet in their search
+        const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const breedRegex = new RegExp(`^${escapeRegex(newPet.breed.trim())}$`, 'i');
+        
+        const candidates = await Pet.find({
+            _id: { $ne: newPet._id },
+            ownerId: { $ne: newPet.ownerId },
+            type: newPet.type,
+            breed: { $regex: breedRegex },
+            gender: newPet.gender === 'Male' ? 'Female' : 'Male',
+            listingType: 'Mating',
+            // Note: We process even if they have old cache, because we want to INJECT this new one
+        }).lean();
+
+        if (candidates.length === 0) return;
+
+        // 2. Prepare Match Data (Simplified to avoid N x 1 AI calls if possible, or batch)
+        // For high quality, we should do AI. For scaling, maybe basic heuristic first.
+        // Let's do batch AI if candidates < 10, else just basic injection.
+
+        const candidatesWithAi = candidates.filter(c => c.aiProfileString);
+        
+        // We'll process in small batches to not kill the API
+        const processingCandidates = candidatesWithAi.slice(0, 5); // Limit immediate updates to 5 most relevant? Or just 5.
+        // Actually, let's just do a heuristic compatibility for now or a very simple prompt to save tokens.
+        
+        // We will perform a "One-to-Many" comparison: NewPet vs Candidates
+        const prompt = `
+        New Pet: ${JSON.stringify({ 
+            age: newPet.age, 
+            breed: newPet.breed, 
+            profile: newPet.aiProfileString || "Friendly pet" 
+        })}
+
+        Candidates: ${JSON.stringify(processingCandidates.map(c => ({
+            id: c._id.toString(),
+            age: c.age,
+            profile: c.aiProfileString
+        })))}
+
+        Task: Select candidates that are a GOOD match (score > 60) for the New Pet.
+        Return JSON: [{"id": "...", "score": 85, "reason": "..."}]
+        `;
+
+        let matchResults = [];
+        try {
+             if (processingCandidates.length > 0 && newPet.aiProfileString) {
+                const result = await textModel.generateContent(prompt);
+                const response = await result.response;
+                let text = response.text().replace(/```json/g, "").replace(/```/g, "").trim();
+                const start = text.indexOf('[');
+                const end = text.lastIndexOf(']');
+                if (start !== -1 && end !== -1) text = text.substring(start, end + 1);
+                matchResults = JSON.parse(text);
+             }
+        } catch (e) {
+            console.warn("Incremental Match AI failed, falling back to default score", e);
+        }
+
+        const matchMap = new Map(matchResults.map(m => [m.id, m]));
+
+        // 3. Update Caches
+        const updates = candidates.map(async (candidate) => {
+             // Determine score
+             let score = 50;
+             let reason = "New Arrival!";
+
+             if (matchMap.has(candidate._id.toString())) {
+                 const m = matchMap.get(candidate._id.toString());
+                 score = m.score;
+                 reason = m.reason;
+             } else if (!newPet.aiProfileString) {
+                 score = 60; // Default for non-AI pets
+                 reason = "New Breed Match";
+             }
+
+             // Only update if score is decent
+             if (score >= 50) {
+                 // Push to cachedMatches.data, Sort, Slice (keep top 20), Update lastUpdated
+                 
+                 // Get existing cache
+                 let currentCache = candidate.cachedMatches?.data || [];
+                 
+                 // Remove if already exists (rare, but prevents dupes)
+                 currentCache = currentCache.filter(m => m.petId !== newPet._id.toString());
+                 
+                 // Add new
+                 currentCache.push({
+                     petId: newPet._id.toString(),
+                     compatibilityScore: score,
+                     matchReason: reason
+                 });
+
+                 // Sort
+                 currentCache.sort((a,b) => b.compatibilityScore - a.compatibilityScore);
+                 
+                 // Trim
+                 if (currentCache.length > 20) currentCache = currentCache.slice(0, 20);
+
+                 // DB Update
+                 await Pet.updateOne(
+                     { _id: candidate._id },
+                     { 
+                         $set: { 
+                             "cachedMatches.data": currentCache,
+                             "cachedMatches.lastUpdated": new Date() // Force "fresh" status
+                         } 
+                     }
+                 );
+             }
+        });
+
+        await Promise.all(updates);
+
+    } catch (err) {
+        console.error("Error in integrateNewPetIntoMatches:", err);
+        // Don't throw, as this is a background process
     }
 }

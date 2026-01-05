@@ -27,12 +27,13 @@ export async function POST(req) {
     const prompt = `
       Analyze this image carefully.
 
-      **STEP 1: SAFETY CHECK (CRITICAL)**
-      - Does this image contain a human being (face, body, selfie, or person holding the pet)?
-      - If YES, return ONLY: { "isHuman": true }
+      **STEP 1: SAFETY CHECK**
+      - **Focus on the main subject.**
+      - If the image is primarily of a **Human Face/Selfie** (where the human is the clear subject), return: { "isHuman": true }
+      - If the image contains a person **BUT** they are just holding/petting the animal and the **ANIMAL is the main focus**, consider this valid. Return: { "isHuman": false }
       
       **STEP 2: PET IDENTIFICATION**
-      - If NO humans are present, identify the pet.
+      - If the main subject is an animal (even if held by a person), identify it.
       - "type": Choose from ["Dog", "Cat", "Rabbit", "Bird", "Other"].
       - "breed": Identify the specific breed (e.g., "Pug", "Persian").
 
@@ -40,7 +41,8 @@ export async function POST(req) {
       Return ONLY a valid JSON object. Do not use Markdown code blocks.
       
       Examples:
-      - Human detected: { "isHuman": true }
+      - Selfie / Human Portrait: { "isHuman": true }
+      - Person holding a Cat (Cat is focus): { "isHuman": false, "type": "Cat", "breed": "Persian" }
       - Valid Pet: { "isHuman": false, "type": "Dog", "breed": "Golden Retriever" }
     `;
 
@@ -54,7 +56,33 @@ export async function POST(req) {
         .replace(/```/g, "")     // Remove end tag
         .trim();                 // Remove whitespace
         
-    const data = JSON.parse(text);
+    // DEBUG: Log raw AI response
+    console.log("AI Raw Response:", text);
+
+    let data;
+    try {
+        // Attempt 1: Direct Parse
+        data = JSON.parse(text);
+    } catch (parseError) {
+        console.warn("JSON Parse Failed, attempting Regex extraction...");
+        
+        // Attempt 2: Extract JSON object using Regex
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            try {
+                data = JSON.parse(jsonMatch[0]);
+            } catch (e) {
+                console.error("Regex JSON extraction failed.");
+            }
+        }
+    }
+
+    // Attempt 3: Fallback if data is still null (e.g. Groq text-only response "I can't see the image")
+    if (!data) {
+        console.warn("AI returned non-JSON text (likely fallback mode). Defaulting to Unknown.");
+        // We assume valid pet if AI failed to flag human, but we can't identify breed.
+        data = { isHuman: false, type: "Other", breed: "Unknown" }; 
+    }
     
     // Return analysis result
     return new Response(JSON.stringify(data), { status: 200 });

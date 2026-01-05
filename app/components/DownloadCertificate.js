@@ -20,9 +20,6 @@ export default function DownloadCertificate({ pet }) {
     setLoading(true);
 
     // Initialize PDF Document
-    // Orientation: Landscape (wide)
-    // Unit: Millimeters (standard for print)
-    // Format: A4 Paper
     const doc = new jsPDF({
       orientation: "landscape",
       unit: "mm",
@@ -31,89 +28,130 @@ export default function DownloadCertificate({ pet }) {
 
     // Extract data for easy access
     const log = pet.adoptionLog;
-    // Format date nicely (e.g., "October 5, 2023")
     const dateStr = new Date(log.adoptionDate).toLocaleDateString("en-US", { year: 'numeric', month: 'long', day: 'numeric' });
 
-    // --- A. BORDERS & DECORATION ---
-    // Outer Blue Border
-    doc.setLineWidth(2); // Thickness
-    doc.setDrawColor(74, 144, 226); // Color: #4A90E2 (Blue)
-    doc.rect(10, 10, 277, 190); // Draw Rectangle (x, y, width, height)
-    
-    // Inner Teal Border
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const centerX = pageWidth / 2;
+
+    // --- A. BACKGROUND & BORDERS ---
+    // 1. Heavy Outer Boarder (Navy Blue)
+    doc.setDrawColor(20, 30, 60); // #141E3C
+    doc.setLineWidth(3);
+    doc.rect(5, 5, pageWidth - 10, pageHeight - 10);
+
+    // 2. Gold Inner Border
+    doc.setDrawColor(218, 165, 32); // #DAA520 (Goldenrod)
     doc.setLineWidth(1);
-    doc.setDrawColor(80, 227, 194); // Color: #50E3C2 (Teal)
-    doc.rect(15, 15, 267, 180); 
+    doc.rect(8, 8, pageWidth - 16, pageHeight - 16);
 
-    // --- B. HEADER TEXT ---
-    // Main Title
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(40);
-    doc.setTextColor(74, 144, 226); // Brand Blue
-    // text(String, x, y, options)
-    // x=148.5 is exactly the horizontal center of A4 Landscape
-    doc.text("CERTIFICATE OF ADOPTION", 148.5, 45, { align: "center" });
+    // 3. Decorative Corner Accents (Triangles)
+    doc.setFillColor(20, 30, 60);
+    // Top-Left
+    doc.triangle(5, 5, 25, 5, 5, 25, "F");
+    // Top-Right
+    doc.triangle(pageWidth - 5, 5, pageWidth - 25, 5, pageWidth - 5, 25, "F");
+    // Bottom-Left
+    doc.triangle(5, pageHeight - 5, 25, pageHeight - 5, 5, pageHeight - 25, "F");
+    // Bottom-Right
+    doc.triangle(pageWidth - 5, pageHeight - 5, pageWidth - 25, pageHeight - 5, pageWidth - 5, pageHeight - 25, "F");
 
-    // Subtitle
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(16);
-    doc.setTextColor(100, 100, 100); // Grey
-    doc.text("This certifies that the pet known as", 148.5, 65, { align: "center" });
-
-    // --- C. PET DETAILS ---
-    // Pet Name (Large & Fancy)
-    doc.setFont("times", "italic"); 
-    doc.setFontSize(36);
-    doc.setTextColor(51, 51, 51); // Dark Grey
-    doc.text(pet.name, 148.5, 85, { align: "center" });
-
-    // Breed & Gender
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(14);
+    // --- B. HEADER ---
+    doc.setFont("times", "normal");
+    doc.setFontSize(18);
     doc.setTextColor(80, 80, 80);
-    const details = `(Breed: ${pet.breed} | Gender: ${pet.gender})`;
-    doc.text(details, 148.5, 95, { align: "center" });
+    doc.text("OFFICIAL REGISTRY OF PET MATRIMONY", centerX, 30, { align: "center" });
 
-    // --- D. NEW OWNER SECTION ---
-    doc.setFontSize(16);
-    doc.text("Has been officially adopted and welcomed into the loving home of", 148.5, 115, { align: "center" });
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(42);
+    doc.setTextColor(20, 30, 60); // Navy
+    doc.text("CERTIFICATE OF ADOPTION", centerX, 50, { align: "center", charSpace: 1.5 });
+
+    // Decorative Line under title
+    doc.setDrawColor(218, 165, 32); // Gold
+    doc.setLineWidth(0.5);
+    doc.line(centerX - 50, 55, centerX + 50, 55);
+
+    // --- C. MAIN CONTENT ---
+    doc.setFont("times", "italic");
+    doc.setFontSize(22);
+    doc.setTextColor(50, 50, 50);
+    doc.text("This certifies that the beloved", centerX, 75, { align: "center" });
+
+    // Pet Name
+    doc.setFont("times", "bolditalic");
+    doc.setFontSize(48);
+    doc.setTextColor(20, 30, 60);
+    doc.text(pet.name, centerX, 95, { align: "center" });
+
+    // Pet Details
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(12);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`${pet.breed}  •  ${pet.gender}  •  Born: ${pet.age} Years Ago`, centerX, 105, { align: "center" });
+
+    // "Has been adopted by"
+    doc.setFont("times", "italic");
+    doc.setFontSize(22);
+    doc.setTextColor(50, 50, 50);
+    doc.text("Has been officially adopted into the loving home of", centerX, 125, { align: "center" });
 
     // New Owner Name
     doc.setFont("times", "bold");
-    doc.setFontSize(28);
-    doc.setTextColor(51, 51, 51);
-    doc.text(log.newOwnerName || "New Owner", 148.5, 130, { align: "center" });
+    doc.setFontSize(32);
+    doc.setTextColor(20, 30, 60);
+    doc.text(log.newOwnerName || "Proud Owner", centerX, 140, { align: "center" });
 
-    // Previous Owner (Small text)
+    // --- D. SIGNATURES ---
+    const sigY = 175;
+    
+    // Left Sig
+    doc.setDrawColor(50, 50, 50);
+    doc.setLineWidth(0.5);
+    doc.line(50, sigY, 110, sigY);
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(12);
-    doc.setTextColor(120, 120, 120);
-    doc.text(`Transferred from: ${log.previousOwnerName || "Previous Owner"}`, 148.5, 145, { align: "center" });
-
-    // --- E. SIGNATURES & DATES ---
-    // Draw Lines for signatures
-    doc.setDrawColor(150, 150, 150);
-    doc.line(60, 170, 120, 170); // Left Line (x1, y1, x2, y2)
-    doc.line(180, 170, 240, 170); // Right Line
-
-    // Text on top of lines
-    doc.setFontSize(12);
-    doc.text(dateStr, 90, 177, { align: "center" }); // The Date
-    doc.text("PetLink Official", 210, 177, { align: "center" }); // The "Official" signature
-
-    // Labels below lines
     doc.setFontSize(10);
-    doc.text("Date", 90, 185, { align: "center" });
-    doc.text("Authorized Signature", 210, 185, { align: "center" });
+    doc.text("Date", 80, sigY + 5, { align: "center" });
+    doc.setFont("times", "bold");
+    doc.setFontSize(14);
+    doc.text(dateStr, 80, sigY - 2, { align: "center" });
 
-    // --- F. FOOTER (Metadata) ---
-    doc.setFontSize(9);
-    doc.setTextColor(180, 180, 180); // Very light grey
-    // Print unique Certificate ID at bottom right for verification
-    doc.text(`Certificate ID: ${log.certificateId || "N/A"}`, 280, 195, { align: "right" });
+    // Right Sig
+    doc.line(190, sigY, 250, sigY);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("Authorized Signature", 220, sigY + 5, { align: "center" });
+    
+    // Fake "Signature" using script-like font (italic times for now)
+    doc.setFont("times", "italic");
+    doc.setFontSize(18);
+    doc.setTextColor(20, 30, 60);
+    doc.text("PetMatrimony Official", 220, sigY - 2, { align: "center" });
 
-    // --- G. SAVE FILE ---
-    doc.save(`${pet.name}_Adoption_Certificate.pdf`);
+    // --- E. GOLD SEAL (Simulated) ---
+    const sealX = 250;
+    const sealY = 130;
+    const radius = 20;
+
+    // Draw "Gold" Circle with varying stroke to look like a seal
+    doc.setFillColor(218, 165, 32); 
+    doc.circle(sealX, sealY, radius, "F");
+    
+    doc.setDrawColor(184, 134, 11); // Darker Gold border
+    doc.setLineWidth(1);
+    doc.circle(sealX, sealY, radius - 2, "S");
+
+    // Text inside Seal
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text("OFFICIAL", sealX, sealY - 3, { align: "center" });
+    doc.text("SEAL", sealX, sealY + 3, { align: "center" });
+    doc.setFontSize(6);
+    doc.text("VERIFIED", sealX, sealY + 8, { align: "center" });
+
+    // --- F. SAVE ---
+    doc.save(`${pet.name}_Official_Certificate.pdf`);
     setLoading(false);
   };
 

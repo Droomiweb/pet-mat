@@ -1,13 +1,15 @@
 // app/api/pet/route.js
 
 // Standard imports
+// Standard imports
 import connectDB from "../../lib/mongodb";
 import Pet from "../../models/PetModel";
 import User from "../../models/User";
 import { v2 as cloudinary } from "cloudinary";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { verifyAuth } from "../../lib/auth-middleware";
+import { integrateNewPetIntoMatches } from "../../lib/matchLogic";
+import { visionModel } from "../../lib/gemini"; // Import centralized service
 
 // Service configuration
 cloudinary.config({
@@ -16,9 +18,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-// Initialize AI model
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+// REMOVED: Direct GoogleGenerativeAI initialization to allow key rotation via visionModel
 
 // =====================
 // Helper Functions
@@ -127,7 +127,8 @@ const runCertificateAnalysis = async (petData) => {
         If a date/value is missing, use "N/A". If no vaccinations are found, return an empty array.
       `;
 
-      const result = await model.generateContent([prompt, imagePart]);
+      // Use visionModel from lib/gemini.js which handles rotation & formatted response
+      const result = await visionModel.generateContent([prompt, imagePart]);
       const responseText = result.response.text();
 
       // Clean AI response
@@ -376,6 +377,10 @@ export async function POST(req) {
 
     const newPet = new Pet(petCreationData);
     await newPet.save();
+
+    // --- TRIGGER EVENT-DRIVEN MATCHING ---
+    // Update other pets' caches to include this new pet immediately
+    await integrateNewPetIntoMatches(newPet);
 
     return new Response(
       JSON.stringify({
