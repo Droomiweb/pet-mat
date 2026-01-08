@@ -18,6 +18,7 @@ export async function GET(req, context) {
 
     // Fetch user pets
     const userPets = await Pet.find({ ownerId: uid }).lean();
+    console.log(`[API] User Pets for ${uid}: Found ${userPets.length}`);
 
     // Fetch partner pets
     // Pets I don't own but interact with

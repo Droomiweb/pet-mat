@@ -24,42 +24,52 @@ export async function POST(req) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
     }
 
-    // Define AI prompt
+    // Define AI prompt - Reverting to daily plan but with strict length limits
     const prompt = `
       Create a detailed, day-by-day pregnancy care plan for a **${pet.breed} ${pet.type}**.
+      1. Gestation period: ~63 days.
+      2. Provide a care plan for EVERY SINGLE DAY (Day 1 to 63).
       
-      1. Determine the average gestation period (in days for this specific breed/type).
-      2. For EACH day from Day 1 to the final day of gestation, provide:
-         - "food": Dietary advice (e.g., increase calcium, specific nutrients).
-         - "activity": Exercise recommendation (e.g., normal walk, rest, gentle play).
-         - "careTips": General care (e.g., nesting prep, vet checkup reminders).
-         - "warningSigns": What to watch out for (e.g., temperature drop, refusal to eat).
-      
-      Respond ONLY with a valid JSON object in this format:
+      Respond ONLY with a valid JSON object:
       {
         "gestationDays": 63,
         "plan": [
           { "day": 1, "food": "...", "activity": "...", "careTips": "...", "warningSigns": "..." },
-          { "day": 2, "food": "...", "activity": "...", "careTips": "...", "warningSigns": "..." }
-          ... (until last day)
+          ... up to 63
         ]
       }
-      Keep descriptions concise (1 sentence each) to ensure the response fits within token limits.
+      IMPORTANT: Keep descriptions to 5-8 words MAX so the response stays within limits.
     `;
 
     // Generate care plan
     const result = await textModel.generateContent(prompt);
-    const responseText = result.response.text()
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
+    let responseText = await result.response.text();
+    
+    // Robust Extraction
+    const start = responseText.indexOf('{');
+    const end = responseText.lastIndexOf('}');
+    if (start !== -1 && end !== -1) {
+        responseText = responseText.substring(start, end + 1);
+    }
     
     let aiData;
     try {
         aiData = JSON.parse(responseText);
     } catch (e) {
         console.error("AI JSON Parse Error:", responseText);
-        throw new Error("Failed to parse AI pregnancy plan.");
+        // Better fallback: Generate basic daily items if AI fails
+        const fallbackPlan = Array.from({ length: 63 }, (_, i) => ({
+            day: i + 1,
+            food: i < 40 ? "Normal high-quality diet" : "Higher calorie intake",
+            activity: i < 50 ? "Normal exercise" : "Gentle walks only",
+            careTips: "Regular monitoring",
+            warningSigns: "Lethargy or refusal to eat"
+        }));
+        
+        aiData = {
+            gestationDays: 63,
+            plan: fallbackPlan
+        };
     }
 
     // Update pet record

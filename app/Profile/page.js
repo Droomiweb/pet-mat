@@ -219,9 +219,13 @@ export default function Profile() {
     
     setCertUploading(true);
     try {
+        const token = await user.getIdToken();
         const res = await fetch(`/api/pet/${selectedPetId}`, {
             method: "PATCH",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`
+            },
             body: JSON.stringify({
                 action: "updateCertificate",
                 requesterId: user.uid,
@@ -258,9 +262,13 @@ export default function Profile() {
     if (!confirm(`Confirm pregnancy for this pet? This will start the Pregnancy Tracker.`)) return;
     setActionLoading(petId);
     try {
+      const token = await user.getIdToken();
       const res = await fetch("/api/pet/confirm-pregnancy", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ petId, userId: user.uid }),
       });
       if (res.ok) {
@@ -288,9 +296,13 @@ export default function Profile() {
 
     const updateStatus = async (lat, lng) => {
       try {
+        const token = await user.getIdToken();
         const res = await fetch("/api/pet/report-lost", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}` 
+          },
           body: JSON.stringify({
             petId: pet._id,
             userId: user.uid,
@@ -323,7 +335,11 @@ export default function Profile() {
     if (!confirm("🛑 DANGER ZONE\n\nAre you sure you want to remove this pet? This will delete all their history, photos, and records permanently.")) return;
     setActionLoading(petId);
     try {
-      const res = await fetch(`/api/pet/${petId}`, { method: "DELETE" });
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/pet/${petId}`, { 
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
       if (res.ok) {
         alert("Pet removed successfully.");
         fetchUserPets();
@@ -350,9 +366,13 @@ export default function Profile() {
     
     setActionLoading(petId);
     try {
+        const token = await user.getIdToken();
         const res = await fetch(`/api/pet/${petId}`, {
             method: "PATCH",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`
+            },
             body: JSON.stringify({
                 action: "changeListingType",
                 requesterId: user.uid,
@@ -378,9 +398,13 @@ export default function Profile() {
   const handleDeletePost = async (postId) => {
     if (!confirm("Delete this post?")) return;
     try {
+      const token = await user.getIdToken();
       const res = await fetch(`/api/community/posts/${postId}`, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ userId: user.uid }),
       });
       if (res.ok) fetchUserPosts();
@@ -646,22 +670,57 @@ export default function Profile() {
                                   <p className="text-gray-400 text-xs mt-1">{pet.age} Years Old • {pet.listingType} Listing</p>
                                 </div>
 
-                                <div className="flex flex-col items-end gap-1">
-                                  {!isIncoming && <PetStatusBadge status={pet.verificationStatus} />}
-                                  
-                                  {/* VERIFICATION FAILURE REASON */}
-                                  {pet.verificationStatus === 'rejected' && pet.certificateAnalysis?.reason && (
-                                    <div className="text-[10px] text-red-500 bg-red-50 px-2 py-1 rounded max-w-[150px] text-right leading-tight">
-                                        Reason: {pet.certificateAnalysis.reason}
-                                    </div>
-                                  )}
+                                  <div className="flex flex-col items-end gap-1">
+                                    {!isIncoming && <PetStatusBadge status={pet.verificationStatus} />}
+                                    
+                                    {/* VERIFICATION FAILURE REASON & RETRY */}
+                                    {(pet.verificationStatus === 'rejected' || pet.verificationStatus === 'needs-review') && (
+                                      <div className="flex flex-col items-end gap-1 mt-1">
+                                        {pet.certificateAnalysis?.reason && (
+                                            <div className="text-[10px] text-red-500 bg-red-50 px-2 py-1 rounded max-w-[200px] text-right leading-tight border border-red-100">
+                                                <strong>Issue:</strong> {pet.certificateAnalysis.reason}
+                                            </div>
+                                        )}
+                                        <button 
+                                            onClick={async (e) => {
+                                                e.stopPropagation();
+                                                const btn = e.currentTarget;
+                                                btn.innerText = "Checking...";
+                                                btn.disabled = true;
+                                                try {
+                                                    const token = await user.getIdToken();
+                                                    const res = await fetch(`/api/pet/${pet._id}/reverify`, {
+                                                        method: "POST",
+                                                        headers: { "Authorization": `Bearer ${token}` }
+                                                    });
+                                                    const data = await res.json();
+                                                    if (data.success) {
+                                                        alert(`Check Complete: ${data.status.toUpperCase()}\n\n${data.reason}`);
+                                                        window.location.reload();
+                                                    } else {
+                                                        alert(`Check Failed: ${data.reason || "Unknown error"}`);
+                                                        btn.innerText = "Check Again ↻";
+                                                        btn.disabled = false;
+                                                    }
+                                                } catch (err) {
+                                                    alert("Error connecting to server.");
+                                                    btn.innerText = "Check Again ↻";
+                                                    btn.disabled = false;
+                                                }
+                                            }}
+                                            className="text-[10px] font-bold text-blue-600 underline hover:text-blue-800"
+                                        >
+                                            Check Again ↻
+                                        </button>
+                                      </div>
+                                    )}
 
-                                  {pet.isPregnant && (
-                                    <span className="bg-pink-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
-                                      PREGNANT
-                                    </span>
-                                  )}
-                                </div>
+                                    {pet.isPregnant && (
+                                      <span className="bg-pink-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                                        PREGNANT
+                                      </span>
+                                    )}
+                                  </div>
                               </div>
                             </div>
                           </div>

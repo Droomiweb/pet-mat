@@ -8,7 +8,6 @@ const groqKey = process.env.GROQ_API_KEY;
 
 // User provided key + Env keys
 const INITIAL_SEED_KEYS = [
-  "AIzaSyBEqs-w-_KDPWqskP0MmMm4jck8CiigzP4", // User Provided New Key
   ...(process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || "")
     .split(",").map(k => k.replace(/["']/g, "").trim()).filter(k => k)
 ];
@@ -83,11 +82,14 @@ async function reportKeyFailure(key) {
 async function callGroqAPI(messages, isVision = false) {
   if (!groqKey) throw new Error("Groq API Key is missing.");
 
-  const model = isVision ? "llama-3.2-11b-vision-preview" : "llama-3.3-70b-versatile";
+  // NOTE: Groq vision models (Llama 3.2 Vision) are currently decommissioned.
+  // We use the powerful 70b model for text-only fallback.
+  const model = "llama-3.3-70b-versatile";
   console.log(`🛡️ ACTIVATING SHIELD: Switching to Groq Backup (${model})...`);
 
   try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -128,37 +130,30 @@ function convertToGroqFormat(history, newMessage, inlineImages = []) {
     });
   }
 
-  // Add New Message
-  if (inlineImages.length > 0) {
-    const content = [{ type: "text", text: newMessage }];
-    inlineImages.forEach(img => {
-      content.push({
-        type: "image_url",
-        image_url: { url: `data:${img.inlineData.mimeType};base64,${img.inlineData.data}` }
-      });
-    });
-    messages.push({ role: "user", content });
-  } else {
-    // If newMessage is empty (e.g. just image), handle gracefully
-    const content =  newMessage ? [{ type: "text", text: newMessage }] : [];
-    if (inlineImages.length === 0 && !newMessage) {
-        // Fallback for empty message
-        content.push({ type: "text", text: "Analyze this." }); 
-    }
-    messages.push({ role: "user", content: newMessage ? content[0].text : "Analyze this." });
-  }
+  // Prepare New Message Content
+  let content = [];
   
-  // FIX: For OpenAI format with images, content must be an array
+  // 1. Add Text
+  if (newMessage) {
+      content.push({ type: "text", text: newMessage });
+  }
+
+  // 2. Add Images (ONLY if we find a working vision model, currently stripped for stability)
   if (inlineImages.length > 0) {
-      const lastMsg = messages.pop();
-      const newContent = [{ type: "text", text: lastMsg.content || "Analyze this image." }];
-      inlineImages.forEach(img => {
-          newContent.push({
-              type: "image_url",
-              image_url: { url: `data:${img.inlineData.mimeType};base64,${img.inlineData.data}` }
-          });
-      });
-      messages.push({ role: "user", content: newContent });
+      console.warn("⚠️ Groq Fallback: Stripping images as current Groq models (llama-3.3) do not support Vision.");
+      // images are omitted from 'content' to prevent 400 Bad Request
+  }
+
+  // 3. Fallback if empty
+  if (content.length === 0) {
+      content.push({ type: "text", text: "Analyze this." });
+  }
+
+  // 4. Construct Message
+  if (content.length === 1 && content[0].type === "text") {
+       messages.push({ role: "user", content: content[0].text });
+  } else {
+       messages.push({ role: "user", content: content });
   }
 
   return messages;
@@ -175,7 +170,7 @@ async function executeHybridRequest(type, params) {
   for (const key of shuffledKeys) {
     try {
       const genAI = new GoogleGenerativeAI(key);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
       if (type === "chat") {
         const chat = model.startChat({ history: params.history || [] });
@@ -201,7 +196,9 @@ async function executeHybridRequest(type, params) {
   try {
     if (type === "chat") {
       const messages = convertToGroqFormat(params.history, params.message);
-      return await callGroqAPI(messages, false);
+      const result = await callGroqAPI(messages, false);
+      console.log("✅ Groq Fallback Success (Chat)");
+      return result;
     } else {
       // HANDLE GENERATE (Possible Vision)
       let textPrompt = "";
@@ -217,15 +214,21 @@ async function executeHybridRequest(type, params) {
       if (inlineImages.length > 0) {
           console.log(`ℹ️ Groq Fallback: Sending ${inlineImages.length} images to Llama Vision.`);
           const messages = convertToGroqFormat([], textPrompt, inlineImages);
-          return await callGroqAPI(messages, true); // isVision = true
+          const result = await callGroqAPI(messages, true); // isVision = true
+          console.log("✅ Groq Fallback Success (Vision)");
+          return result;
       } else {
           console.log("ℹ️ Groq Fallback: Text-only prompt.");
           const messages = convertToGroqFormat([], textPrompt, []);
-          return await callGroqAPI(messages, false);
+          const result = await callGroqAPI(messages, false);
+          console.log("✅ Groq Fallback Success (Text)");
+          return result;
       }
     }
   } catch (groqError) {
     console.error("❌ CRITICAL: Both Gemini and Groq failed.");
+    console.error("Gemini Error:", lastError?.message);
+    console.error("Groq Error:", groqError?.message);
     throw lastError || groqError;
   }
 }

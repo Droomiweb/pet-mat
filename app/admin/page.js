@@ -367,19 +367,51 @@ export default function AdminPanel() {
                                     <div className="flex-1">
                                         <h3 className="font-bold text-lg text-gray-800">{pet.name}</h3>
                                         <p className="text-sm text-gray-500">ID: {pet._id} • Owner: {pet.ownerId}</p>
-                                        <div className="flex gap-2 mt-2">
-                                            {pet.certificateUrl && (
-                                                <a href={pet.certificateUrl} target="_blank" className="text-xs font-bold text-[#4A90E2] bg-blue-50 px-3 py-1 rounded-lg hover:bg-blue-100">View Cert</a>
+                                            {pet.classificationAnalysis?.reason && (
+                                                <div className="w-full text-xs text-red-500 bg-red-50 p-2 rounded mt-1">
+                                                    <strong>Issue:</strong> {pet.classificationAnalysis.reason}
+                                                </div>
                                             )}
-                                            <button onClick={() => fetchAIAnalysis(pet)} className="text-xs font-bold text-purple-600 bg-purple-50 px-3 py-1 rounded-lg hover:bg-purple-100">AI Check</button>
-                                            <button 
-                                                onClick={() => fetchTesseractOcr(pet)} 
-                                                className="text-xs font-bold text-gray-600 bg-gray-50 px-3 py-1 rounded-lg hover:bg-gray-100"
-                                                disabled={ocrLoading === pet._id}
-                                            >
-                                                {ocrLoading === pet._id ? "Scanning..." : "OCR"}
-                                            </button>
-                                        </div>
+                                            <div className="flex flex-wrap gap-2 mt-2">
+                                                {pet.certificateUrl && (
+                                                    <a href={pet.certificateUrl} target="_blank" className="text-xs font-bold text-[#4A90E2] bg-blue-50 px-3 py-1 rounded-lg hover:bg-blue-100">View Cert</a>
+                                                )}
+                                                
+                                                {/* AUTO RE-VERIFY BUTTON */}
+                                                <button 
+                                                    onClick={async (e) => {
+                                                        const btn = e.currentTarget;
+                                                        btn.innerText = "Scanning...";
+                                                        btn.disabled = true;
+                                                        try {
+                                                            const token = await user.getIdToken();
+                                                            const res = await fetch(`/api/pet/${pet._id}/reverify`, {
+                                                                method: "POST",
+                                                                headers: { "Authorization": `Bearer ${token}` }
+                                                            });
+                                                            const data = await res.json();
+                                                            alert(data.success ? `Verified!\n${data.reason}` : `Failed: ${data.reason}`);
+                                                            if(data.success) fetchAllData();
+                                                            btn.innerText = "Auto Check";
+                                                            btn.disabled = false;
+                                                        } catch(err) {
+                                                            alert("Error");
+                                                            btn.disabled = false;
+                                                        }
+                                                    }}
+                                                    className="text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1 rounded-lg hover:bg-teal-100"
+                                                >
+                                                    Auto Check
+                                                </button>
+
+                                                <button 
+                                                    onClick={() => fetchTesseractOcr(pet)} 
+                                                    className="text-xs font-bold text-gray-600 bg-gray-50 px-3 py-1 rounded-lg hover:bg-gray-100"
+                                                    disabled={ocrLoading === pet._id}
+                                                >
+                                                    {ocrLoading === pet._id ? "Scanning..." : "OCR"}
+                                                </button>
+                                            </div>
                                     </div>
                                     <div className="flex gap-2">
                                         <button onClick={() => handleStatusUpdate(pet._id, 'verified')} className="p-3 bg-green-100 text-green-600 rounded-xl hover:bg-green-200 transition"><CheckIcon /></button>

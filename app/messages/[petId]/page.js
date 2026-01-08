@@ -110,6 +110,25 @@ export default function ChatSessionPage() {
     // --- HANDLE REQUEST ACTIONS ---
     const handleRequestAction = async (requestId, status) => {
         if (!pet || !user) return;
+
+        // Optimistic Update: Immediately update local state to hide buttons
+        const previousPetState = { ...pet };
+        
+        let requesterIdToUpdate = null;
+        const targetRequest = pet.matingHistory?.find(r => r._id === requestId);
+        if (targetRequest) requesterIdToUpdate = targetRequest.requesterId;
+        
+        const updatedHistory = pet.matingHistory?.map(r => {
+            if (r._id === requestId) return { ...r, status: status };
+            // Also update duplicates from same requester
+            if (requesterIdToUpdate && r.requesterId === requesterIdToUpdate && r.status === 'pending') {
+                return { ...r, status: status };
+            }
+            return r;
+        }) || [];
+
+        setPet({ ...pet, matingHistory: updatedHistory });
+
         try {
             const res = await fetch('/api/pet/requests', {
                 method: 'PATCH',
@@ -119,15 +138,20 @@ export default function ChatSessionPage() {
                     petId: pet._id,
                     requestId: requestId,
                     requestType: 'mating', // Assuming mating for now based on context
-                    newStatus: status
+                    newStatus: status,
+                    requesterId: requesterIdToUpdate // Pass requesterId to help backend if needed
                 })
             });
             if (res.ok) {
                 fetchPetData(); // Refresh to hide button
             } else {
+                setPet(previousPetState); // Revert on failure
                 alert("Failed to update.");
             }
-        } catch (e) { console.error(e); }
+        } catch (e) { 
+            console.error(e);
+            setPet(previousPetState); // Revert on failure
+        }
     };
 
     const getPendingRequest = () => {

@@ -16,7 +16,7 @@ const CertificateAnalysisSchema = new mongoose.Schema({
   ownerNameMatch: { type: Boolean, default: false },
   status: {
     type: String,
-    enum: ['pending', 'verified', 'rejected', 'needs-review', 'ai-error'],
+    enum: ['pending', 'verified', 'rejected', 'needs-review', 'ai-error', 'fallback-verified', 'fallback-check'],
     default: 'pending'
   },
   reason: String,
@@ -117,7 +117,7 @@ const petSchema = new mongoose.Schema({
 
   verificationStatus: {
     type: String,
-    enum: ['pending', 'verified', 'rejected', 'needs-review'],
+    enum: ['pending', 'verified', 'rejected', 'needs-review', 'ai-error', 'fallback-verified', 'fallback-check'],
     default: 'pending'
   },
 

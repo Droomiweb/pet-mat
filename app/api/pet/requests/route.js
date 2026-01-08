@@ -52,8 +52,20 @@ export async function PATCH(req) {
 
       if (!request) return new Response(JSON.stringify({ error: "Mating request not found" }), { status: 404 });
       
-      // Update status
-      request.status = newStatus;
+      // Update status for ALL pending requests from this requester (to handle duplicates)
+      let requesterIdToUpdate = request ? request.requesterId : requesterId;
+
+      if (requesterIdToUpdate) {
+        pet.matingHistory.forEach(r => {
+            if (r.requesterId === requesterIdToUpdate && r.status === 'pending') {
+                r.status = newStatus;
+            }
+        });
+      } else if (request) {
+          // Fallback if we only found one specific request and somehow don't have requesterId (shouldn't happen)
+          request.status = newStatus;
+      }
+      
       pet.markModified('matingHistory'); 
 
       // Handle acceptance

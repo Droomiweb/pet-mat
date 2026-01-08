@@ -65,25 +65,13 @@ export async function POST(req) {
     else if (targetSpecies === "Bird") babyTerm = "Chick";
 
     // 3. Define ENHANCED vision prompt
+    // 3. Define ENHANCED vision prompt - Hyper-concise to prevent Pollination HTML errors
     const prompt = `
-      You are an expert animal photographer and geneticist.
-      
-      **TASK**: Describe the visual appearance of a **${babyTerm}** (${petA.breed} mix).
-      
-      **PARENT 1**: ${petA.breed} (${petA.type})
-      **PARENT 2**: ${petB.breed} (${petB.type})
-      **REQUIRED SPECIES**: ${targetSpecies} (${babyTerm})
-      
-      **VISUAL REQUIREMENTS (STRICT):**
-      1. **FULL BODY SHOT**: The image must show the ENTIRE animal from head to paws. Do not crop the head or feet. Center the subject.
-      2. **REALISM**: Photorealistic, 8k resolution, cinematic lighting, highly detailed fur/feathers.
-      3. **BACKGROUND**: Soft, blurred natural background (bokeh) to emphasize the pet.
-      4. **TRAITS**: Blend the coat colors and patterns of the parents naturally.
-      5. **ASPECT RATIO**: Square 1:1.
-      
-      **OUTPUT FORMAT**:
-      Return ONLY the raw image prompt string.
-      Example: "A full-body studio shot of a fluffy Golden Retriever puppy with white paws, sitting on grass, soft lighting, 8k, wide angle."
+      Create a short, descriptive prompt (under 30 words) for an animal offspring pup.
+      Parents: ${petA?.breed} and ${petB?.breed}.
+      Traits to blend: coat color, patterns, and features.
+      Style: Full-body, realistic 8k photo, natural background, centered, 1:1 aspect ratio.
+      DO NOT include fluff or technical jargon.
     `;
 
     // Prepare input data
@@ -109,10 +97,12 @@ export async function POST(req) {
 
     // 4. Generate Image URL (Pollinations)
     const seed = Math.floor(Math.random() * 99999);
-    const encodedPrompt = encodeURIComponent(imageDescription + " --ar 1:1 --no-crop");
+    // Sanitize and shorten prompt for Pollinations stability
+    const cleanDescription = imageDescription.replace(/["\n\r]/g, " ").substring(0, 200);
+    const encodedPrompt = encodeURIComponent(cleanDescription);
 
-    // Explicitly requesting 1024x1024
-    let pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true&seed=${seed}&model=flux&width=1024&height=1024`;
+    // Using flux model for better reliability
+    let pollinationsUrl = `https://pollinations.ai/p/${encodedPrompt}?nologo=true&seed=${seed}&model=flux`;
 
     console.log("Fetching image from:", pollinationsUrl);
 
@@ -122,23 +112,40 @@ export async function POST(req) {
 
     if (!imageRes.ok) throw new Error(`Pollinations API Failed: ${imageRes.statusText}`);
 
-    const buffer = Buffer.from(await imageRes.arrayBuffer());
+    const contentType = imageRes.headers.get("content-type") || "";
+    let finalImageUrl = pollinationsUrl;
 
-    const uploadToCloudinary = () => {
-      return new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          { folder: "pet_generated_art" },
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          }
-        );
-        uploadStream.end(buffer);
-      });
-    };
+    if (contentType.startsWith("image/")) {
+      const buffer = Buffer.from(await imageRes.arrayBuffer());
+      console.log(`Fetched image of type ${contentType}, size: ${buffer.length} bytes`);
 
-    const cloudinaryResult = await uploadToCloudinary();
-    const finalImageUrl = cloudinaryResult.secure_url;
+      if (process.env.CLOUDINARY_URL || (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY)) {
+        try {
+          const uploadToCloudinary = () => {
+            return new Promise((resolve, reject) => {
+              const uploadStream = cloudinary.uploader.upload_stream(
+                { folder: "pet_generated_art" },
+                (error, result) => {
+                  if (error) reject(error);
+                  else resolve(result);
+                }
+              );
+              uploadStream.end(buffer);
+            });
+          };
+
+          const cloudinaryResult = await uploadToCloudinary();
+          finalImageUrl = cloudinaryResult.secure_url;
+        } catch (cloudErr) {
+          console.error("Cloudinary Upload Failed, falling back to direct URL:", cloudErr);
+        }
+      } else {
+        console.warn("Cloudinary not configured. Using direct Pollinations URL.");
+      }
+    } else {
+      console.error(`Pollinations ERROR: Returned ${contentType} instead of image.`);
+      throw new Error("AI engine is overloaded. Please try again in 10 seconds.");
+    }
 
     // 5. Save to Database
     await GeneratedImage.create({
@@ -153,6 +160,6 @@ export async function POST(req) {
 
   } catch (err) {
     console.error("Image Gen Error:", err);
-    return new Response(JSON.stringify({ error: "Failed to generate image" }), { status: 500 });
+    return new Response(JSON.stringify({ error: err.message || "Failed to generate image" }), { status: 500 });
   }
 }

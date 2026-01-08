@@ -34,8 +34,10 @@ export default function PregnancyTracker() {
   const getDaysPassed = (startDate) => {
     const start = new Date(startDate);
     const today = new Date();
-    const diffTime = today - start; // removed Math.abs to allow future start dates
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    const diffTime = today - start;
+    // Math.floor(0.1) = 0 -> Day 1
+    // Math.floor(1.1) = 1 -> Day 2
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1; 
     return diffDays; 
   };
 
@@ -82,7 +84,7 @@ export default function PregnancyTracker() {
           action: "meal_plan",
           petBreed: pet.breed,
           petType: pet.type,
-          currentDay: todayPlan.day,
+          currentDay: todayPlan.day || (currentDayIndex + 1),
           totalDays: pet.pregnancyPlan.length
         }),
       });
@@ -102,7 +104,7 @@ export default function PregnancyTracker() {
           action: "fetus_visual",
           petBreed: pet.breed,
           petType: pet.type,
-          currentDay: todayPlan.day,
+          currentDay: todayPlan?.day || (currentDayIndex + 1),
           totalDays: pet.pregnancyPlan.length
         }),
       });
@@ -142,7 +144,7 @@ export default function PregnancyTracker() {
                    <h1 className="text-3xl md:text-4xl font-extrabold text-gray-800 mb-1">Pregnancy Tracker</h1>
                    <div className="flex flex-wrap justify-center md:justify-start gap-3 text-sm font-medium text-gray-500">
                       <span className="bg-pink-50 px-3 py-1 rounded-lg text-pink-600 border border-pink-100">❤️ {pet.name}</span>
-                      <span className="bg-purple-50 px-3 py-1 rounded-lg text-purple-600 border border-purple-100">📅 Day {todayPlan?.day} of {pet.pregnancyPlan.length}</span>
+                      <span className="bg-purple-50 px-3 py-1 rounded-lg text-purple-600 border border-purple-100">📅 {todayPlan?.week ? `Week ${todayPlan.week}` : todayPlan?.day ? `Day ${todayPlan.day}` : `Day ${currentDayIndex + 1}`} of {pet.pregnancyPlan.length}</span>
                    </div>
                </div>
            </div>
@@ -247,7 +249,7 @@ export default function PregnancyTracker() {
                                         <ChefIcon />
                                     </div>
                                     <h4 className="font-bold text-gray-700 mb-1">Hungry Momma?</h4>
-                                    <p className="text-xs text-gray-400 mb-4">Get a specialized menu for Day {todayPlan.day}</p>
+                                    <p className="text-xs text-gray-400 mb-4">Get a specialized menu for {todayPlan?.week ? `Week ${todayPlan.week}` : `Day ${todayPlan?.day || (currentDayIndex + 1)}`}</p>
                                     <button 
                                         onClick={generateMenu} 
                                         disabled={menuLoading}

@@ -209,10 +209,15 @@ export default function AddPet() {
     try {
       const certificateBase64 = await fileToBase64(certificateFile);
       const petImageBase64 = await fileToBase64(petImage);
+      
+      const token = await user.getIdToken(); // Get Auth Token
 
       const res = await fetch("/api/pet", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}` // Inject Token
+        },
         body: JSON.stringify({
           name: petName,
           age: petAge,

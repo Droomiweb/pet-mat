@@ -26,14 +26,14 @@ export async function POST(req) {
     // We still accept userId for potential future logging, but we removed the strict blocking
     const { petAId, petBId, history, message, userId } = await req.json();
 
-    if (!petAId || !petBId) {
-        return new Response(JSON.stringify({ error: "Pet IDs required" }), { status: 400 });
+    if (!petBId) {
+        return new Response(JSON.stringify({ error: "Target pet (Pet B) ID required" }), { status: 400 });
     }
 
     const petA = await getPetDetails(petAId);
     const petB = await getPetDetails(petBId);
 
-    if (!petA || !petB) return new Response(JSON.stringify({ error: "Pets not found" }), { status: 404 });
+    if (!petB) return new Response(JSON.stringify({ error: "Target pet not found" }), { status: 404 });
 
     // --- RESTORED DATA ACCESS ---
     // The AI is given full access to medical logs so it can answer user questions accurately.
@@ -58,7 +58,8 @@ export async function POST(req) {
       return item.role && item.parts && item.parts[0] && item.parts[0].text && item.parts[0].text.trim() !== "";
     });
 
-    const systemPrompt = `
+    const systemPrompt = petA 
+      ? `
       You are **Dr. Paws**, a warm, enthusiastic, and highly expert Veterinarian and Geneticist.
       
       **CONTEXT**:
@@ -69,11 +70,25 @@ export async function POST(req) {
       ${medicalContext}
       
       **INSTRUCTIONS**:
-      - You HAVE access to Pet B's medical logs and vaccinations. Use this information to answer the user's questions accurately.
-      - If the user asks about health, use the 'Medical History Log' to give a specific answer.
-      - If the medical log mentions issues (e.g., "Hip Dysplasia", "Recent Surgery"), politely inform the user as it impacts breeding/play dates.
-      - **Tone**: Professional, friendly, and transparent.
-    `;
+      - You are analyzing them for a MATING match.
+      - You HAVE access to Pet B's medical logs. Use this to answer accuracy.
+      - Tone: Professional, friendly.
+      `
+      : `
+      You are **Dr. Paws**, a warm and highly expert Veterinarian.
+      
+      **CONTEXT**:
+      You are providing medical and health advice for:
+      **Pet**: ${petB.name} (${petB.breed}, ${petB.gender})
+      
+      ${medicalContext}
+      
+      **INSTRUCTIONS**:
+      - The user is asking about THIS specific pet.
+      - Review the medical logs and vaccination status provided above to give specific, helpful advice.
+      - If they ask about health, check the 'Medical History Log'.
+      - Tone: Professional, caring, and transparent.
+      `;
 
     // Start Chat
     const chat = textModel.startChat({

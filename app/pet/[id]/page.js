@@ -2,8 +2,8 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { auth } from "../../lib/firebase";
 import Link from "next/link";
+import { useAuth } from "../../auth-provider";
 import Image from "next/image";
 import { createConversationId } from "../../lib/chatUtils";
 import ReactMarkdown from "react-markdown";
@@ -124,11 +124,12 @@ export default function PetDetailPage() {
   const [chatInput, setChatInput] = useState("");
   const [generatedImage, setGeneratedImage] = useState(null);
   const [hasTriedGeneration, setHasTriedGeneration] = useState(false);
+  const [imageError, setImageError] = useState("");
 
   const chatEndRef = useRef(null);
   const params = useParams();
   const router = useRouter();
-  const user = auth.currentUser;
+  const { user, loading: authLoading } = useAuth();
 
   // --- 1. DATA FETCHING ---
   const fetchPet = async () => {
@@ -137,7 +138,7 @@ export default function PetDetailPage() {
       if (!res.ok) return router.push("/");
       const data = await res.json();
       setPet(data);
-      if (user && data.listingType === "Mating") await fetchRequesterPets(user.uid, data.type, data.gender, data.breed);
+      if (user) await fetchRequesterPets(user.uid, data.type, data.gender, data.breed);
     } catch (err) { console.error(err); }
   };
 
@@ -153,24 +154,22 @@ export default function PetDetailPage() {
         // 4. Mating Listing
         // 5. Same Breed (Case insensitive)
         const compatible = pets.filter(p => {
-          const isBreedMatch = p.breed?.trim().toLowerCase() === petBreed?.trim().toLowerCase();
-          return (
-            p.type === petType &&
-            p.gender !== petGender &&
-            p.listingType === "Mating" &&
-            !p.isPregnant &&
-            p.verificationStatus === 'verified' &&
-            isBreedMatch
-          );
+          const typeMatch = p.type?.trim().toLowerCase() === petType?.trim().toLowerCase();
+          const genderMatch = p.gender !== petGender;
+          return typeMatch && genderMatch;
         });
 
+        console.log(`[DrPaws] Matching for: ${petType} (${petGender}). Found: ${pets.length}, Compatible: ${compatible.length}`);
         setRequesterPets(compatible);
         if (compatible.length >= 1) setRequesterPetId(compatible[0]._id);
       }
     } catch (err) { console.error(err); }
   };
 
-  useEffect(() => { fetchPet(); }, [params.id, user?.uid]);
+  useEffect(() => {
+    if (authLoading) return;
+    fetchPet();
+  }, [params.id, user, authLoading]);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -211,10 +210,14 @@ export default function PetDetailPage() {
 
     setActionLoading(true);
     try {
+      const token = await user.getIdToken();
       const selectedPet = requesterPets.find(p => p._id === requesterPetId);
       const res = await fetch(`/api/pet/${params.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({
           action: "matingRequest", requesterId: user.uid, requesterName: user.email.split("@")[0],
           requesterPetId: requesterPetId, requesterPetName: selectedPet?.name, messageText: newMessage
@@ -229,9 +232,13 @@ export default function PetDetailPage() {
     if (!user) return router.push("/Login");
     setActionLoading(true);
     try {
+      const token = await user.getIdToken();
       const res = await fetch(`/api/pet/${params.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}` 
+        },
         body: JSON.stringify({
           action: "adoptionRequest", requesterId: user.uid, requesterName: user.email.split("@")[0],
           messageText: adoptForm.reason, answers: Object.entries(adoptForm).map(([k, v]) => ({ question: k, answer: v }))
@@ -365,14 +372,16 @@ export default function PetDetailPage() {
 
     try {
       const myPetId = requesterPetId || requesterPets[0]?._id;
+      const validHistory = chatHistory.map(h => ({ role: h.role === 'model' ? 'model' : 'user', parts: [{ text: h.text || "..." }] }));
+
       const res = await fetch("/api/ai-advisor/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          petAId: myPetId,
+          petAId: myPetId || null,
           petBId: pet._id,
-          userId: user.uid, // NEW: SECURITY ID
-          history: chatHistory.map(h => ({ role: h.role, parts: [{ text: h.text || "..." }] })),
+          userId: user?.uid,
+          history: validHistory,
           message: msg
         }),
       });
@@ -390,6 +399,7 @@ export default function PetDetailPage() {
     if (!myPetId) return;
     setImageLoading(true);
     setHasTriedGeneration(true);
+    setImageError("");
     try {
       const res = await fetch("/api/ai-advisor/generate-image", {
         method: "POST",
@@ -399,16 +409,27 @@ export default function PetDetailPage() {
         }),
       });
       const data = await res.json();
-      if (data.imageUrl) setGeneratedImage(data.imageUrl);
-      else console.warn("No image returned:", data.error);
-    } catch (err) { console.error("Generation failed:", err); }
+      if (data.imageUrl) {
+          setGeneratedImage(data.imageUrl);
+          setImageError("");
+      } else {
+          console.warn("No image returned:", data.error);
+          setImageError(data.error || "AI engine is busy. Please try again.");
+      }
+    } catch (err) { 
+        console.error("Generation failed:", err); 
+        setImageError("Connection trouble. Please try again.");
+    }
     finally { setImageLoading(false); }
   };
 
   const downloadImage = async () => {
     if (!generatedImage) return;
     try {
-      const response = await fetch(generatedImage);
+      // Use proxy to avoid CORS for external images like pollinations.ai
+      const proxyUrl = `/api/download-image?url=${encodeURIComponent(generatedImage)}`;
+      const response = await fetch(proxyUrl);
+      if (!response.ok) throw new Error("Proxy failed");
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -417,7 +438,11 @@ export default function PetDetailPage() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } catch (err) { console.error("Download failed", err); }
+    } catch (err) { 
+      console.error("Download failed", err);
+      // Last resort: open in new tab
+      window.open(generatedImage, "_blank");
+    }
   };
 
   // --- RENDER ---
@@ -473,18 +498,36 @@ export default function PetDetailPage() {
                   <GeneticsLoader />
                 ) : generatedImage ? (
                   <div className="relative w-full aspect-square rounded-xl overflow-hidden shadow-2xl ring-2 ring-purple-500/50 group">
-                    <Image src={generatedImage} alt="Predicted Offspring" width={1024} height={1024} className="object-cover w-full h-full transition-transform duration-700 group-hover:scale-110" />
+                    <Image src={generatedImage} alt="Predicted Offspring" width={1024} height={1024} unoptimized={true} className="object-cover w-full h-full transition-transform duration-700 group-hover:scale-110" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-4">
                       <p className="text-white text-xs font-bold">Generated with AI Flux Model</p>
                     </div>
                   </div>
+                ) : imageError ? (
+                  <div className="text-center p-6 bg-red-500/10 border border-red-500/20 rounded-xl">
+                    <span className="text-3xl">⚠️</span>
+                    <p className="text-red-400 text-xs mt-3">{imageError}</p>
+                    <button onClick={() => handleGenerateOrFetchImage(true)} className="mt-4 px-5 py-1.5 bg-gray-800 text-white font-bold rounded-lg text-[10px] hover:bg-gray-700 transition">
+                      Try Again
+                    </button>
+                  </div>
                 ) : (
                   <div className="text-center p-6 border-2 border-dashed border-gray-700 rounded-xl">
-                    <span className="text-4xl">📸</span>
-                    <p className="text-gray-400 text-sm mt-3">Visualize potential offspring</p>
-                    <button onClick={() => handleGenerateOrFetchImage(false)} className="mt-4 px-6 py-2 bg-purple-600 text-white font-bold rounded-lg text-sm hover:bg-purple-500 transition">
-                      Generate Preview
-                    </button>
+                    <span className="text-4xl">{requesterPets.length > 0 ? "📸" : "🔒"}</span>
+                    <p className="text-gray-400 text-sm mt-3">
+                      {requesterPets.length > 0 
+                        ? "Visualize potential offspring" 
+                        : "No compatible pets found for genetic prediction"}
+                    </p>
+                    {requesterPets.length > 0 ? (
+                      <button onClick={() => handleGenerateOrFetchImage(false)} className="mt-4 px-6 py-2 bg-purple-600 text-white font-bold rounded-lg text-sm hover:bg-purple-500 transition">
+                        Generate Preview
+                      </button>
+                    ) : (
+                      <p className="text-gray-500 text-[10px] mt-2 italic px-4">
+                        Genetic prediction requires a compatible {pet.gender === "Male" ? "Female" : "Male"} {pet.type} in your profile.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

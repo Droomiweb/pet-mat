@@ -80,7 +80,7 @@ export async function POST(req) {
       // Randomize seed
       const randomSeed = Math.floor(Math.random() * 1000);
       
-      const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true&seed=${randomSeed}`;
+      const imageUrl = `https://pollinations.ai/p/${encodedPrompt}?nologo=true&seed=${randomSeed}&width=512&height=512`;
 
       return NextResponse.json({ 
         result: data.comparisonText, 

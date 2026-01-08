@@ -10,7 +10,7 @@ import { verifyAuth } from "../../../lib/auth-middleware";
 
 // Firebase imports
 import { db } from "../../../lib/firebase";
-import { collection, addDoc, serverTimestamp, doc, setDoc, increment } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, setDoc, increment, getDoc, updateDoc } from "firebase/firestore";
 // WhatsApp helper
 import { sendWhatsAppText } from "../../../lib/greenApi";
 
@@ -159,27 +159,38 @@ export async function PATCH(req, context) {
       }
 
       // --- NEW: VALIDATE MATCH ---
+      // --- NEW: DIRECT VALIDATION (No AI Dependency) ---
       try {
-        // Check if my pet (requesterPetId) considers the target pet (id) a valid match
-        // We assume findMatches(requesterPetId) returns valid matches FOR requesterPetId
-        const myMatches = await findMatches(requesterPetId);
-        const isMatch = myMatches.some(m => m._id.toString() === id);
-
-        // Alternately, check if the target pet considers me a match? 
-        // Ideally it should be symmetric.
-
-        if (!isMatch) {
-          return new Response(JSON.stringify({ error: "Only matched pets can send requests." }), { status: 403 });
+        const requesterPet = await Pet.findById(requesterPetId);
+        if (!requesterPet) {
+            return new Response(JSON.stringify({ error: "Requester pet not found" }), { status: 404 });
         }
-      } catch (matchErr) {
-        console.error("Match validation failed:", matchErr);
-        // Fallback: If AI fails, maybe allow basic breed match? 
-        // For strictness, we might return error, but let's just log and continue if critical failure, 
-        // OR fail safe. Plan said "Enforce Match Only", so let's fail if we can't verify.
-        // However, findMatches handles errors gracefully by returning DB matches. 
-        // If it throws, it's a real error.
-        return new Response(JSON.stringify({ error: "Could not verify match status." }), { status: 500 });
+
+        // 1. Owner Check
+        if (requesterPet.ownerId === pet.ownerId) {
+            return new Response(JSON.stringify({ error: "You cannot request your own pet." }), { status: 400 });
+        }
+
+        // 2. Species Check
+        if (requesterPet.type !== pet.type) {
+             return new Response(JSON.stringify({ error: `Species mismatch: ${requesterPet.type} vs ${pet.type}` }), { status: 400 });
+        }
+
+        // 3. Gender Check (Opposite genders only)
+        if (requesterPet.gender === pet.gender) {
+             return new Response(JSON.stringify({ error: "Mating requires opposite genders." }), { status: 400 });
+        }
+
+        // 4. Listing Check
+        if (pet.listingType !== 'Mating') {
+             return new Response(JSON.stringify({ error: "This pet is not listed for mating." }), { status: 400 });
+        }
+
+      } catch (validationErr) {
+        console.error("Validation failed:", validationErr);
+        return new Response(JSON.stringify({ error: "Validation failed." }), { status: 500 });
       }
+      // ----------------------------
       // ----------------------------
 
       // Add history log
@@ -234,13 +245,30 @@ export async function PATCH(req, context) {
           }
 
           // Update conversation metadata & increment unread count for owner
-          await setDoc(doc(db, "conversations", conversationId), {
+          const convRef = doc(db, "conversations", conversationId);
+          const convSnap = await getDoc(convRef, { cache: 'no-store' }); // Force fresh fetch
+
+          const updateData = {
             petId: pet._id.toString(),
             participants: [requesterId, pet.ownerId],
             lastMessage: formattedMessageText,
             updatedAt: serverTimestamp(),
-            [`unreadCounts.${pet.ownerId}`]: increment(1)
-          }, { merge: true });
+          };
+
+          if (convSnap.exists()) {
+             // Doc exists, use updateDoc for safe nested field update
+             const { updateDoc } = await import("firebase/firestore"); // Dynamic import if needed, or rely on top level
+             await updateDoc(convRef, {
+                 ...updateData,
+                 [`unreadCounts.${pet.ownerId}`]: increment(1)
+             });
+          } else {
+             // New Doc
+             await setDoc(convRef, {
+                 ...updateData,
+                 unreadCounts: { [pet.ownerId]: 1 }
+             });
+          }
         } catch (fsError) {
           console.error("Error syncing request message to Firestore:", fsError);
         }
@@ -313,12 +341,28 @@ export async function PATCH(req, context) {
           text: `ADOPTION INQUIRY: ${messageText}`,
           createdAt: serverTimestamp(),
         });
-        await setDoc(doc(db, "conversations", conversationId), {
+        const convRef = doc(db, "conversations", conversationId);
+        const convSnap = await getDoc(convRef);
+        const { updateDoc } = await import("firebase/firestore");
+
+        const updateData = {
           petId: pet._id.toString(),
           participants: [requesterId, pet.ownerId],
           lastMessage: `ADOPTION INQUIRY: ${messageText}`,
           updatedAt: serverTimestamp()
-        }, { merge: true });
+        };
+
+        if (convSnap.exists()) {
+             await updateDoc(convRef, {
+                 ...updateData,
+                 [`unreadCounts.${pet.ownerId}`]: increment(1)
+             });
+        } else {
+             await setDoc(convRef, {
+                 ...updateData,
+                 unreadCounts: { [pet.ownerId]: 1 }
+             });
+        }
       } catch (fsError) {
         console.error("Error creating adoption chat:", fsError);
       }

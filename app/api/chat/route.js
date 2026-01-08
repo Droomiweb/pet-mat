@@ -73,6 +73,11 @@ export async function POST(req) {
     if (mediaUrl && !text) snippet = finalMediaType === 'video' ? "🎥 Video" : "📷 Photo";
     else if (mediaUrl && text) snippet = `📷 ${text}`;
 
+    // Update parent document
+    const convRef = doc(db, "conversations", conversationId);
+    const convSnap = await getDoc(convRef);
+    const { updateDoc } = await import("firebase/firestore"); // ensure import
+
     const docData = {
         petId, 
         lastMessage: snippet, 
@@ -80,15 +85,21 @@ export async function POST(req) {
         participants: parts.slice(1) // Update participants
     };
 
-    // Increment unread count
-    if (recipientId) {
-        docData.unreadCounts = {
-            [recipientId]: increment(1)
-        };
-    }
-
-    // Update parent document
-    await setDoc(doc(db, "conversations", conversationId), docData, { merge: true }); 
+    if (convSnap.exists()) {
+        // Safe update
+        const updatePayload = { ...docData };
+        if (recipientId) {
+            updatePayload[`unreadCounts.${recipientId}`] = increment(1);
+        }
+        await updateDoc(convRef, updatePayload);
+    } else {
+        // Create new
+        const initialData = { ...docData };
+        if (recipientId) {
+            initialData.unreadCounts = { [recipientId]: 1 };
+        }
+        await setDoc(convRef, initialData);
+    } 
 
     // Sync to MongoDB
     (async () => {

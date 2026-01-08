@@ -125,12 +125,10 @@ export default function Main() {
         setUserPets(matingPets);
 
         if (matingPets.length > 0) {
-          matingPets.forEach((pet) => {
-            fetchSuggestionsForPet(pet._id);
-          });
-        } else {
-          setSuggestionsLoading(false);
+          // Wait for all suggestions to load
+          await Promise.all(matingPets.map((pet) => fetchSuggestionsForPet(pet._id, false)));
         }
+        setSuggestionsLoading(false);
       }
     } catch (err) {
       console.error("Error fetching user pets:", err);
@@ -138,7 +136,7 @@ export default function Main() {
     }
   };
 
-  const fetchSuggestionsForPet = async (petId) => {
+  const fetchSuggestionsForPet = async (petId, setGlobalLoading = true) => {
     try {
       const res = await fetch(`/api/match/${petId}`);
       if (res.ok) {
@@ -148,7 +146,7 @@ export default function Main() {
     } catch (err) {
       console.error(`Error fetching suggestions for ${petId}:`, err);
     } finally {
-      setSuggestionsLoading(false);
+      if (setGlobalLoading) setSuggestionsLoading(false);
     }
   };
 
@@ -440,7 +438,7 @@ export default function Main() {
                       {pet.gender}
                     </div>
                     {/* Distance Badge */}
-                    {pet.distance !== undefined && (
+                    {pet.distance != null && (
                       <div className="absolute top-3 left-3 px-2 py-1 rounded-full text-[10px] font-bold bg-black/50 backdrop-blur-md text-white flex items-center gap-1">
                         📍 {pet.distance.toFixed(0)}km
                       </div>

@@ -10,6 +10,9 @@ import { NextResponse } from "next/server";
 import { verifyAuth } from "../../lib/auth-middleware";
 import { integrateNewPetIntoMatches } from "../../lib/matchLogic";
 import { visionModel } from "../../lib/gemini"; // Import centralized service
+import { classifyImage } from "../../lib/huggingface"; // Import Visual Fallback
+import { runCertificateAnalysis } from "../../lib/verification";
+
 
 // Service configuration
 cloudinary.config({
@@ -74,124 +77,7 @@ const parseDateToUTC = (dateStr) => {
 // =====================
 // AI Analysis Logic
 // =====================
-const runCertificateAnalysis = async (petData) => {
-  const { name, breed, age, certificateBase64, certificateMimeType, ownerName } =
-    petData;
-
-  console.log(
-    `[Analysis] Starting Gemini analysis for Pet ${name} (Owner: ${ownerName})...`
-  );
-
-  const imagePart = fileToGenerativePart(certificateBase64, certificateMimeType);
-  let aiResult = null;
-  let ownerNameMatch = false;
-  const MAX_RETRIES = 3;
-
-  // Retry AI request
-  for (let i = 0; i < MAX_RETRIES; i++) {
-    try {
-      const prompt = `
-        You are a specialized Pet Certificate Verification AI. Analyze the uploaded document (image or PDF) and compare it against the user-provided data.
-        
-        User-Provided Data:
-        - Pet Name: "${name}"
-        - Pet Breed: "${breed}"
-        - Pet Age: "${age}"
-        - Owner Name (Expected): "${ownerName}" 
-
-        Tasks:
-        1. Extract all key data from the document: Pet Name, Pet Owner Name.
-        2. Extract Date of Birth (DOB). If DOB is found, use that value. If not, extract age.
-        3. **Extract Lineage**: Look for "Sire" (Father) and "Dam" (Mother) names.
-        4. Compare the extracted Pet Owner Name against the Expected Owner Name (case-insensitive & tolerant).
-        5. Extract Vaccination Records: vaccine names, vaccination dates, and expiration dates.
-        6. Provide a readable OCR text field for admin debugging.
-
-        Respond ONLY with a valid JSON object in this exact format:
-        {
-          "extractedData": {
-            "petName": "...",
-            "ownerName": "...",
-            "extractedDOB": "DD/MM/YYYY or N/A", 
-            "extractedAge": "X years or N/A",
-            "sireName": "Name or N/A",
-            "damName": "Name or N/A",
-            "aiOcrText": "Full readable text (for debug/admin)"
-          },
-          "vaccinationRecords": [
-            { "vaccineName": "Rabies", "vaccinationDate": "DD/MM/YYYY", "expiryDate": "DD/MM/YYYY" }
-          ],
-          "status": "verified" | "rejected" | "needs-review",
-          "reason": "Short explanation of the verification result."
-        }
-        If a date/value is missing, use "N/A". If no vaccinations are found, return an empty array.
-      `;
-
-      // Use visionModel from lib/gemini.js which handles rotation & formatted response
-      const result = await visionModel.generateContent([prompt, imagePart]);
-      const responseText = result.response.text();
-
-      // Clean AI response
-      const cleanedText = responseText
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
-
-      aiResult = JSON.parse(cleanedText);
-      break; // Exit on success
-    } catch (err) {
-      console.error(
-        `Gemini Analysis Attempt ${i + 1} failed:`,
-        err.message || err
-      );
-      if (i < MAX_RETRIES - 1) {
-        // Exponential backoff delay
-        const delay = (i + 1) * 2000;
-        console.log(`Retrying in ${delay / 1000} seconds...`);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-  }
-
-  // Handle AI failure
-  if (!aiResult) {
-    return {
-      aiResult: null,
-      ownerNameMatch: false,
-      error: "AI analysis failed after all retries.",
-    };
-  }
-
-  // Verify owner name
-  const extractedOwnerName = aiResult.extractedData?.ownerName?.toLowerCase() || "";
-  const expectedOwnerName = ownerName.toLowerCase();
-
-  const isSubstringMatch =
-    extractedOwnerName.includes(expectedOwnerName) ||
-    expectedOwnerName.includes(extractedOwnerName);
-
-  // Validate name length
-  const isSane =
-    extractedOwnerName.length >= 3 || expectedOwnerName.length >= 3;
-  ownerNameMatch = isSubstringMatch && isSane;
-
-  // Determine verification status
-  let finalStatus;
-  let finalReason;
-
-  if (ownerNameMatch) {
-    finalStatus = "verified";
-    finalReason = "Owner name matched, and key certificate data was successfully extracted. Auto-verified.";
-  } else {
-    finalStatus = "rejected";
-    finalReason = "Owner Name Mismatch. Primary security check failed (Name on certificate does not match user name).";
-  }
-
-  aiResult.finalStatus = finalStatus;
-  aiResult.reason = finalReason;
-
-  return { aiResult, ownerNameMatch };
-};
+// Logic moved to app/lib/verification.js
 
 // =====================
 // POST Request Handler
@@ -207,6 +93,7 @@ export async function POST(req) {
       breed,
       gender,
       listingType,
+      certificateBase64,
       certificateMimeType,
       imagesBase64,
       ownerName,
@@ -260,9 +147,34 @@ export async function POST(req) {
       ownerName,
     });
 
-    // Handle AI error
+    // Handle AI error with Visual Fallback
     if (analysisResult.error) {
-      console.error("Critical AI Failure: ", analysisResult.error);
+      console.warn("Certificate AI Failed, attempting Visual Fallback...", analysisResult.error);
+
+      let visualStatus = "needs-review";
+      let visualReason = `Certificate Analysis Failed: ${analysisResult.error}`;
+
+      // FALLBACK: Use Hugging Face Vision on the pet photo
+      if (imagesBase64.length > 0) {
+          try {
+              // Extract base64 content
+              const imageB64 = imagesBase64[0].includes(",") ? imagesBase64[0].split(",")[1] : imagesBase64[0];
+              const visionResult = await classifyImage(imageB64);
+              console.log("Visual Fallback Result:", visionResult);
+
+              // Verify Type Match (Case Insensitive)
+              if (visionResult.type && visionResult.type.toLowerCase() === type.toLowerCase()) {
+                  visualStatus = "verified";
+                  // Update reason to reflect success
+                  visualReason = `Visual Verified: Detected valid ${visionResult.type} (${visionResult.breed}) matching listing.`;
+              } else {
+                  visualReason += ` | Visual Mismatch: Saw ${visionResult.type} vs ${type}.`;
+              }
+          } catch (visErr) {
+              console.error("Visual Fallback Error:", visErr);
+              visualReason += " | Visual Check Failed.";
+          }
+      }
 
       const petCreationData = {
         name,
@@ -276,21 +188,24 @@ export async function POST(req) {
         ownerId,
         sireName: null, // Unknown lineage
         damName: null,
-        verificationStatus: "needs-review", // Admin review required
+        verificationStatus: visualStatus, // Use the fallback status
         certificateAnalysis: {
           certificateUrl: certUpload.secure_url,
-          status: "ai-error",
-          reason: analysisResult.error,
+          status: "fallback-check",
+          reason: visualReason,
         },
         vaccinationHistory: [],
       };
 
       const newPet = new Pet(petCreationData);
       await newPet.save();
+      
+      // Trigger matching even if verification is pending/fallback
+      await integrateNewPetIntoMatches(newPet);
 
       return new Response(
         JSON.stringify({
-          message: "Pet added successfully! Verification failed, pet is marked for Admin Review.",
+          message: visualStatus === 'verified' ? "Pet verified via Image Analysis!" : "Pet added. Pending Admin Review.",
           petId: newPet._id.toString(),
         }),
         { status: 201 }
@@ -430,11 +345,17 @@ export async function GET(req) {
       if (type) petQuery.type = type;
       if (breed) petQuery.breed = breed;
       if (excludeOwnerId) petQuery.ownerId = { $ne: excludeOwnerId };
-      if (listingType) petQuery.listingType = listingType;
+      if (listingType) {
+          if (listingType === 'Mating') {
+              petQuery.listingType = { $in: ['Mating', null, undefined] };
+          } else {
+              petQuery.listingType = listingType;
+          }
+      }
 
       // Apply safety rules
       petQuery.isPregnant = { $ne: true };
-      petQuery.verificationStatus = "verified";
+      petQuery.verificationStatus = { $in: ['verified', 'fallback-verified'] };
       petQuery.isLost = { $ne: true };
       petQuery.adoptionRequests = {
         $not: { $elemMatch: { status: "approved" } },
@@ -488,6 +409,8 @@ export async function GET(req) {
       }
     }
 
+    console.log("Explore Pet Query:", JSON.stringify(petQuery)); // DEBUG
+
     // === UPGRADE: Pagination & Lean ===
     let pets = await Pet.find(petQuery)
       .sort({ createdAt: -1 })
@@ -495,7 +418,24 @@ export async function GET(req) {
       .limit(limit)
       .lean();
 
-    // Attach location data (Still required as location is on User model)
+    console.log(`Explore found ${pets.length} pets before distance filter.`); // DEBUG
+
+    // Get Current User Location for Distance Calc (if radius provided)
+    // We can infer the requester's location from the excludeOwnerId if matches user, or fetch user if auth token used.
+    // For simplicity, let's fetch the "excludeOwnerId" user's location if it exists, assuming that's the current user.
+    let userLocation = null;
+    if (excludeOwnerId) {
+        const u = await User.findOne({ firebaseUid: excludeOwnerId }, "location").lean();
+        if (u && u.location && u.location.lat && u.location.lng) {
+            userLocation = u.location;
+        }
+    }
+
+    // Radius Filter Prep
+    const radiusVal = searchParams.get("radius");
+    const maxDistanceKm = radiusVal ? parseInt(radiusVal) : 50;
+
+    // Attach location data & Calculate Distance
     const petsWithLocation = await Promise.all(
       pets.map(async (pet) => {
         // Note: For high scale, consider denormalizing city into Pet model
@@ -503,6 +443,20 @@ export async function GET(req) {
           { firebaseUid: pet.ownerId },
           "location"
         ).lean();
+
+        let distance = null;
+        if (userLocation && owner?.location?.lat && owner?.location?.lng) {
+            // Haversine Formula
+            const R = 6371; // Radius of the earth in km
+            const dLat = (owner.location.lat - userLocation.lat) * (Math.PI / 180);
+            const dLon = (owner.location.lng - userLocation.lng) * (Math.PI / 180);
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(userLocation.lat * (Math.PI / 180)) * Math.cos(owner.location.lat * (Math.PI / 180)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            distance = R * c; // Distance in km
+        }
 
         return {
           _id: pet._id.toString(),
@@ -520,15 +474,25 @@ export async function GET(req) {
           isLost: pet.isLost,
           lastSeenDate: pet.lastSeenDate,
           location: owner?.location || null,
+          distance: distance // Return calculated distance
         };
       })
     );
 
-    return new Response(JSON.stringify(petsWithLocation), {
+    // Apply Radius Filter in Memory (if distance calculated)
+    // Only filter if we actually have distance data.
+    const filteredPets = petsWithLocation.filter(p => {
+        if (p.distance !== null) {
+            return p.distance <= maxDistanceKm;
+        }
+        return true; // Keep if distance unknown (fallback)
+    });
+
+    return new Response(JSON.stringify(filteredPets), {
       status: 200,
       headers: {
         "Content-Type": "application/json",
-        "X-Total-Count": pets.length.toString(), // Useful for frontend
+        "X-Total-Count": filteredPets.length.toString(), // Update count
         "X-Page": page.toString()
       },
     });

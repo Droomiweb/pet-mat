@@ -31,6 +31,8 @@ export default function MarketplacePage() {
     const [recData, setRecData] = useState({ recommendations: [] });
     const [recLoading, setRecLoading] = useState(false);
 
+    const [recommendationsCache, setRecommendationsCache] = useState({});
+
     const router = useRouter();
     const { user, loading: authLoading } = useAuth();
 
@@ -63,6 +65,12 @@ export default function MarketplacePage() {
             const pet = myPets.find(p => p._id === selectedPetId);
             if (!pet) return;
 
+            // Check cache first
+            if (recommendationsCache[selectedPetId]) {
+                setRecData(recommendationsCache[selectedPetId]);
+                return;
+            }
+
             setRecData({ recommendations: [] });
 
             if (pet.aiProfileString) {
@@ -76,6 +84,11 @@ export default function MarketplacePage() {
                     if (res.ok) {
                         const data = await res.json();
                         setRecData(data);
+                        // Update cache
+                        setRecommendationsCache(prev => ({
+                            ...prev,
+                            [selectedPetId]: data
+                        }));
                     }
                 } catch (err) { console.error(err); }
                 finally { setRecLoading(false); }
@@ -85,7 +98,7 @@ export default function MarketplacePage() {
         if (myPets.length > 0) {
             fetchRecommendations();
         }
-    }, [selectedPetId, myPets]);
+    }, [selectedPetId, myPets, recommendationsCache]);
 
     // Filter Logic
     const filteredProducts = recData.recommendations.filter(item => {

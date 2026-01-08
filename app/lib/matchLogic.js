@@ -1,6 +1,8 @@
 import Pet from "../models/PetModel";
 import { textModel } from "./gemini";
 
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export async function findMatches(petId) {
     try {
         // Fetch seeker profile
@@ -14,6 +16,7 @@ export async function findMatches(petId) {
         const now = new Date();
 
         if (
+            false && // FORCE BYPASS CACHE FOR DEBUGGING
             myPet.cachedMatches &&
             myPet.cachedMatches.lastUpdated &&
             (now - new Date(myPet.cachedMatches.lastUpdated) < CACHE_DURATION) &&
@@ -46,27 +49,31 @@ export async function findMatches(petId) {
         // If the user just wants to see potential matches without AI scores, we could allow it,
         // but the current requirement implies "matches" are what triggers the ability to request.
 
-        // Format breed regex
-        const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const breedRegex = new RegExp(`^${escapeRegex(myPet.breed.trim())}$`, 'i');
+        // DEBUG: Check what pets exist at all (including unverified)
+        const allPets = await Pet.find({}).lean();
+        console.log("DEBUG DEEP DB DUMP:", JSON.stringify(allPets));
+
+        // Format breed regex - Relaxed for partial matches and comma-separated breeds
+        const breedParts = myPet.breed.split(',').map(b => b.trim());
+        const breedConditions = breedParts.map(part => ({
+            breed: { $regex: new RegExp(escapeRegex(part), 'i') }
+        }));
 
         // Find potential matches from DB
         const potentialMatches = await Pet.find({
             _id: { $ne: myPet._id },          // Exclude self
-            ownerId: { $ne: myPet.ownerId },  // Exclude same owner
-            type: myPet.type,                 // Match species
-            breed: { $regex: breedRegex },    // Match breed
+            $or: breedConditions,            // Match any part of the breed string
             gender: myPet.gender === 'Male' ? 'Female' : 'Male', // Opposite gender
-            verificationStatus: 'verified',   // Verified only
-            isBanned: false,                  // Not banned
-            isPregnant: { $ne: true },        // Not pregnant
-            listingType: 'Mating',            // Mating listings
-            // Relaxing the strict AI profile requirement for the *DB query* to ensure we catch all eligible pets 
-            // even if they haven't done the interview yet, though they might get low scores.
-            // keeping existing logic mainly to minimize breakage, but 'aiProfileString' check was in original route.
-            aiProfileString: { $ne: null, $exists: true }
+            verificationStatus: { $in: ['verified', 'fallback-verified'] },   // Verified only
+            isBanned: { $ne: true },          // Not banned
+            isPregnant: { $ne: true },        // Strictly exclude pregnant pets
+            listingType: { $in: ['Mating', null, undefined] }, 
         }).lean();
 
+        console.log(`[MatchLogic] Pet ${myPet.name} (${myPet.gender} ${myPet.breed}) found ${potentialMatches.length} candidates. (Filtered out pregnant/banned)`);
+        if (potentialMatches.length > 0) {
+            console.log(`[MatchLogic] Candidates: ${potentialMatches.map(p => `${p.name} (${p.gender})`).join(', ')}`);
+        }
         if (potentialMatches.length === 0) {
             return [];
         }

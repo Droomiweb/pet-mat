@@ -13,7 +13,7 @@ const nextConfig = {
       // 2. Pollinations AI (AI generated pet/baby images)
       {
         protocol: 'https',
-        hostname: 'image.pollinations.ai',
+        hostname: 'pollinations.ai',
         port: '',
         pathname: '/**',
       },
