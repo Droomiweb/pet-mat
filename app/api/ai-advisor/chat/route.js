@@ -12,7 +12,15 @@ async function getPetDetails(petId) {
     if (!pet) return null;
     const sireInfo = pet.sireName || (pet.sireId ? "Registered" : "Unknown");
     const damInfo = pet.damName || (pet.damId ? "Registered" : "Unknown");
-    return { ...pet, lineageInfo: `Sire: ${sireInfo}, Dam: ${damInfo}` };
+    
+    // Check for "Mated" status in history
+    const isMated = pet.matingHistory?.some(r => r.status === 'mated');
+    
+    return { 
+      ...pet, 
+      lineageInfo: `Sire: ${sireInfo}, Dam: ${damInfo}`,
+      isMated: isMated || pet.isPregnant
+    };
   } catch (e) {
     console.error("Error fetching pet:", e);
     return null;
@@ -48,30 +56,47 @@ export async function POST(req) {
     - Vaccination Status: \n${vaxList}
     - Weight: ${petB.weight || "Unknown"} kg
     - Energy Level: ${petB.energyLevel || "Unknown"}
+    - Temperament: ${petB.temperament || "Unknown"}
     - Age: ${petB.age} years
     - Gender: ${petB.gender}
     - Lineage: ${petB.lineageInfo}
+    - Status: ${petB.isPregnant ? "PREGNANT" : (petB.isMated ? "MATED" : "Available")}
     `;
 
-    // Sanitize history to prevent 400 errors from empty messages
-    const validHistory = (history || []).filter(item => {
-      return item.role && item.parts && item.parts[0] && item.parts[0].text && item.parts[0].text.trim() !== "";
-    });
+    // Determine if we are in "Pregnancy/Parent" mode
+    const isParentMode = petB.isPregnant || (petA && petB.matingHistory?.some(r => r.status === 'mated' && r.requesterPetId === petA._id.toString()));
 
-    const systemPrompt = petA 
+    const systemPrompt = isParentMode 
+      ? `
+      You are **Dr. Paws**, a warm, enthusiastic Veteran Veterinarian and Geneticist.
+      
+      **SPECIAL CONTEXT**:
+      The target pet, **${petB.name}**, is currently **${petB.isPregnant ? "PREGNANT" : "MATED"}**! 
+      ${petA ? `The partner is ${petA.name}.` : ""}
+      
+      **YOUR MISSION**:
+      1. Congratulations! Respond with warmth about the upcoming litter.
+      2. Analyze the traits of both parents (if Pet A is provided) to predict the "Nature" (temperament/energy) of the babies.
+         - ${petA ? `${petA.name} is ${petA.temperament} with ${petA.energyLevel} energy.` : ""}
+         - ${petB.name} is ${petB.temperament} with ${petB.energyLevel} energy.
+      3. Give pregnancy care advice (nutrition, exercise, warning signs).
+      4. Talk like a proud family doctor.
+      `
+      : petA 
       ? `
       You are **Dr. Paws**, a warm, enthusiastic, and highly expert Veterinarian and Geneticist.
       
       **CONTEXT**:
       You are analyzing a potential match/interaction between:
-      1. **User's Pet (Pet A)**: ${petA.name} (${petA.breed}, ${petA.gender})
-      2. **Target Pet (Pet B)**: ${petB.name} (${petB.breed}, ${petB.gender})
+      1. **User's Pet (Pet A)**: ${petA.name} (${petA.breed}, ${petA.gender}, ${petA.temperament})
+      2. **Target Pet (Pet B)**: ${petB.name} (${petB.breed}, ${petB.gender}, ${petB.temperament})
       
       ${medicalContext}
       
       **INSTRUCTIONS**:
       - You are analyzing them for a MATING match.
-      - You HAVE access to Pet B's medical logs. Use this to answer accuracy.
+      - Predict the likely "Nature" and behavior of their future offspring based on their temperaments.
+      - You HAVE access to Pet B's medical logs. Use this for accuracy.
       - Tone: Professional, friendly.
       `
       : `
@@ -89,6 +114,11 @@ export async function POST(req) {
       - If they ask about health, check the 'Medical History Log'.
       - Tone: Professional, caring, and transparent.
       `;
+
+    // Sanitize history to prevent 400 errors from empty messages
+    const validHistory = (history || []).filter(item => {
+      return item.role && item.parts && item.parts[0] && item.parts[0].text && item.parts[0].text.trim() !== "";
+    });
 
     // Start Chat
     const chat = textModel.startChat({

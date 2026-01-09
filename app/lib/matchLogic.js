@@ -1,5 +1,6 @@
 import Pet from "../models/PetModel";
 import { textModel } from "./gemini";
+import { getCompatibleBreeds } from "./breedGroups";
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -49,22 +50,19 @@ export async function findMatches(petId) {
         // If the user just wants to see potential matches without AI scores, we could allow it,
         // but the current requirement implies "matches" are what triggers the ability to request.
 
-        // DEBUG: Check what pets exist at all (including unverified)
-        const allPets = await Pet.find({}).lean();
-        console.log("DEBUG DEEP DB DUMP:", JSON.stringify(allPets));
-
-        // Format breed regex - Relaxed for partial matches and comma-separated breeds
-        const breedParts = myPet.breed.split(',').map(b => b.trim());
-        const breedConditions = breedParts.map(part => ({
-            breed: { $regex: new RegExp(escapeRegex(part), 'i') }
+        // Format breed regex - Relaxed for compatibility groups and partial matches
+        const compatibleBreeds = getCompatibleBreeds(myPet.breed, myPet.type);
+        const breedConditions = compatibleBreeds.map(b => ({
+            breed: { $regex: new RegExp(escapeRegex(b), 'i') }
         }));
 
         // Find potential matches from DB
         const potentialMatches = await Pet.find({
             _id: { $ne: myPet._id },          // Exclude self
+            type: myPet.type,                // MUST be same species
             $or: breedConditions,            // Match any part of the breed string
             gender: myPet.gender === 'Male' ? 'Female' : 'Male', // Opposite gender
-            verificationStatus: { $in: ['verified', 'fallback-verified'] },   // Verified only
+            verificationStatus: { $in: ['verified', 'fallback-verified', 'pending'] }, // Allow verified and pending
             isBanned: { $ne: true },          // Not banned
             isPregnant: { $ne: true },        // Strictly exclude pregnant pets
             listingType: { $in: ['Mating', null, undefined] }, 
@@ -143,7 +141,7 @@ export async function findMatches(petId) {
                 try {
                     aiRankedMatches = JSON.parse(text);
                 } catch (e) {
-                    console.error("Failed to parse AI JSON", text);
+                    console.error("[MatchLogic] Failed to parse AI JSON. Raw text:", text);
                 }
 
                 // Merge scores/reasons
@@ -221,16 +219,19 @@ export async function integrateNewPetIntoMatches(newPet) {
 
         // 1. Find candidates (Reverse of findMatches)
         // We look for pets that WOULD include this newPet in their search
-        const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const breedRegex = new RegExp(`^${escapeRegex(newPet.breed.trim())}$`, 'i');
+        const compatibleBreeds = getCompatibleBreeds(newPet.breed, newPet.type);
+        const breedConditions = compatibleBreeds.map(b => ({
+            breed: { $regex: new RegExp(escapeRegex(b), 'i') }
+        }));
         
         const candidates = await Pet.find({
             _id: { $ne: newPet._id },
             ownerId: { $ne: newPet.ownerId },
             type: newPet.type,
-            breed: { $regex: breedRegex },
+            $or: breedConditions,
             gender: newPet.gender === 'Male' ? 'Female' : 'Male',
             listingType: 'Mating',
+            verificationStatus: { $in: ['verified', 'fallback-verified', 'pending'] },
             // Note: We process even if they have old cache, because we want to INJECT this new one
         }).lean();
 

@@ -5,7 +5,8 @@ import { AuthProvider } from "./auth-provider";
 import connectDB from "./lib/mongodb";
 import SystemSettings from "./models/SystemSettings";
 import { Analytics } from "@vercel/analytics/next"
-import { unstable_cache } from "next/cache"; // Import cache utility
+import { unstable_cache } from "next/cache"; 
+import LostPetAlert from "./components/LostPetAlert";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -46,6 +47,7 @@ export default async function RootLayout({ children }) {
     <html lang="en" suppressHydrationWarning>
       <body className={poppins.className}>
         <AuthProvider>
+          <LostPetAlert />
           <NavbarrWrapper isMaintenanceMode={isMaintenanceMode}>
             {children}
           </NavbarrWrapper>

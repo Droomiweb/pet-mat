@@ -28,6 +28,7 @@ export default function Navbar({ reminderCount = 0 }) {
     const [pregnantPetId, setPregnantPetId] = useState(null);
     const [showNoPregnancyModal, setShowNoPregnancyModal] = useState(false);
     const [realtimeUnreadCount, setRealtimeUnreadCount] = useState(0);
+    const [hasLostPets, setHasLostPets] = useState(false);
 
     // --- NEW: Track hover state for sliding animation ---
     const [hoveredPath, setHoveredPath] = useState(null);
@@ -35,6 +36,24 @@ export default function Navbar({ reminderCount = 0 }) {
     const { user, userData } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
+
+    // --- NEW: Check for lost pets globally ---
+    useEffect(() => {
+        const checkLostPets = async () => {
+            try {
+                const res = await fetch("/api/pet?isLost=true");
+                if (res.ok) {
+                    const data = await res.json();
+                    setHasLostPets(data.length > 0);
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        };
+        checkLostPets();
+        const interval = setInterval(checkLostPets, 300000);
+        return () => clearInterval(interval);
+    }, []);
 
     // --- SCROLL EFFECT ---
     useEffect(() => {
@@ -132,7 +151,7 @@ export default function Navbar({ reminderCount = 0 }) {
 
             {/* --- NAVBAR --- */}
             <header
-                className={`fixed top-0 w-full z-50 transition-all duration-300 ${scrolled
+                className={`fixed w-full z-50 transition-all duration-300 ${hasLostPets ? 'top-12' : 'top-0'} ${scrolled
                     ? "bg-white/80 backdrop-blur-xl shadow-md border-b border-white/20 h-16"
                     : "bg-white/60 backdrop-blur-md border-b border-white/10 h-20"
                     }`}

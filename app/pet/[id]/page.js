@@ -9,6 +9,7 @@ import { createConversationId } from "../../lib/chatUtils";
 import ReactMarkdown from "react-markdown";
 import jsPDF from "jspdf";
 import { motion, AnimatePresence } from "framer-motion"; // ANIMATION LIBRARY
+import { getCompatibleBreeds } from "../../lib/breedGroups";
 
 // --- ICONS & UI HELPERS ---
 const SparklesIcon = () => <span className="text-yellow-400 text-xl animate-pulse">✨</span>;
@@ -123,7 +124,9 @@ export default function PetDetailPage() {
   const [chatHistory, setChatHistory] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [generatedImage, setGeneratedImage] = useState(null);
+  const [behaviorPrediction, setBehaviorPrediction] = useState("");
   const [hasTriedGeneration, setHasTriedGeneration] = useState(false);
+  const [advisorTab, setAdvisorTab] = useState("chat"); // 'chat' or 'genetics'
   const [imageError, setImageError] = useState("");
 
   const chatEndRef = useRef(null);
@@ -147,21 +150,24 @@ export default function PetDetailPage() {
       const res = await fetch(`/api/pet/user/${uid}`);
       if (res.ok) {
         const pets = await res.json();
-        // Strict Match Logic Mirroring Backend:
-        // 1. Same Type, Opposite Gender
-        // 2. Verified Only
-        // 3. Not Pregnant
-        // 4. Mating Listing
-        // 5. Same Breed (Case insensitive)
+        // Match Logic: Same Type, Compatible Breed, Opposite Gender
+        const compatibleBreeds = getCompatibleBreeds(petBreed, petType).map(b => b.toLowerCase());
         const compatible = pets.filter(p => {
           const typeMatch = p.type?.trim().toLowerCase() === petType?.trim().toLowerCase();
+          const pBreeds = p.breed?.split(',').map(b => b.trim().toLowerCase()) || [];
+          const breedMatch = pBreeds.some(pb => compatibleBreeds.includes(pb));
           const genderMatch = p.gender !== petGender;
-          return typeMatch && genderMatch;
+          return typeMatch && breedMatch && genderMatch;
         });
 
-        console.log(`[DrPaws] Matching for: ${petType} (${petGender}). Found: ${pets.length}, Compatible: ${compatible.length}`);
+        console.log(`[DrPaws] Matching for: ${petType} ${petBreed} (${petGender}). Found: ${pets.length}, Compatible: ${compatible.length}`);
+        
         setRequesterPets(compatible);
-        if (compatible.length >= 1) setRequesterPetId(compatible[0]._id);
+        if (compatible.length > 0) {
+          setRequesterPetId(compatible[0]._id);
+        } else {
+          setRequesterPetId("");
+        }
       }
     } catch (err) { console.error(err); }
   };
@@ -176,11 +182,6 @@ export default function PetDetailPage() {
     if (showAdvisorModal) chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, showAdvisorModal]);
 
-  useEffect(() => {
-    if (showAdvisorModal && !generatedImage && requesterPetId && !hasTriedGeneration && !imageLoading) {
-      handleGenerateOrFetchImage(false);
-    }
-  }, [showAdvisorModal, requesterPetId, generatedImage, hasTriedGeneration, imageLoading]);
 
 
   // --- 2. HANDLERS ---
@@ -269,21 +270,58 @@ export default function PetDetailPage() {
   const handleFoundPet = async () => {
     if (!user) return router.push("/Login");
     if (!confirm("Notify owner regarding found pet?")) return;
+    
     setActionLoading(true);
+
     const sendAlert = async (lat, lng) => {
       try {
         const cid = createConversationId(pet._id, user.uid, pet.ownerId);
-        let txt = `🚨 URGENT: I found ${pet.name}!`;
-        if (lat) txt += ` Location: http://googleusercontent.com/maps.google.com/?q=${lat},${lng}`;
-        await fetch("/api/chat", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ petId: pet._id, conversationId: cid, senderId: user.uid, senderName: user.displayName, text: txt })
+        
+        // Better formatting for the message
+        let txt = `🚨 EMERGENCY: I found ${pet.name}!`;
+        if (lat && lng) {
+          txt += `\n\n📌 My Current Location:\nhttps://www.google.com/maps?q=${lat},${lng}`;
+        } else {
+          txt += `\n\n(Finder's location wasn't shared, but they are trying to reach you.)`;
+        }
+
+        const res = await fetch("/api/chat", {
+          method: "POST", 
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            petId: pet._id, 
+            conversationId: cid, 
+            senderId: user.uid, 
+            senderName: user.displayName || user.email.split("@")[0], 
+            text: txt 
+          })
         });
-        router.push(`/messages/${cid}`);
-      } catch (e) { alert("Error sending alert"); } finally { setActionLoading(false); }
+
+        if (res.ok) {
+          router.push(`/messages/${cid}`);
+        } else {
+          throw new Error("Failed to send alert");
+        }
+      } catch (e) { 
+        console.error("Found Pet Error:", e);
+        alert("Error sending alert. Please try again or message the owner directly."); 
+      } finally { 
+        setActionLoading(false); 
+      }
     };
-    if (navigator.geolocation) navigator.geolocation.getCurrentPosition((pos) => sendAlert(pos.coords.latitude, pos.coords.longitude), () => sendAlert(null, null));
-    else sendAlert(null, null);
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => sendAlert(pos.coords.latitude, pos.coords.longitude),
+        (err) => {
+          console.warn("Geolocation denied/failed:", err);
+          sendAlert(null, null); // Proceed without location
+        },
+        { timeout: 10000 } // 10s timeout
+      );
+    } else {
+      sendAlert(null, null);
+    }
   };
 
   const handleViewLocation = () => {
@@ -411,6 +449,7 @@ export default function PetDetailPage() {
       const data = await res.json();
       if (data.imageUrl) {
           setGeneratedImage(data.imageUrl);
+          setBehaviorPrediction(data.behaviorPrediction || "");
           setImageError("");
       } else {
           console.warn("No image returned:", data.error);
@@ -422,6 +461,13 @@ export default function PetDetailPage() {
     }
     finally { setImageLoading(false); }
   };
+
+  // --- 3. AUTO-FETCH IMAGE ON LOAD ---
+  useEffect(() => {
+    if (requesterPetId && pet && !hasTriedGeneration) {
+      handleGenerateOrFetchImage(false);
+    }
+  }, [requesterPetId, pet]);
 
   const downloadImage = async () => {
     if (!generatedImage) return;
@@ -486,9 +532,27 @@ export default function PetDetailPage() {
       {/* --- DR. PAWS & GENETICS MODAL (REDESIGNED) --- */}
       {showAdvisorModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md transition-all duration-300">
-          <div className="bg-white rounded-[2rem] w-full max-w-5xl h-[85vh] flex overflow-hidden shadow-2xl ring-4 ring-white/50">
+          <div className="bg-white rounded-[2rem] w-full max-w-5xl h-[90vh] md:h-[85vh] flex flex-col md:flex-row overflow-hidden shadow-2xl ring-4 ring-white/50">
+            {/* MOBILE TAB SWITCHER */}
+            <div className="md:hidden flex p-2 bg-gray-50 border-b border-gray-100">
+               <div className="flex-1 flex bg-gray-200 rounded-xl p-1">
+                  <button 
+                    onClick={() => setAdvisorTab("chat")}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${advisorTab === 'chat' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+                  >
+                    Expert Chat
+                  </button>
+                  <button 
+                    onClick={() => setAdvisorTab("genetics")}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${advisorTab === 'genetics' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+                  >
+                    Genetic Prediction
+                  </button>
+               </div>
+            </div>
+
             {/* LEFT SIDE: VISUALIZER */}
-            <div className="w-[40%] bg-gray-900 relative hidden md:flex flex-col border-r border-gray-800">
+            <div className={`w-full md:w-[40%] bg-gray-900 relative flex flex-col border-b md:border-b-0 md:border-r border-gray-800 shrink-0 ${advisorTab === 'genetics' ? 'flex' : 'hidden md:flex'}`}>
               <div className="p-6">
                 <h2 className="text-white font-bold text-xl flex items-center gap-2">🧬 Genetic Prediction</h2>
                 <p className="text-gray-400 text-xs mt-1">Based on phenotype analysis of both parents.</p>
@@ -497,12 +561,22 @@ export default function PetDetailPage() {
                 {imageLoading ? (
                   <GeneticsLoader />
                 ) : generatedImage ? (
-                  <div className="relative w-full aspect-square rounded-xl overflow-hidden shadow-2xl ring-2 ring-purple-500/50 group">
-                    <Image src={generatedImage} alt="Predicted Offspring" width={1024} height={1024} unoptimized={true} className="object-cover w-full h-full transition-transform duration-700 group-hover:scale-110" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-4">
-                      <p className="text-white text-xs font-bold">Generated with AI Flux Model</p>
+                  <>
+                    <div className="relative w-full aspect-square rounded-xl overflow-hidden shadow-2xl ring-2 ring-purple-500/50 group">
+                      <Image src={generatedImage} alt="Predicted Offspring" width={1024} height={1024} unoptimized={true} className="object-cover w-full h-full transition-transform duration-700 group-hover:scale-110" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-4">
+                        <p className="text-white text-xs font-bold">Generated with AI Flux Model</p>
+                      </div>
                     </div>
-                  </div>
+                    {behaviorPrediction && (
+                      <div className="mt-4 p-4 bg-purple-500/10 border border-purple-500/20 rounded-xl">
+                        <p className="text-purple-200 text-xs italic text-center">
+                          <span className="font-bold not-italic mr-1">🐾 Behavioral Insight:</span> 
+                          "{behaviorPrediction}"
+                        </p>
+                      </div>
+                    )}
+                  </>
                 ) : imageError ? (
                   <div className="text-center p-6 bg-red-500/10 border border-red-500/20 rounded-xl">
                     <span className="text-3xl">⚠️</span>
@@ -513,34 +587,37 @@ export default function PetDetailPage() {
                   </div>
                 ) : (
                   <div className="text-center p-6 border-2 border-dashed border-gray-700 rounded-xl">
-                    <span className="text-4xl">{requesterPets.length > 0 ? "📸" : "🔒"}</span>
-                    <p className="text-gray-400 text-sm mt-3">
-                      {requesterPets.length > 0 
-                        ? "Visualize potential offspring" 
-                        : "No compatible pets found for genetic prediction"}
+                    <span className="text-4xl">
+                      {pet.isPregnant ? "👼" : (requesterPets.length > 0 ? "📸" : "🔒")}
+                    </span>
+                    <h4 className="text-white font-bold mt-4">
+                      {pet.isPregnant ? "Pregnancy Mode" : "Genetic Visualizer"}
+                    </h4>
+                    <p className="text-gray-400 text-xs mt-2 max-w-[200px] mx-auto">
+                      {pet.isPregnant 
+                        ? "Bella is pregnant! Visualize the future puppies."
+                        : (requesterPets.length > 0 
+                            ? "Visualize potential offspring with your pets." 
+                            : "No compatible or same-breed pets found in your profile.")}
                     </p>
-                    {requesterPets.length > 0 ? (
+                    {requesterPets.length > 0 || pet.isPregnant ? (
                       <button onClick={() => handleGenerateOrFetchImage(false)} className="mt-4 px-6 py-2 bg-purple-600 text-white font-bold rounded-lg text-sm hover:bg-purple-500 transition">
-                        Generate Preview
+                        {pet.isPregnant ? "View Puppies" : "Generate Preview"}
                       </button>
-                    ) : (
-                      <p className="text-gray-500 text-[10px] mt-2 italic px-4">
-                        Genetic prediction requires a compatible {pet.gender === "Male" ? "Female" : "Male"} {pet.type} in your profile.
-                      </p>
-                    )}
+                    ) : null}
                   </div>
                 )}
               </div>
-              {generatedImage && (
+              {(generatedImage || pet.isPregnant) && (
                 <div className="p-6 bg-gray-800/50 flex gap-3">
-                  <button onClick={downloadImage} className="flex-1 flex items-center justify-center gap-2 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm transition"><DownloadIcon /> Save</button>
-                  <button onClick={() => handleGenerateOrFetchImage(true)} className="flex-1 flex items-center justify-center gap-2 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold text-sm transition"><RefreshIcon spinning={imageLoading} /> Regenerate</button>
+                  {generatedImage && <button onClick={downloadImage} className="flex-1 flex items-center justify-center gap-2 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm transition"><DownloadIcon /> Save</button>}
+                  <button onClick={() => handleGenerateOrFetchImage(true)} className="flex-1 flex items-center justify-center gap-2 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold text-sm transition"><RefreshIcon spinning={imageLoading} /> {pet.isPregnant ? "Refresh Visual" : "Regenerate"}</button>
                 </div>
               )}
             </div>
 
             {/* RIGHT SIDE: CHAT */}
-            <div className="flex-1 flex flex-col bg-[#F8FAFC]">
+            <div className={`flex-1 flex flex-col bg-[#F8FAFC] min-h-[500px] md:min-h-0 ${advisorTab === 'chat' ? 'flex' : 'hidden md:flex'}`}>
               <div className="p-5 bg-white border-b border-gray-100 flex justify-between items-center shadow-sm z-10">
                 <div>
                   <h2 className="font-black text-xl text-gray-800 flex items-center gap-2">Dr. Paws <span className="text-green-500 text-xs bg-green-50 px-2 py-1 rounded-full border border-green-100">Online</span></h2>
@@ -668,7 +745,7 @@ export default function PetDetailPage() {
                   {pet.listingType === "Mating" && !requesterPets.length ? (
                     <div className="bg-[#FFF5F5] border border-red-100 rounded-2xl p-6 text-center">
                       <div className="text-red-500 font-bold text-lg mb-2">No Eligible Pets</div>
-                      <p className="text-red-400 text-xs leading-relaxed font-medium">You need a non-pregnant, verified pet of the same species & opposite gender.</p>
+                      <p className="text-red-400 text-xs leading-relaxed font-medium">You need a non-pregnant, verified pet of the same species, breed & opposite gender.</p>
                     </div>
                   ) : (
                     <div className="space-y-4">

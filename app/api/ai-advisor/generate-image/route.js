@@ -35,29 +35,52 @@ export async function POST(req) {
     // 1. Check if image already exists in DB (unless regenerating)
     if (!regenerate) {
       const existingImage = await GeneratedImage.findOne({
-        parentAId: petAId,
-        parentBId: petBId
+        $or: [
+          { parentAId: petAId, parentBId: petBId },
+          { parentAId: petBId, parentBId: petAId }
+        ]
       }).sort({ createdAt: -1 }); // Get latest
 
       if (existingImage) {
         return new Response(JSON.stringify({
           imageUrl: existingImage.imageUrl,
+          behaviorPrediction: existingImage.behaviorPrediction,
           fromCache: true
         }), { status: 200 });
       }
     }
 
     // 2. Fetch parent pets for generation
-    const petA = await Pet.findById(petAId);
+    let petA = await Pet.findById(petAId);
     const petB = await Pet.findById(petBId);
 
-    if (!petA || !petB) {
-      return new Response(JSON.stringify({ error: "Pets not found" }), { status: 404 });
+    if (!petB) {
+      return new Response(JSON.stringify({ error: "Target pet not found" }), { status: 404 });
+    }
+
+    // --- AUTO-DETECT PARTNER FOR PREGNANT/MATED PETS ---
+    if (!petA) {
+        // Option 1: Try sireId (if petB is female and has a sire recorded for her litter)
+        if (petB.sireId) {
+            petA = await Pet.findById(petB.sireId);
+        }
+        
+        // Option 2: Try matingHistory
+        if (!petA) {
+            const matedEntry = petB.matingHistory?.find(r => r.status === 'mated');
+            if (matedEntry) {
+                petA = await Pet.findById(matedEntry.requesterPetId);
+            }
+        }
+    }
+
+    if (!petA) {
+      return new Response(JSON.stringify({ error: "Partner pet not found. Genetic prediction requires two parents." }), { status: 404 });
     }
 
     // Determine species logic
     let babyTerm = "baby animal";
-    let targetSpecies = petA.type; // Default to mother
+    let targetSpecies = petB.type || petA.type; 
 
     if (targetSpecies === "Dog") babyTerm = "Puppy";
     else if (targetSpecies === "Cat") babyTerm = "Kitten";
@@ -67,11 +90,10 @@ export async function POST(req) {
     // 3. Define ENHANCED vision prompt
     // 3. Define ENHANCED vision prompt - Hyper-concise to prevent Pollination HTML errors
     const prompt = `
-      Create a short, descriptive prompt (under 30 words) for an animal offspring pup.
-      Parents: ${petA?.breed} and ${petB?.breed}.
-      Traits to blend: coat color, patterns, and features.
-      Style: Full-body, realistic 8k photo, natural background, centered, 1:1 aspect ratio.
-      DO NOT include fluff or technical jargon.
+      1. Create a short, descriptive image prompt (under 30 words) for an animal offspring pup based on parents: ${petA?.breed} and ${petB?.breed}. Focus on blending coat color and features.
+      2. Provide a separate "Behavior Prediction" (max 12 words) about its personality.
+      Return format: Prompt: [image prompt] | Behavior: [behavior prediction]
+      Style: Full-body, realistic 8k photo, natural background, 1:1.
     `;
 
     // Prepare input data
@@ -88,29 +110,84 @@ export async function POST(req) {
       if (imgB) inputParts.push({ inlineData: { data: imgB, mimeType: "image/jpeg" } });
     }
 
-    // Generate visual description
+    // Generate visual description and behavior
     const result = await visionModel.generateContent(inputParts);
-    const response = await result.response;
-    const imageDescription = response.text().replace(/\n/g, " ").trim();
+    const aiText = result.response.text();
+    
+    let imageDescription = aiText;
+    let behaviorPrediction = "Energetic and loyal companion.";
+    
+    if (aiText.includes("|")) {
+        const parts = aiText.split("|");
+        imageDescription = parts[0].replace(/Prompt:/i, "").trim();
+        behaviorPrediction = parts[1].replace(/Behavior:/i, "").trim();
+    }
 
     console.log("Generated Prompt:", imageDescription);
+    console.log("Behavior Prediction:", behaviorPrediction);
 
     // 4. Generate Image URL (Pollinations)
-    const seed = Math.floor(Math.random() * 99999);
+    const apiKey = process.env.POLLINATIONS_API_KEY;
+    console.log(`[ImageGen] API Key configured: ${apiKey ? "YES (" + apiKey.slice(0, 5) + "...)" : "NO"}`);
+
     // Sanitize and shorten prompt for Pollinations stability
     const cleanDescription = imageDescription.replace(/["\n\r]/g, " ").substring(0, 200);
     const encodedPrompt = encodeURIComponent(cleanDescription);
+    let pollinationsUrl = "";
 
-    // Using flux model for better reliability
-    let pollinationsUrl = `https://pollinations.ai/p/${encodedPrompt}?nologo=true&seed=${seed}&model=flux`;
+    let imageRes;
+    let retries = 0;
+    const MAX_RETRIES = 4;
+    const models = ["flux", "turbo", "unity"]; // Prioritize flux
+    const subdomains = ["image.pollinations.ai", "gen.pollinations.ai"];
 
-    console.log("Fetching image from:", pollinationsUrl);
+    while (retries <= MAX_RETRIES) {
+      // Rotate through models and subdomains
+      const model = models[retries % models.length];
+      const subdomain = subdomains[retries % subdomains.length];
+      const newSeed = Math.floor(Math.random() * 99999);
+      
+      // Use the updated URL structure: /prompt/{prompt} or /image/{prompt}
+      pollinationsUrl = `https://${subdomain}/prompt/${encodedPrompt}?nologo=true&seed=${newSeed}&model=${model}&width=1024&height=1024`;
+      
+      try {
+        console.log(`[ImageGen] Attempt ${retries + 1} (${model} on ${subdomain})...`);
+        imageRes = await fetch(pollinationsUrl, {
+          headers: apiKey ? { "Authorization": `Bearer ${apiKey}` } : {}
+        });
+        
+        const contentType = imageRes.headers.get("content-type") || "";
+        if (imageRes.ok && contentType.startsWith("image/")) {
+          console.log(`✅ Success with model: ${model} on ${subdomain}`);
+          break; // Success
+        }
+        
+        if (contentType.includes("text/html")) {
+          const html = await imageRes.text();
+          console.warn(`[ImageGen] HTML Error (Attempt ${retries + 1}): ${html.substring(0, 200).replace(/\n/g, " ")}`);
+        } else if (!imageRes.ok) {
+          try {
+            const errorData = await imageRes.json();
+            console.warn(`[ImageGen] API Error (Attempt ${retries + 1}):`, errorData);
+          } catch (e) {
+            console.warn(`[ImageGen] Attempt ${retries + 1} failed with status ${imageRes.status}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[ImageGen] Attempt ${retries + 1} exception:`, e.message);
+      }
+      
+      retries++;
+      if (retries <= MAX_RETRIES) {
+        const waitTime = 1000 + (retries * 500); // Gradual backoff
+        console.log(`[ImageGen] Retrying in ${waitTime}ms...`);
+        await new Promise(r => setTimeout(r, waitTime));
+      }
+    }
 
-    const imageRes = await fetch(pollinationsUrl, {
-      headers: process.env.POLLINATIONS_API_KEY ? { "Authorization": `Bearer ${process.env.POLLINATIONS_API_KEY}` } : {}
-    });
-
-    if (!imageRes.ok) throw new Error(`Pollinations API Failed: ${imageRes.statusText}`);
+    if (!imageRes || !imageRes.ok || !(imageRes.headers.get("content-type") || "").startsWith("image/")) {
+       throw new Error(`AI image engine is currently busy. Please try again in 10 seconds.`);
+    }
 
     const contentType = imageRes.headers.get("content-type") || "";
     let finalImageUrl = pollinationsUrl;
@@ -144,6 +221,11 @@ export async function POST(req) {
       }
     } else {
       console.error(`Pollinations ERROR: Returned ${contentType} instead of image.`);
+      
+      // Fallback: If it's a small breed, sometimes shorter prompts work better
+      if (contentType.includes("text/html")) {
+        throw new Error("The AI image engine is currently busy. Please try again in a few seconds.");
+      }
       throw new Error("AI engine is overloaded. Please try again in 10 seconds.");
     }
 
@@ -153,10 +235,15 @@ export async function POST(req) {
       parentAId: petAId,
       parentBId: petBId,
       imageUrl: finalImageUrl,
-      promptUsed: imageDescription
+      promptUsed: imageDescription,
+      behaviorPrediction: behaviorPrediction
     });
 
-    return new Response(JSON.stringify({ imageUrl: finalImageUrl, fromCache: false }), { status: 200 });
+    return new Response(JSON.stringify({ 
+      imageUrl: finalImageUrl, 
+      behaviorPrediction: behaviorPrediction,
+      fromCache: false 
+    }), { status: 200 });
 
   } catch (err) {
     console.error("Image Gen Error:", err);

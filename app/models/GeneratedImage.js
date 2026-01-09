@@ -22,6 +22,9 @@ const GeneratedImageSchema = new mongoose.Schema({
   },
   promptUsed: {
     type: String // Optional: good for debugging or future features
+  },
+  behaviorPrediction: {
+    type: String
   }
 }, { timestamps: true });
 

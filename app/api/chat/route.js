@@ -64,9 +64,8 @@ export async function POST(req) {
 
     // Update conversation metadata
     
-    // Identify recipient
-    const parts = conversationId.split('_');
-    const recipientId = parts.slice(1).find(uid => uid !== senderId);
+    const participants = conversationId.split('_').slice(1);
+    const recipientId = participants.find(uid => uid !== senderId);
 
     // Create snippet preview
     let snippet = text || "Media message";
@@ -82,7 +81,7 @@ export async function POST(req) {
         petId, 
         lastMessage: snippet, 
         updatedAt: serverTimestamp(), // Update timestamp
-        participants: parts.slice(1) // Update participants
+        participants: participants // Use the calculated participants
     };
 
     if (convSnap.exists()) {
@@ -91,6 +90,8 @@ export async function POST(req) {
         if (recipientId) {
             updatePayload[`unreadCounts.${recipientId}`] = increment(1);
         }
+        // Ensure participants are updated/verified
+        updatePayload.participants = participants;
         await updateDoc(convRef, updatePayload);
     } else {
         // Create new

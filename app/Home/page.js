@@ -9,7 +9,6 @@ import Link from "next/link";
 export default function Main() {
   // --- State Variables ---
   const [pets, setPets] = useState([]);
-  const [lostPets, setLostPets] = useState([]); // NEW: State for lost pets
   const [suggestionsMap, setSuggestionsMap] = useState({});
   const [userPets, setUserPets] = useState([]);
   const [filters, setFilters] = useState({ type: "", breed: "", radius: "50" });
@@ -53,22 +52,6 @@ export default function Main() {
     Other: ["Mixed", "Unknown"],
   };
 
-  // --- NEW: Fetch Lost Pets ---
-  const fetchLostPets = async () => {
-    try {
-      // Optionally filter by user's city to show only relevant alerts
-      const cityQuery = userData?.location?.city
-        ? `&city=${userData.location.city}`
-        : "";
-      const res = await fetch(`/api/pet?isLost=true${cityQuery}`);
-      if (res.ok) {
-        const data = await res.json();
-        setLostPets(data);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
 
   // --- Fetch Functions ---
 
@@ -156,7 +139,6 @@ export default function Main() {
       // Initial Fetch
       fetchUserPets();
       fetchPets();
-      fetchLostPets();
 
       // Polling for Matches (Every 60s)
       // This ensures online users see new matches if a new pet is registered
@@ -187,54 +169,6 @@ export default function Main() {
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 md:px-8 pt-28 pb-20">
-        {/* --- EMERGENCY ALERT BANNER (LOST PETS) --- */}
-        {lostPets.length > 0 && (
-          <div className="mb-10 animate-in slide-in-from-top duration-500">
-            <div className="bg-red-500 rounded-2xl p-4 md:p-6 shadow-lg text-white flex flex-col md:flex-row items-center justify-between gap-4 border-2 border-red-600">
-              <div className="flex items-center gap-4 w-full md:w-auto">
-                <div className="text-4xl bg-white/20 rounded-full p-2 animate-pulse shrink-0">
-                  🚨
-                </div>
-                <div>
-                  <h2 className="text-xl md:text-2xl font-bold">
-                    Lost Pets Reported Nearby
-                  </h2>
-                  <p className="text-white/90 text-xs md:text-sm">
-                    Please help these owners reunite with their friends.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Horizontal List of Lost Pets */}
-            <div className="flex gap-4 overflow-x-auto pt-4 pb-2 px-1 no-scrollbar">
-              {lostPets.map((pet) => (
-                <Link
-                  href={`/pet/${pet._id}`}
-                  key={pet._id}
-                  className="shrink-0 w-64 bg-white rounded-2xl p-3 shadow-md border-2 border-red-100 hover:border-red-300 transition group relative hover:-translate-y-1"
-                >
-                  <div className="absolute top-3 right-3 bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-sm z-10 animate-pulse">
-                    LOST
-                  </div>
-                  <div className="h-40 w-full rounded-xl overflow-hidden relative mb-3 bg-gray-200">
-                    <img
-                      src={pet.imageUrls?.[0]}
-                      className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
-                      alt="Lost Pet"
-                    />
-                  </div>
-                  <h3 className="font-bold text-red-600 text-lg leading-tight">
-                    {pet.name}
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                    Last seen: {pet.location?.city || "Unknown"}
-                  </p>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* --- HERO HEADER --- */}
         <div className="text-center mb-16 animate-in fade-in slide-in-from-top duration-700">

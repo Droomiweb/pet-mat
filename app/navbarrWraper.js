@@ -45,6 +45,7 @@ export default function NavbarrWrapper({ children, isMaintenanceMode }) {
   const { user, userData, loading: authLoading } = useAuth();
   const [reminderCount, setReminderCount] = useState(0);
   const [messageCount, setMessageCount] = useState(0);
+  const [hasLostPets, setHasLostPets] = useState(false);
 
   const isAuthPage = pathname === "/Login" || pathname === "/Signup";
   
@@ -104,6 +105,24 @@ export default function NavbarrWrapper({ children, isMaintenanceMode }) {
     return () => unsubscribe();
   }, [user, authLoading]);
 
+  // --- EFFECT 3: Check Lost Pets ---
+  useEffect(() => {
+    const checkLostPets = async () => {
+        try {
+            const res = await fetch("/api/pet?isLost=true");
+            if (res.ok) {
+                const data = await res.json();
+                setHasLostPets(data.length > 0);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+    checkLostPets();
+    const interval = setInterval(checkLostPets, 300000);
+    return () => clearInterval(interval);
+  }, []);
+
   // --- RENDER BLOCKING ---
   if (showMaintenanceScreen) {
       return <MaintenancePage />;
@@ -125,7 +144,7 @@ export default function NavbarrWrapper({ children, isMaintenanceMode }) {
             </div>
         )}
 
-        <main className={`pt-24 min-h-screen ${isMaintenanceMode && isAdmin ? 'mt-6' : ''}`}>
+        <main className={`min-h-screen ${isAuthPage ? '' : hasLostPets ? 'pt-36' : 'pt-24'} ${isMaintenanceMode && isAdmin ? 'mt-6' : ''}`}>
             {children}
         </main>
     </>
