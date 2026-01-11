@@ -64,12 +64,23 @@ function mapClassificationToResult(labels) {
     // 1. Human Detection Heuristics
     // ViT on ImageNet has classes like 'groom', 'scuba diver', etc. 
     // This is a basic check; real person detection usually needs an Object Detection model (DETR/YOLO).
-    const humanKeywords = ["groom", "scuba diver", "ballplayer", "sunglass", "mask", "wig"]; 
+    const humanKeywords = [
+        "groom", "scuba diver", "ballplayer", "sunglass", "mask", "wig", 
+        "suit", "tie", "jersey", "uniform", "doctor", "nurse", "police", 
+        "soldier", "pilot", "astronaut", "diver", "surfer", "skier", 
+        "player", "coach", "hair", "face", "person", "man", "woman", 
+        "boy", "girl", "child", "baby", "human", "body", "people",
+        "clothing", "shirt", "pants", "dress", "jacket", "coat",
+        "hat", "cap", "helmet", "goggles", "costume", "pajama", "kimono"
+    ]; 
     // Note: This is very weak for general "selfie" detection but fits the resource constraints.
     
-    // If we want to be strict: if it's NOT an animal, we might flag it?
-    // Let's stick to identifying animals. 
-
+    // Check if the top label matches any human keyword
+    let isHuman = false;
+    if (humanKeywords.some(keyword => topLabel.includes(keyword))) {
+        isHuman = true;
+    }
+    
     // 2. Identify Type & Breed
     let type = "Other";
     let breed = topMatch.label; // Default breed to the label properly capitalized
@@ -97,20 +108,25 @@ function mapClassificationToResult(labels) {
     // Check Dog Matches
     if (dogKeywords.some(keyword => topLabel.includes(keyword))) {
         type = "Dog";
+        // Override isHuman if it's clearly a dog (sometimes 'hair' or 'coat' might trigger)
+        isHuman = false; 
     } 
     // Check Cat Matches
     else if (catKeywords.some(keyword => topLabel.includes(keyword))) {
         type = "Cat";
+        isHuman = false;
     }
     // Check Rabbit
     else if (topLabel.includes("rabbit") || topLabel.includes("hare") || topLabel.includes("bunny")) {
         type = "Rabbit";
+        isHuman = false;
     } 
     // Check Bird
     else if (topLabel.includes("bird") || topLabel.includes("eagle") || topLabel.includes("parrot") || 
              topLabel.includes("sparrow") || topLabel.includes("owl") || topLabel.includes("hawk") || 
              topLabel.includes("macaw") || topLabel.includes("cockatoo")) {
         type = "Bird";
+        isHuman = false;
     }
 
     // Special Case: If it looks like a person and NOT an animal
@@ -123,7 +139,7 @@ function mapClassificationToResult(labels) {
     // We will assume isHuman=false unless we are very sure.
     
     return {
-        isHuman: false, // Defaulting to false as ViT is primarily object-focused, not "scene" focused like Gemini
+        isHuman: isHuman,
         type: type,
         breed: breed
     };

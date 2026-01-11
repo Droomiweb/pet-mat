@@ -367,6 +367,20 @@ export default function AddPet() {
           {step === 2 && (
             <form onSubmit={handleSubmit} className="space-y-3 animate-in slide-in-from-bottom-8 duration-500 pb-20 md:pb-0">
                 
+                {/* Image Preview */}
+                <div className="flex justify-center mb-4">
+                  <div className="relative w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-lg">
+                    {petImagePreview && (
+                      <Image 
+                        src={petImagePreview} 
+                        alt="Pet Preview" 
+                        fill 
+                        className="object-cover" 
+                      />
+                    )}
+                  </div>
+                </div>
+
                 {/* AI Badge */}
                 <div className="bg-green-100 border border-green-300 rounded-xl p-2 text-center mb-2 flex items-center justify-center gap-2">
                     <span className="text-lg">🤖</span>
