@@ -26,9 +26,20 @@ export async function GET(req, context) {
     await connectDB();
     const { id } = await context.params;
 
+    // Determine if we are looking up by ID or Slug
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(id);
+    const query = isObjectId ? { _id: id } : { slug: id };
+
+    console.log(`[PetAPI] Lookup ID: ${id}, isObjectId: ${isObjectId}, Query:`, JSON.stringify(query));
+
     // Fetch pet data
-    const pet = await Pet.findById(id).lean();
-    if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
+    const pet = await Pet.findOne(query).lean();
+
+    if (!pet) {
+        console.warn(`[PetAPI] 404 Not Found for query:`, JSON.stringify(query));
+        return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
+    }
+    console.log(`[PetAPI] Found pet: ${pet.name} (${pet._id})`);
 
     // Fetch owner location
     const owner = await User.findOne({ firebaseUid: pet.ownerId }).select("location").lean();

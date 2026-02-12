@@ -347,6 +347,10 @@ export default function AdminPanel() {
             <TabButton id="mating" label="Litters" count={acceptedRequests.length} />
             <TabButton id="pets" label="All Pets" count={pets.length} />
             <TabButton id="products" label="Products" count={products.length} />
+            
+            <Link href="/admin/ai-logs" className="px-5 py-3 rounded-full font-bold text-sm transition-all whitespace-nowrap bg-white text-blue-600 hover:bg-blue-50 border border-blue-200">
+               ✨ AI Logs
+            </Link>
         </div>
 
         {/* Content */}

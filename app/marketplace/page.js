@@ -55,7 +55,8 @@ export default function MarketplacePage() {
         };
 
         fetchUserPets();
-    }, [user, authLoading, selectedPetId]);
+        fetchUserPets();
+    }, [user, authLoading]);
 
     // 2. Fetch Recommendations
     useEffect(() => {

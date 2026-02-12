@@ -70,13 +70,29 @@ export default function VetLocatorPage() {
             body: JSON.stringify({ lat: coords.lat, lng: coords.lng, radius: radius })
         });
         const data = await res.json();
-        if (res.ok) setHospitals(data.hospitals);
+        
+        if (data.warning) {
+            alert(data.warning); // Show upstream warning if exists
+        }
+        
+        if (res.ok) {
+            setHospitals(data.hospitals || []);
+        }
     } catch (err) {
         console.error(err);
+        alert("Failed to load map data. Please check your connection.");
     } finally {
         setLoading(false);
     }
   };
+
+  // ... (lines 81-190 remain matched by context if I don't touch them, but to be safe I will just target the list area in a separate block if possible, but replace_file_content is better with contiguous blocks. I will assume the user wants me to replace the list rendering logic.)
+
+  // Actually, I will just replace the whole file content for the List Panel section to ensure it matches perfectly.
+  // Wait, I can't replace lines 64-236 in one go if there are unchanged lines in between that I want to keep (like handleHospitalClick).
+  // I'll stick to a multi-chunk approach or just replace the specific render block. 
+  // Let's replace the `fetchVets` first, and then the List rendering.
+
 
   // 3. Handle Interactions
   const handleUseCurrentLocation = () => {
@@ -192,13 +208,20 @@ export default function VetLocatorPage() {
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
                     {loading ? (
                         <div className="flex flex-col items-center justify-center h-40 text-gray-400 gap-2">
-                            <div className="w-6 h-6 border-2 border-[#4A90E2] border-t-transparent rounded-full animate-spin"></div>
-                            <p className="text-xs font-medium">Scanning Area...</p>
+                            <div className="w-8 h-8 border-4 border-[#4A90E2] border-t-transparent rounded-full animate-spin"></div>
+                            <p className="text-xs font-bold text-[#4A90E2] animate-pulse">Scanning {radius}km Radius...</p>
                         </div>
                     ) : hospitals.length === 0 ? (
-                        <div className="text-center py-10 px-4">
-                            <p className="text-gray-500 font-medium text-sm">No clinics found nearby.</p>
-                            <p className="text-xs text-gray-400 mt-1">Try increasing the search radius.</p>
+                        <div className="text-center py-10 px-4 flex flex-col items-center">
+                            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-3xl mb-3">🔭</div>
+                            <p className="text-gray-600 font-bold text-sm">No clinics found nearby.</p>
+                            <p className="text-xs text-gray-400 mt-1 max-w-[200px] mx-auto">Try increasing the search radius using the slider above.</p>
+                            <button 
+                                onClick={() => setRadius(r => Math.min(parseInt(r) + 10, 50))}
+                                className="mt-4 px-4 py-2 bg-[#4A90E2]/10 text-[#4A90E2] rounded-lg text-xs font-bold hover:bg-[#4A90E2] hover:text-white transition"
+                            >
+                                +10km Radius
+                            </button>
                         </div>
                     ) : (
                         hospitals.map((vet) => (
@@ -212,22 +235,35 @@ export default function VetLocatorPage() {
                                         : 'bg-white/70 border-white hover:border-[#4A90E2]/50 hover:shadow-sm'}
                                 `}
                             >
-                                <div className="flex justify-between items-start">
+                                <div className="flex justify-between items-start mb-1">
                                     <h4 className="font-bold text-gray-800 text-sm leading-tight pr-2">{vet.name}</h4>
-                                    <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">Vet</span>
+                                    {vet.emergency && <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold animate-pulse">24/7</span>}
                                 </div>
                                 
-                                <p className="text-xs text-gray-500 mt-2 leading-relaxed line-clamp-2">{vet.address}</p>
+                                <p className="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-2">{vet.address}</p>
                                 
-                                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                                    <span className="text-[10px] font-bold text-gray-400">
-                                        {vet.phone !== "N/A" ? vet.phone : "No Phone"}
-                                    </span>
+                                <div className="flex items-center gap-2 mt-4 pt-3 border-t border-gray-100">
+                                    {/* Call Button */}
+                                    {vet.phone && vet.phone !== "No Phone" && (
+                                        <a 
+                                            href={`tel:${vet.phone}`}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="flex-1 py-2 bg-green-50 text-green-600 rounded-lg text-xs font-bold flex items-center justify-center gap-1 hover:bg-green-100 transition"
+                                        >
+                                            📞 Call
+                                        </a>
+                                    )}
                                     
-                                    {/* Mobile Friendly "View" Button */}
-                                    <span className="text-[10px] font-bold text-[#4A90E2] flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity bg-blue-50 px-2 py-1 rounded-md">
-                                        View on Map <span>&rarr;</span>
-                                    </span>
+                                    {/* Directions Button */}
+                                    <a 
+                                        href={`https://www.google.com/maps/dir/?api=1&destination=${vet.lat},${vet.lng}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="flex-1 py-2 bg-blue-50 text-[#4A90E2] rounded-lg text-xs font-bold flex items-center justify-center gap-1 hover:bg-[#4A90E2] hover:text-white transition"
+                                    >
+                                        📍 Directions
+                                    </a>
                                 </div>
                             </div>
                         ))

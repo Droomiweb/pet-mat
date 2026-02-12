@@ -4,7 +4,7 @@ import { getCompatibleBreeds } from "./breedGroups";
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-export async function findMatches(petId) {
+export async function findMatches(petId, preferModel = null) {
     try {
         // Fetch seeker profile
         const myPet = await Pet.findById(petId).lean();
@@ -32,14 +32,23 @@ export async function findMatches(petId) {
             const cachedPets = await Pet.find({ _id: { $in: petIds } }).lean();
 
             // Map scores back to the fetched pets
-            const results = cachedPets.map(p => {
+            const results = (await Promise.all(cachedPets.map(async p => {
                 const matchData = cachedData.find(m => m.petId === p._id.toString());
+                
+                // Lazy Slug
+                let finalSlug = p.slug;
+                if (!finalSlug) {
+                    finalSlug = `${p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${p._id.toString().slice(-6)}`;
+                    await Pet.updateOne({ _id: p._id }, { $set: { slug: finalSlug } }).catch(console.error);
+                }
+
                 return {
                     ...p,
+                    slug: finalSlug,
                     compatibilityScore: matchData ? matchData.compatibilityScore : 50,
                     matchReason: matchData ? matchData.matchReason : "Cached Match"
                 };
-            }).sort((a, b) => b.compatibilityScore - a.compatibilityScore);
+            }))).sort((a, b) => b.compatibilityScore - a.compatibilityScore);
 
             return results;
         }
@@ -122,7 +131,7 @@ export async function findMatches(petId) {
                 `;
 
                 // Generate compatibility scores
-                const result = await textModel.generateContent(prompt);
+                const result = await textModel.generateContent(prompt, { preferModel });
                 const response = await result.response;
                 let text = response.text();
 
@@ -178,6 +187,17 @@ export async function findMatches(petId) {
                 }));
             }
         }
+
+        // --- LAZY MIGRATION: Ensure Slugs ---
+        finalMatches = await Promise.all(finalMatches.map(async p => {
+             if (!p.slug) {
+                 const newSlug = `${p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${p._id.toString().slice(-6)}`;
+                 await Pet.updateOne({ _id: p._id }, { $set: { slug: newSlug } }).catch(console.error);
+                 return { ...p, slug: newSlug };
+             }
+             return p;
+        }));
+        // ------------------------------------
 
         // --- UPDATE CACHE ---
         const cacheData = finalMatches.map(p => ({

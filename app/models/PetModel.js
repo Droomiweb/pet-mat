@@ -150,7 +150,10 @@ const petSchema = new mongoose.Schema({
       matchReason: String
     }],
     lastUpdated: { type: Date, default: null }
-  }
+  },
+
+  // --- PRETTY URL SLUG ---
+  slug: { type: String, unique: true, sparse: true, index: true }
 });
 
 // === UPGRADE: Performance Indexes ===

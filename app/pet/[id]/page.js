@@ -140,6 +140,16 @@ export default function PetDetailPage() {
       const res = await fetch(`/api/pet/${params.id}`);
       if (!res.ok) return router.push("/");
       const data = await res.json();
+      
+      // --- URL SELF-CORRECTION ---
+      // If we differ from the canonical slug, replace URL (unless it's a new pet without one)
+      if (data.slug && params.id !== data.slug) {
+        // Prevent infinite loop if params.id somehow matches weirdly, but usually safe
+        console.log("Redirecting to pretty URL:", data.slug);
+        router.replace(`/pet/${data.slug}`);
+        // We continue to render state to show content immediately
+      }
+
       setPet(data);
       if (user) await fetchRequesterPets(user.uid, data.type, data.gender, data.breed);
     } catch (err) { console.error(err); }

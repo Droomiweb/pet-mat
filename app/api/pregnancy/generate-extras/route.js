@@ -42,48 +42,43 @@ export async function POST(req) {
 
     // Handle visual comparison
     if (action === "fetus_visual") {
-      // Generate comparison text
-      const textPrompt = `
-        Compare the size of a ${petType} fetus at Day ${currentDay} (out of ${totalDays}) to a common fruit, vegetable, or seed.
-        Examples: "Poppy seed", "Blueberry", "Lemon", "Avocado".
-        
-        Respond ONLY with a valid JSON object:
-        {
-          "comparisonText": "Your babies are currently the size of a [Object]!",
-          "objectName": "[Object]" 
+      // DETERMINISTIC SIZE CHART (Accurate Veterinary Data)
+      // Based on ~63-65 day gestation for dogs/cats
+      const FETUS_SIZE_CHART = [
+        { day: 7,  object: "Dust Speck", text: "Your babies are currently the size of a Dust Speck (microscopic)!" },
+        { day: 14, object: "Grain of Sand", text: "Your babies are currently the size of a Grain of Sand!" },
+        { day: 21, object: "Poppy Seed", text: "Your babies are currently the size of a Poppy Seed!" },
+        { day: 28, object: "Blueberry", text: "Your babies are currently the size of a Blueberry!" },
+        { day: 35, object: "Raspberry", text: "Your babies are currently the size of a Raspberry!" }, // Week 5
+        { day: 42, object: "Fig", text: "Your babies are currently the size of a Fig!" },           // Week 6
+        { day: 49, object: "Lime", text: "Your babies are currently the size of a Lime!" },          // Week 7
+        { day: 56, object: "Avocado", text: "Your babies are currently the size of an Avocado!" },   // Week 8
+        { day: 63, object: "Sweet Potato", text: "Your babies are currently the size of a Sweet Potato!" } // Week 9
+      ];
+
+      // Find the closest milestone without going over
+      // Default to "Dust Speck" if < 7 days
+      let sizeData = FETUS_SIZE_CHART[0]; 
+      
+      for (let i = 0; i < FETUS_SIZE_CHART.length; i++) {
+        if (currentDay >= FETUS_SIZE_CHART[i].day) {
+          sizeData = FETUS_SIZE_CHART[i];
+        } else {
+          break; // Stop once we surpass the current day
         }
-      `;
-      
-      const textResult = await textModel.generateContent(textPrompt);
-      
-      // Clean JSON response
-      const textResponse = textResult.response.text()
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
-        
-      let data;
-      try {
-        data = JSON.parse(textResponse);
-      } catch (e) {
-        // Handle parsing errors
-        data = { comparisonText: "Growing bigger every day!", objectName: "heart" };
       }
 
-      // Sanitize object name
-      const cleanObjectName = data.objectName.replace(/[^a-zA-Z0-9 ]/g, "");
+      // Sanitize object name for image generation prompt
+      const cleanObjectName = sizeData.object.replace(/[^a-zA-Z0-9 ]/g, "");
 
-      // Generate image URL
-      const imagePrompt = `cute ${cleanObjectName} minimalistic vector illustration, white background`;
+      // Generate image URL (Pollinations.ai)
+      const imagePrompt = `cute ${cleanObjectName} minimalistic vector illustration, white background, single object`;
       const encodedPrompt = encodeURIComponent(imagePrompt);
-      
-      // Randomize seed
       const randomSeed = Math.floor(Math.random() * 1000);
-      
       const imageUrl = `https://pollinations.ai/p/${encodedPrompt}?nologo=true&seed=${randomSeed}&width=512&height=512`;
 
       return NextResponse.json({ 
-        result: data.comparisonText, 
+        result: sizeData.text, 
         imageUrl: imageUrl 
       });
     }

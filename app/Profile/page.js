@@ -107,10 +107,7 @@ export default function Profile() {
   const [showCertModal, setShowCertModal] = useState(false);
   const [selectedPetId, setSelectedPetId] = useState(null);
   const [certForm, setCertForm] = useState({
-    file: null,
-    vaccineName: "",
-    vaccinationDate: "",
-    expiryDate: ""
+    file: null
   });
   const [certUploading, setCertUploading] = useState(false);
 
@@ -181,9 +178,13 @@ export default function Profile() {
   const handleSaveAvatar = async (avatarUrl) => {
     setAvatarSaving(true);
     try {
+      const token = await user.getIdToken();
       const res = await fetch(`/api/user/${user.uid}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ avatar: avatarUrl }),
       });
 
@@ -229,17 +230,14 @@ export default function Profile() {
             body: JSON.stringify({
                 action: "updateCertificate",
                 requesterId: user.uid,
-                certificateImage: certForm.file,
-                vaccineName: certForm.vaccineName,
-                vaccinationDate: certForm.vaccinationDate,
-                expiryDate: certForm.expiryDate
+                certificateImage: certForm.file
             })
         });
 
         if (res.ok) {
             alert("Health record updated successfully! Verification status reset to pending.");
             setShowCertModal(false);
-            setCertForm({ file: null, vaccineName: "", vaccinationDate: "", expiryDate: "" });
+            setCertForm({ file: null });
             fetchUserPets();
         } else {
             const data = await res.json();
@@ -476,20 +474,7 @@ export default function Profile() {
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Certificate Image</label>
                     <input type="file" accept="image/*" onChange={handleFileChange} required className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
                 </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Vaccine Name</label>
-                    <input type="text" placeholder="e.g. Rabies, DHPP" required className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-[#4A90E2]" value={certForm.vaccineName} onChange={e => setCertForm({...certForm, vaccineName: e.target.value})} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Date Administered</label>
-                        <input type="date" required className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-[#4A90E2]" value={certForm.vaccinationDate} onChange={e => setCertForm({...certForm, vaccinationDate: e.target.value})} />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Expiry Date</label>
-                        <input type="date" required className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-[#4A90E2]" value={certForm.expiryDate} onChange={e => setCertForm({...certForm, expiryDate: e.target.value})} />
-                    </div>
-                </div>
+
                 <div className="bg-blue-50 p-3 rounded-xl text-xs text-blue-600">
                     ℹ️ Uploading a new certificate will reset your verification status to <strong>Pending</strong> until reviewed.
                 </div>

@@ -72,6 +72,25 @@ export default function Main() {
 
       const res = await fetch(`/api/pet?${query}`);
       if (res.ok) {
+        // --- SMART CACHE INVALIDATION ---
+        const serverTotal = res.headers.get("X-Total-Count");
+        if (serverTotal && typeof window !== "undefined") {
+            const lastKnown = sessionStorage.getItem("pet_total_count");
+            if (lastKnown && lastKnown !== serverTotal) {
+                console.log("⚡ New pets detected! Clearing AI cache to refresh suggestions.");
+                // Clear only suggestion keys (filtering by prefix) or just clear all for simplicity in this context
+                // Since this is a specialized app, clearing valid "session" keys is safer.
+                // Let's clear keys starting with "pet_suggestions_"
+                Object.keys(sessionStorage).forEach(key => {
+                    if (key.startsWith("pet_suggestions_")) {
+                        sessionStorage.removeItem(key);
+                    }
+                });
+            }
+            sessionStorage.setItem("pet_total_count", serverTotal);
+        }
+        // -------------------------------
+
         const data = await res.json();
         setPets(data);
       }
@@ -121,9 +140,55 @@ export default function Main() {
 
   const fetchSuggestionsForPet = async (petId, setGlobalLoading = true) => {
     try {
-      const res = await fetch(`/api/match/${petId}`);
+      // --- CACHE CHECK ---
+      const cacheKey = `pet_suggestions_${petId}`;
+      if (typeof window !== "undefined") {
+          const cached = sessionStorage.getItem(cacheKey);
+          if (cached) {
+              const { data, timestamp } = JSON.parse(cached);
+              // Valid for 10 minutes
+              if (Date.now() - timestamp < 10 * 60 * 1000) {
+                  // console.log(`⚡ Using cached suggestions for ${petId}`);
+                  setSuggestionsMap((prev) => ({ ...prev, [petId]: data }));
+                  if (setGlobalLoading) setSuggestionsLoading(false);
+                  return; // EXIT EARLY
+              }
+          }
+      }
+      // -------------------
+
+      // SMART MODEL SELECTION (ROBUST):
+      // Logic: 
+      // 1. If 'is_session_active' exists in sessionStorage -> It's a Refresh or Navigation -> Use GROQ (Save Quota)
+      // 2. If 'is_session_active' does NOT exist -> It's a New Tab/Window -> Use GEMINI (First Impression)
+      
+      let preferModel = null;
+      if (typeof window !== 'undefined') {
+          const isSessionActive = sessionStorage.getItem("is_session_active");
+          
+          if (isSessionActive) {
+              // console.log("🔄 Session Active (Refresh/Nav): Switching to GROQ.");
+              preferModel = 'groq';
+          } else {
+              // console.log("✨ New Session: Using GEMINI.");
+              sessionStorage.setItem("is_session_active", "true");
+          }
+      }
+
+      const query = preferModel ? `?prefer=${preferModel}` : '';
+      const res = await fetch(`/api/match/${petId}${query}`);
       if (res.ok) {
         const data = await res.json();
+        
+        // --- SAVE TO CACHE ---
+        if (typeof window !== "undefined") {
+            sessionStorage.setItem(cacheKey, JSON.stringify({
+                data,
+                timestamp: Date.now()
+            }));
+        }
+        // ---------------------
+
         setSuggestionsMap((prev) => ({ ...prev, [petId]: data }));
       }
     } catch (err) {
@@ -155,17 +220,39 @@ export default function Main() {
     }
   }, [authLoading, user, filters]); // (userData.city is indirectly handled when auth/user stabilises)
 
-  const handlePetClick = (petId) => {
+  const handlePetClick = (identifier) => {
     if (!user) return router.push("/Login");
-    router.push(`/pet/${petId}`);
+    router.push(`/pet/${identifier}`);
   };
 
   return (
     <div className="min-h-screen bg-[#E2F4EF] relative overflow-x-hidden">
-      {/* Decorative Background Elements */}
+      {/* --- LIVING PET WORLD BACKGROUND --- */}
       <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-[-10%] right-[-5%] w-96 h-96 bg-purple-200/30 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-[-10%] left-[-5%] w-96 h-96 bg-blue-200/30 rounded-full blur-3xl"></div>
+          {/* 1. Animated Gradient Mesh */}
+          <div className="absolute inset-0 bg-gradient-to-br from-[#E2F4EF] via-[#e8f0ff] to-[#fff0f5] animate-gradient-slow opacity-80"></div>
+          
+          {/* 2. Floating Orbs (Glow Effects) */}
+          <div className="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-purple-300/20 rounded-full blur-[100px] animate-pulse-slow"></div>
+          <div className="absolute bottom-[-10%] left-[-5%] w-[500px] h-[500px] bg-blue-300/20 rounded-full blur-[100px] animate-pulse-slow delay-1000"></div>
+          <div className="absolute top-[40%] left-[20%] w-[300px] h-[300px] bg-pink-300/20 rounded-full blur-[80px] animate-pulse-slow delay-700"></div>
+
+          {/* 3. Floating Icons (Subtle) */}
+          <div className="absolute top-[15%] left-[10%] text-4xl opacity-[0.03] animate-float rotate-12">
+            🐾
+          </div>
+          <div className="absolute top-[25%] right-[15%] text-6xl opacity-[0.04] animate-float-delayed -rotate-12">
+            🐾
+          </div>
+          <div className="absolute bottom-[20%] left-[15%] text-5xl opacity-[0.03] animate-float rotate-6">
+             🦴
+          </div>
+          <div className="absolute bottom-[30%] right-[10%] text-4xl opacity-[0.03] animate-float-delayed -rotate-6">
+             ❤️
+          </div>
+          <div className="absolute top-[50%] left-[50%] text-8xl opacity-[0.02] animate-pulse translate-x-[-50%] translate-y-[-50%]">
+             🏠
+          </div>
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 md:px-8 pt-28 pb-20">
@@ -219,7 +306,7 @@ export default function Main() {
                     {matches.map((pet) => (
                       <div
                         key={pet._id}
-                        onClick={() => handlePetClick(pet._id)}
+                        onClick={() => handlePetClick(pet.slug || pet._id)}
                         className="snap-center shrink-0 w-64 bg-white/80 backdrop-blur-md rounded-[2rem] p-3 shadow-lg hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 border border-white cursor-pointer group relative"
                       >
                         <div className="absolute top-3 right-3 z-10 bg-gradient-to-r from-[#FF9A00] to-[#FF5E62] text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md">
@@ -352,7 +439,7 @@ export default function Main() {
               {pets.map((pet) => (
                 <div
                   key={pet._id}
-                  onClick={() => handlePetClick(pet._id)}
+                  onClick={() => handlePetClick(pet.slug || pet._id)}
                   className="group cursor-pointer bg-white rounded-[2rem] p-3 shadow-sm hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border border-transparent hover:border-[#4A90E2]/20 relative overflow-hidden"
                 >
                   <div className="h-64 w-full rounded-[1.5rem] overflow-hidden relative mb-3 bg-gray-100">

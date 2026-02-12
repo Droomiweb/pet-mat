@@ -183,6 +183,8 @@ export async function POST(req) {
         breed,
         gender,
         listingType,
+        // Generate Slug: "Pro" + Unique Suffix
+        slug: `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString(36)}`,
         certificateUrl: certUpload.secure_url,
         imageUrls,
         ownerId,
@@ -241,6 +243,8 @@ export async function POST(req) {
       breed,
       gender,
       listingType,
+      // Generate Slug
+      slug: `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString(36)}`,
       certificateUrl: certUpload.secure_url,
       imageUrls,
       ownerId,
@@ -444,6 +448,15 @@ export async function GET(req) {
           "location"
         ).lean();
 
+        // --- LAZY MIGRATION: Generate Slug if missing ---
+        let finalSlug = pet.slug;
+        if (!finalSlug) {
+           finalSlug = `${pet.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${pet._id.toString().slice(-6)}`;
+           // Await update to ensure consistency before user clicks
+           await Pet.updateOne({ _id: pet._id }, { $set: { slug: finalSlug } }).catch(console.error);
+        }
+        // ------------------------------------------------
+
         let distance = null;
         if (userLocation && owner?.location?.lat && owner?.location?.lng) {
             // Haversine Formula
@@ -460,6 +473,7 @@ export async function GET(req) {
 
         return {
           _id: pet._id.toString(),
+          slug: finalSlug, // Return SLUG
           name: pet.name,
           type: pet.type,
           age: pet.age,

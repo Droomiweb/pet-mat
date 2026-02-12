@@ -13,10 +13,11 @@ export async function POST(req) {
       return NextResponse.json({ error: "Location required" }, { status: 400 });
     }
 
-    // Convert to meters
+    // Convert to meters (default 5km)
     const radiusMeters = (radius || 5) * 1000;
 
-    // Build map query
+    // Build map query (Optimized Overpass QL)
+    // [timeout:25] -> Increased to 25s to handle larger radii (e.g. 20km)
     const query = `
       [out:json][timeout:25];
       (
@@ -27,37 +28,61 @@ export async function POST(req) {
       out center;
     `;
 
-    // List API servers
+    // List of API servers (Mirrors) to try in order
+    // 1. Kumi Systems (Fast)
+    // 2. OpenStreetMap.fr (Reliable)
+    // 3. Main Overpass API (Often busy, revert to last)
     const servers = [
-      "https://overpass-api.de/api/interpreter",          // Primary (Germany)
-      "https://interpret.openstreetmap.fr/overpass/api/interpreter" // Backup (France)
+      "https://overpass.kumi.systems/api/interpreter",
+      "https://interpret.openstreetmap.fr/overpass/api/interpreter", 
+      "https://overpass-api.de/api/interpreter"
     ];
 
     let data = null;
+    let lastError = null;
 
     // Fetch with failover
     for (const endpoint of servers) {
       try {
+        console.log(`Trying Vet API Mirror: ${endpoint}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s fetch timeout
+
         const response = await fetch(endpoint, {
           method: "POST",
-          // Send query data
           body: `data=${encodeURIComponent(query)}`,
-          headers: { "Content-Type": "application/x-www-form-urlencoded" }
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
 
         if (response.ok) {
-          data = await response.json();
-          break; // Stop on success
+          const result = await response.json();
+          if (result && result.elements) {
+              data = result;
+              console.log(`Success with ${endpoint}`);
+              break; // Stop on success
+          }
+        } else {
+            throw new Error(`Status ${response.status}`);
         }
       } catch (err) {
-        console.error(`Connection error with ${endpoint}:`, err.message);
-        // Continue to next
+        console.warn(`Failed ${endpoint}:`, err.message);
+        lastError = err;
+        // Continue to next mirror
       }
     }
 
-    // Handle API failure
+    // Handle Total Failure
     if (!data) {
-      throw new Error("All mapping servers failed. Please try again later.");
+        console.error("All Vet API mirrors failed.");
+        // Return 200 with empty list instead of 500 to prevent UI crash, 
+        // using a flag to indicate upstream failure if needed
+        return NextResponse.json({ 
+            hospitals: [], 
+            warning: "Map services are currently busy. Please try again later." 
+        });
     }
 
     // Format vet data
@@ -68,41 +93,37 @@ export async function POST(req) {
         const tags = place.tags || {};
 
         // Determine address format
+        let displayAddress = "";
         
-        // Check street address
-        let displayAddress = tags['addr:street'] 
-            ? `${tags['addr:street']} ${tags['addr:housenumber'] || ''}`
-            : null;
-
-        // Check city name
-        if (!displayAddress) {
-            const area = tags['addr:city'] || tags['addr:town'] || tags['addr:village'] || tags['addr:hamlet'];
-            if (area) displayAddress = `${area} (Exact street not listed)`;
+        if (tags['addr:street']) {
+             displayAddress = `${tags['addr:street']} ${tags['addr:housenumber'] || ''}`.trim();
+             if (tags['addr:city']) displayAddress += `, ${tags['addr:city']}`;
+        } else {
+             const area = tags['addr:city'] || tags['addr:town'] || tags['addr:village'] || tags['addr:suburb'];
+             if (area) displayAddress = `${area} (Approximate)`;
+             else displayAddress = "Address details not available";
         }
 
-        // Set generic fallback
-        if (!displayAddress) {
-             displayAddress = "View map for exact location";
-        }
-        
         return {
             id: place.id,
-            name: tags.name || "Unnamed Vet Clinic",
+            name: tags.name || tags.alt_name || "Veterinary Clinic",
             address: displayAddress,
-            // Check phone numbers
-            phone: tags.phone || tags['contact:phone'] || "No Phone",
+            phone: tags.phone || tags['contact:phone'] || tags['contact:mobile'] || "No Phone",
             lat: pLat,
             lng: pLng,
-            website: tags.website || null,
-            opening_hours: tags.opening_hours || null
+            website: tags.website || tags['contact:website'] || null,
+            email: tags.email || tags['contact:email'] || null,
+            opening_hours: tags.opening_hours || null,
+            emergency: tags.emergency === 'yes'
         };
-    }).filter(h => h.lat && h.lng); // Filter invalid locations
+    }).filter(h => h.lat && h.lng && h.name); // Strict filter
 
     // Return vet list
     return NextResponse.json({ hospitals });
 
   } catch (error) {
     console.error("Vet Search Final Error:", error);
-    return NextResponse.json({ error: "Could not fetch vet data.", details: error.message }, { status: 500 });
+    // Return empty list on crash to keep UI stable
+    return NextResponse.json({ hospitals: [], error: "Internal Server Error" }, { status: 200 });
   }
 }

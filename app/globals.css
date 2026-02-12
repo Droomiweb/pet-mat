@@ -1,13 +1,13 @@
 /* app/globals.css */
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap'); 
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
-  font-family: 'Poppins', sans-serif;
-  background-color: #E2F4EF; /* Soft Mint Background */
+  font-family: "Poppins", sans-serif;
+  background-color: #e2f4ef; /* Soft Mint Background */
   margin: 0;
   padding: 0;
   overflow-x: hidden;
@@ -15,7 +15,12 @@ body {
 
 /* --- UTILITIES --- */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.75); /* Slightly more opaque for readability */
+  background: rgba(
+    255,
+    255,
+    255,
+    0.75
+  ); /* Slightly more opaque for readability */
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.6);
@@ -28,11 +33,17 @@ body {
 
 /* Compact Input Field */
 .input-field {
-  @apply w-full bg-white/90 border border-gray-200 text-gray-800 text-sm rounded-xl focus:ring-2 focus:ring-[#4A90E2] focus:border-transparent block p-3 outline-none transition-all placeholder-gray-400 font-medium shadow-sm;
+  @apply w-full bg-white/90 border border-gray-200 text-gray-800 text-sm
+    rounded-xl focus:ring-2 focus:ring-[#4a90e2] focus:border-transparent block
+    p-3 outline-none transition-all placeholder-gray-400 font-medium shadow-sm;
 }
 
 .auth-btn {
-  @apply w-full text-white bg-gradient-to-r from-[#4A90E2] to-[#3A75B9] hover:from-[#3A75B9] hover:to-[#2b5c94] focus:ring-4 focus:outline-none focus:ring-blue-300 font-bold rounded-xl text-sm px-5 py-3 text-center shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200;
+  @apply w-full text-white bg-gradient-to-r from-[#4a90e2] to-[#3a75b9]
+    hover:from-[#3a75b9] hover:to-[#2b5c94] focus:ring-4 focus:outline-none
+    focus:ring-blue-300 font-bold rounded-xl text-sm px-5 py-3 text-center
+    shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all
+    duration-200;
 }
 
 /* Hide Number Input Spinners (Chrome/Safari/Edge/Opera) */
@@ -42,7 +53,7 @@ input::-webkit-inner-spin-button {
   margin: 0;
 }
 /* Firefox */
-input[type=number] {
+input[type="number"] {
   -moz-appearance: textfield;
 }
 
@@ -55,7 +66,7 @@ input[type=number] {
   height: 100vh;
   z-index: -1;
   overflow: hidden;
-  background: linear-gradient(135deg, #E2F4EF 0%, #D0EBE5 100%);
+  background: linear-gradient(135deg, #e2f4ef 0%, #d0ebe5 100%);
 }
 
 .paw-print {
@@ -69,16 +80,111 @@ input[type=number] {
 }
 
 /* Randomize paw positions */
-.paw-print:nth-child(1) { left: 10%; width: 50px; height: 50px; animation-duration: 12s; animation-delay: 0s; }
-.paw-print:nth-child(2) { left: 30%; width: 30px; height: 30px; animation-duration: 18s; animation-delay: 2s; }
-.paw-print:nth-child(3) { left: 70%; width: 60px; height: 60px; animation-duration: 15s; animation-delay: 4s; }
-.paw-print:nth-child(4) { left: 50%; width: 40px; height: 40px; animation-duration: 20s; animation-delay: 6s; }
-.paw-print:nth-child(5) { left: 90%; width: 35px; height: 35px; animation-duration: 14s; animation-delay: 1s; }
-.paw-print:nth-child(6) { left: 20%; width: 45px; height: 45px; animation-duration: 16s; animation-delay: 8s; }
+.paw-print:nth-child(1) {
+  left: 10%;
+  width: 50px;
+  height: 50px;
+  animation-duration: 12s;
+  animation-delay: 0s;
+}
+.paw-print:nth-child(2) {
+  left: 30%;
+  width: 30px;
+  height: 30px;
+  animation-duration: 18s;
+  animation-delay: 2s;
+}
+.paw-print:nth-child(3) {
+  left: 70%;
+  width: 60px;
+  height: 60px;
+  animation-duration: 15s;
+  animation-delay: 4s;
+}
+.paw-print:nth-child(4) {
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  animation-duration: 20s;
+  animation-delay: 6s;
+}
+.paw-print:nth-child(5) {
+  left: 90%;
+  width: 35px;
+  height: 35px;
+  animation-duration: 14s;
+  animation-delay: 1s;
+}
+.paw-print:nth-child(6) {
+  left: 20%;
+  width: 45px;
+  height: 45px;
+  animation-duration: 16s;
+  animation-delay: 8s;
+}
+
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-20px) rotate(5deg);
+  }
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+}
+
+@keyframes gradient-xy {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-gradient-slow {
+  background-size: 400% 400%;
+  animation: gradient-xy 15s ease infinite;
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: float 8s ease-in-out infinite;
+  animation-delay: 2s;
+}
 
 @keyframes floatUp {
-  0% { transform: translateY(110vh) rotate(0deg); opacity: 0; }
-  20% { opacity: 1; }
-  80% { opacity: 1; }
-  100% { transform: translateY(-10vh) rotate(20deg); opacity: 0; }
+  0% {
+    transform: translateY(110vh) rotate(0deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-10vh) rotate(20deg);
+    opacity: 0;
+  }
 }

@@ -1,71 +1,39 @@
-// app/Signup/page.js
 "use client";
 import Link from "next/link";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createUserWithEmailAndPassword, deleteUser } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { useRouter } from "next/navigation";
 
-// Icons
+// --- ICONS ---
 const EyeIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
 const EyeSlashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>;
 const LocIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>;
 
-// --- ANIMATED DOG COMPONENT ---
-const SignupMascot = ({ isExcited }) => {
+// --- ILLUSTRATION: WELCOME PAW ---
+const WelcomeIllustration = () => {
   return (
     <svg viewBox="0 0 200 200" className="w-full h-full drop-shadow-xl overflow-visible">
-      <defs>
-        <filter id="shadow">
-          <feDropShadow dx="0" dy="4" stdDeviation="4" floodOpacity="0.2"/>
-        </filter>
-      </defs>
-
-      {/* Ears (Animate on isExcited) */}
-      <g className={`transition-transform duration-300 origin-[100px_80px] ${isExcited ? 'rotate-[-5deg] translate-y-[-10px]' : ''}`}>
-        <path d="M50,80 Q30,20 80,60" fill="#E6C229" stroke="#D4B018" strokeWidth="4" />
+      {/* Abstract Background Blotches */}
+      <circle cx="100" cy="100" r="80" fill="#FFF" opacity="0.2" className="animate-pulse" style={{ animationDuration: '3s' }} />
+      <circle cx="100" cy="100" r="60" fill="#FFF" opacity="0.2" className="animate-pulse" style={{ animationDuration: '4s', animationDelay: '1s' }} />
+      
+      {/* Large Paw Print Center */}
+      <g transform="translate(100, 100) scale(1.2)">
+        <path d="M-20,-10 Q-40,-30 -20,-50 Q0,-30 -20,-10" fill="#FFF" opacity="0.9" />
+        <path d="M20,-10 Q40,-30 20,-50 Q0,-30 20,-10" fill="#FFF" opacity="0.9" />
+        <path d="M-35,10 Q-55,-10 -45,-30 Q-25,-10 -35,10" fill="#FFF" opacity="0.9" />
+        <path d="M35,10 Q55,-10 45,-30 Q25,-10 35,10" fill="#FFF" opacity="0.9" />
+        <path d="M0,20 Q-30,50 0,70 Q30,50 0,20" fill="#FFF" opacity="0.9" transform="translate(0, -10)" />
       </g>
-      <g className={`transition-transform duration-300 origin-[100px_80px] ${isExcited ? 'rotate-[5deg] translate-y-[-10px]' : ''}`}>
-        <path d="M150,80 Q170,20 120,60" fill="#E6C229" stroke="#D4B018" strokeWidth="4" />
-      </g>
 
-      {/* Head */}
-      <circle cx="100" cy="100" r="65" fill="#E6C229" stroke="#D4B018" strokeWidth="4" />
-      
-      {/* Patches */}
-      <circle cx="70" cy="90" r="18" fill="white" opacity="0.8" />
-      
-      {/* Eyes */}
-      <ellipse cx="70" cy="90" rx="8" ry="10" fill="black" />
-      <ellipse cx="130" cy="90" rx="8" ry="10" fill="black" />
-      
-      {/* Eye Shine */}
-      <circle cx="73" cy="86" r="3" fill="white" />
-      <circle cx="133" cy="86" r="3" fill="white" />
-
-      {/* Snout Area */}
-      <ellipse cx="100" cy="120" rx="25" ry="18" fill="white" />
-      <path d="M100,115 L90,130 L110,130 Z" fill="black" rx="5" /> {/* Nose */}
-      
-      {/* Mouth & Tongue */}
-      <path d="M100,130 Q100,145 100,145" stroke="black" strokeWidth="2" />
-      <g className={`transition-all duration-300 ${isExcited ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-[-10px]'}`}>
-         {/* Tongue Animation */}
-         <path d="M92,145 Q100,165 108,145" fill="#FF6B6B" stroke="#D32F2F" strokeWidth="1" />
-      </g>
-      
-      {/* Cheeks */}
-      <circle cx="60" cy="115" r="10" fill="#FFCDD2" opacity="0.5" />
-      <circle cx="140" cy="115" r="10" fill="#FFCDD2" opacity="0.5" />
-
-      {/* Floating Elements (Excitement) */}
-      <g className={`transition-opacity duration-300 ${isExcited ? 'opacity-100' : 'opacity-0'}`}>
-         <path d="M160,50 L170,40 M165,60 L180,55" stroke="#4A90E2" strokeWidth="3" strokeLinecap="round" className="animate-bounce" />
-         <path d="M40,50 L30,40 M35,60 L20,55" stroke="#4A90E2" strokeWidth="3" strokeLinecap="round" className="animate-bounce" style={{ animationDelay: '0.1s' }} />
-      </g>
+      {/* Floating Hearts */}
+      <path d="M150,50 Q160,40 170,50 Q180,60 170,70 L160,80 L150,70 Q140,60 150,50" fill="#FFE0B2" className="animate-bounce" style={{ animationDuration: '2s' }} />
+      <path d="M40,150 Q50,140 60,150 Q70,160 60,170 L50,180 L40,170 Q30,160 40,150" fill="#FFE0B2" className="animate-bounce" style={{ animationDuration: '2.5s', animationDelay: '0.5s' }} />
     </svg>
   );
 };
+
 
 export default function Signup() {
   const [formData, setFormData] = useState({ name: "", username: "", phone: "", password: "", confirmPassword: "" });
@@ -77,36 +45,11 @@ export default function Signup() {
   const [location, setLocation] = useState({ lat: null, lng: null, city: "" });
   const [status, setStatus] = useState({ type: "", msg: "" });
   const [loading, setLoading] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  const typingTimeoutRef = useRef(null);
-  
-  const [rotate, setRotate] = useState({ x: 0, y: 0 });
-  const cardRef = useRef(null);
+
   const router = useRouter();
-
-  // --- 3D TILT LOGIC ---
-  const handleMouseMove = (e) => {
-    if (!cardRef.current) return;
-    const card = cardRef.current;
-    const rect = card.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const centerX = rect.width / 2;
-    const centerY = rect.height / 2;
-    const rotateX = ((y - centerY) / centerY) * -10; 
-    const rotateY = ((x - centerX) / centerX) * 10;
-    setRotate({ x: rotateX, y: rotateY });
-  };
-
-  const handleMouseLeave = () => setRotate({ x: 0, y: 0 });
 
   const handleInput = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
-    
-    // Trigger Typing Animation
-    setIsTyping(true);
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 500);
   };
 
   const getLocation = () => {
@@ -145,7 +88,7 @@ export default function Signup() {
     let createdUser = null;
 
     try {
-      // 1. PRE-CHECK: Check if Username or Phone exists in MongoDB BEFORE creating Firebase user
+      // 1. PRE-CHECK
       const checkRes = await fetch(`/api/user?username=${formData.username}&phone=${formData.phone}`);
       const checkData = await checkRes.json();
       
@@ -177,11 +120,7 @@ export default function Signup() {
       const data = await res.json();
 
       if (!res.ok) {
-        // If MongoDB fails unexpectedly, try to clean up the Firebase user to prevent ghosts
-        try {
-            await deleteUser(createdUser);
-        } catch(delErr) { console.warn("Could not cleanup firebase user", delErr); }
-        
+        try { await deleteUser(createdUser); } catch(delErr) {}
         throw new Error(data.error || "Failed to create account.");
       }
 
@@ -190,7 +129,6 @@ export default function Signup() {
       console.error("Signup Error:", err);
       let errorMessage = err.message;
       if (err.message.includes("email-already-in-use")) errorMessage = "Username already taken.";
-      
       setStatus({ type: "error", msg: errorMessage });
     } finally {
       setLoading(false);
@@ -205,37 +143,22 @@ export default function Signup() {
         {[...Array(6)].map((_, i) => <div key={i} className="paw-print"></div>)}
       </div>
 
-      <div className="w-full max-w-5xl bg-white/90 backdrop-blur-xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[600px] border border-white/60 z-10 animate-in slide-in-from-bottom-4 duration-500">
+      <div className="w-full max-w-5xl bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[600px] border border-white/60 z-10 animate-in slide-in-from-bottom-4 duration-500">
         
-        {/* --- LEFT: 3D INTERACTIVE ZONE (Desktop) --- */}
-        <div 
-          className="hidden md:flex md:w-1/2 bg-[#FDF6F6] flex-col justify-center items-center p-10 relative perspective-1000 overflow-hidden"
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
-          style={{ perspective: "1000px" }}
-        >
-          <div 
-            ref={cardRef}
-            className="relative w-full max-w-xs aspect-square flex flex-col items-center justify-center transition-transform duration-100 ease-out preserve-3d"
-            style={{ 
-              transform: `rotateX(${rotate.x}deg) rotateY(${rotate.y}deg)`,
-              transformStyle: "preserve-3d"
-            }}
-          >
-            <h2 className="text-4xl font-extrabold text-[#333333] mb-4 text-center transition-transform duration-100" style={{ transform: "translateZ(50px)" }}>
-                Join Us!
+        {/* --- LEFT: ILLUSTRATION ZONE (Desktop) --- */}
+        <div className="hidden md:flex md:w-1/2 bg-gradient-to-br from-[#FDD835] to-[#FBC02D] flex-col justify-center items-center p-10 relative overflow-hidden">
+          <div className="relative w-full max-w-xs flex flex-col items-center justify-center">
+            <h2 className="text-4xl font-extrabold text-white mb-6 text-center drop-shadow-md">
+                Join the Pack!
             </h2>
             
-            {/* Mascot Container */}
-            <div 
-                className="w-56 h-56 mb-6 transition-transform duration-200"
-                style={{ transform: "translateZ(30px)" }}
-            >
-                <SignupMascot isExcited={isTyping} />
+            {/* Illustration */}
+            <div className="w-56 h-56 relative mb-6">
+                <WelcomeIllustration />
             </div>
 
-            <p className="text-gray-500 text-center font-medium px-4 transition-transform duration-100" style={{ transform: "translateZ(20px)" }}>
-                {isTyping ? "Woohoo! Filling it out!" : "Find playmates and adoption matches."}
+            <p className="text-white text-center font-bold text-lg px-4 opacity-90">
+                Find playmates and adoption matches for your furry friends.
             </p>
           </div>
         </div>
@@ -243,69 +166,85 @@ export default function Signup() {
         {/* --- RIGHT: FORM --- */}
         <div className="w-full md:w-1/2 p-8 sm:p-10 flex flex-col justify-center h-full overflow-y-auto">
           
-          {/* Mobile Mascot Header */}
+          {/* Mobile Header (No Mascot, just text) */}
           <div className="md:hidden flex flex-col items-center mb-6">
-             <div className="w-28 h-28 mb-2">
-                <SignupMascot isExcited={isTyping} />
-             </div>
              <h1 className="text-2xl font-extrabold text-gray-800">Create Account</h1>
              <p className="text-gray-500 text-xs">Start your PetLink journey</p>
           </div>
 
           <div className="hidden md:block text-left mb-6">
-            <h1 className="text-3xl font-extrabold text-gray-800">Create Account</h1>
-            <p className="text-gray-500 text-sm">Start your PetLink journey</p>
+            <h1 className="text-3xl font-extrabold text-gray-800 tracking-tight">Create Account</h1>
+            <p className="text-gray-500 text-sm font-medium">Start your PetLink journey today</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Row 1 */}
             <div className="grid grid-cols-2 gap-3">
-              <input name="name" type="text" placeholder="Full Name" className="input-field" onChange={handleInput} required />
-              <input name="username" type="text" placeholder="Username" className="input-field" onChange={handleInput} required />
+              <input 
+                name="name" 
+                type="text" 
+                placeholder="Full Name" 
+                className="w-full bg-gray-50 border border-gray-200 text-gray-800 rounded-xl focus:ring-4 focus:ring-yellow-100 focus:border-[#FBC02D] block p-4 outline-none transition-all font-medium placeholder-gray-400" 
+                onChange={handleInput} 
+                required 
+              />
+              <input 
+                name="username" 
+                type="text" 
+                placeholder="Username" 
+                className="w-full bg-gray-50 border border-gray-200 text-gray-800 rounded-xl focus:ring-4 focus:ring-yellow-100 focus:border-[#FBC02D] block p-4 outline-none transition-all font-medium placeholder-gray-400" 
+                onChange={handleInput} 
+                required 
+              />
             </div>
 
             {/* Row 2 */}
             <div>
-              <label className="text-[10px] font-bold text-[#4A90E2] ml-2 mb-1 block uppercase tracking-wider">WhatsApp Number</label>
-              <input name="phone" type="number" placeholder="e.g. 9876543210" className="input-field" onChange={handleInput} required />
+              <label className="text-[10px] font-bold text-gray-400 ml-2 mb-1 block uppercase tracking-wider">WhatsApp Number</label>
+              <input 
+                name="phone" 
+                type="number" 
+                placeholder="e.g. 9876543210" 
+                className="w-full bg-gray-50 border border-gray-200 text-gray-800 rounded-xl focus:ring-4 focus:ring-yellow-100 focus:border-[#FBC02D] block p-4 outline-none transition-all font-medium placeholder-gray-400" 
+                onChange={handleInput} 
+                required 
+              />
             </div>
 
-            {/* Row 3 - Passwords with Toggles */}
+            {/* Row 3 - Passwords */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Password Field */}
                 <div className="relative">
                     <input 
                         name="password" 
                         type={showPass ? "text" : "password"} 
                         placeholder="Password" 
-                        className="input-field pr-10" 
+                        className="w-full bg-gray-50 border border-gray-200 text-gray-800 rounded-xl focus:ring-4 focus:ring-yellow-100 focus:border-[#FBC02D] block p-4 pr-10 outline-none transition-all font-medium placeholder-gray-400" 
                         onChange={handleInput} 
                         required 
                     />
                     <button 
                         type="button" 
                         onClick={() => setShowPass(!showPass)} 
-                        className="absolute right-3 top-3.5 text-gray-400 hover:text-[#4A90E2] transition-colors"
+                        className="absolute right-3 top-3.5 text-gray-400 hover:text-[#FBC02D] transition-colors"
                         tabIndex="-1"
                     >
                         {showPass ? <EyeSlashIcon /> : <EyeIcon />}
                     </button>
                 </div>
 
-                {/* Confirm Password Field */}
                 <div className="relative">
                     <input 
                         name="confirmPassword" 
                         type={showConfirmPass ? "text" : "password"} 
                         placeholder="Confirm" 
-                        className="input-field pr-10" 
+                        className="w-full bg-gray-50 border border-gray-200 text-gray-800 rounded-xl focus:ring-4 focus:ring-yellow-100 focus:border-[#FBC02D] block p-4 pr-10 outline-none transition-all font-medium placeholder-gray-400" 
                         onChange={handleInput} 
                         required 
                     />
                     <button 
                         type="button" 
                         onClick={() => setShowConfirmPass(!showConfirmPass)} 
-                        className="absolute right-3 top-3.5 text-gray-400 hover:text-[#4A90E2] transition-colors"
+                        className="absolute right-3 top-3.5 text-gray-400 hover:text-[#FBC02D] transition-colors"
                         tabIndex="-1"
                     >
                         {showConfirmPass ? <EyeSlashIcon /> : <EyeIcon />}
@@ -317,10 +256,10 @@ export default function Signup() {
             <button 
               type="button" 
               onClick={getLocation} 
-              className={`w-full py-3 rounded-xl border-2 font-bold flex items-center justify-center gap-2 transition-all text-sm ${
+              className={`w-full py-4 rounded-xl border-2 font-bold flex items-center justify-center gap-2 transition-all text-sm ${
                 location.lat 
                   ? "border-green-500 bg-green-50 text-green-600 shadow-inner" 
-                  : "border-dashed border-[#4A90E2] text-[#4A90E2] hover:bg-blue-50"
+                  : "border-dashed border-gray-300 text-gray-500 hover:bg-yellow-50 hover:border-[#FBC02D] hover:text-[#F9A825]"
               }`}
             >
               <LocIcon />
@@ -333,13 +272,13 @@ export default function Signup() {
               </div>
             )}
 
-            <button type="submit" disabled={loading} className="w-full text-white bg-gradient-to-r from-[#4A90E2] to-[#3A75B9] hover:from-[#3A75B9] hover:to-[#2b5c94] font-bold rounded-xl text-sm px-5 py-4 shadow-lg hover:shadow-xl transition-all active:scale-95 disabled:opacity-70">
+            <button type="submit" disabled={loading} className="w-full text-white bg-gradient-to-r from-[#FBC02D] to-[#F57F17] hover:from-[#F9A825] hover:to-[#E65100] font-bold rounded-xl text-base px-5 py-4 shadow-lg hover:shadow-xl transition-all active:scale-95 disabled:opacity-70">
               {loading ? "Creating..." : "Sign Up"}
             </button>
           </form>
 
-          <p className="text-center text-gray-500 text-xs mt-6">
-            Already a member? <Link href="/Login" className="text-[#4A90E2] font-bold hover:underline decoration-2 underline-offset-4">Login</Link>
+          <p className="text-center text-gray-500 text-sm mt-6 font-medium">
+            Already a member? <Link href="/Login" className="text-[#FBC02D] font-bold hover:underline decoration-2 underline-offset-4">Login</Link>
           </p>
         </div>
       </div>

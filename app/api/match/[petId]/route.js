@@ -12,12 +12,16 @@ export async function GET(req, context) {
     // Extract pet ID
     const { petId } = await context.params;
 
+    // Extract query params for model preference
+    const { searchParams } = new URL(req.url);
+    const preferModel = searchParams.get('prefer'); // 'groq' or null
+
     if (!petId) {
       return new Response(JSON.stringify({ error: "Pet ID is required" }), { status: 400 });
     }
 
     try {
-      const finalMatches = await findMatches(petId);
+      const finalMatches = await findMatches(petId, preferModel);
       // Return sorted matches
       return new Response(JSON.stringify(finalMatches), { status: 200 });
     } catch (e) {
