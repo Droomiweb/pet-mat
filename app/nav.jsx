@@ -209,7 +209,7 @@ export default function Navbar({ reminderCount = 0 }) {
 
                         {/* Dropdown (Separate from sliding pill for simplicity, or can be added similarly) */}
                         <Menu as="div" className="relative ml-1">
-                            <Menu.Button className="flex items-center gap-1 px-5 py-2 rounded-full text-sm font-bold text-gray-600 hover:text-[#4A90E2] hover:bg-white transition-all outline-none">
+                            <Menu.Button id="nav-explore-menu-button" className="flex items-center gap-1 px-5 py-2 rounded-full text-sm font-bold text-gray-600 hover:text-[#4A90E2] hover:bg-white transition-all outline-none">
                                 Explore <ChevronDownIcon className="w-4 h-4" />
                             </Menu.Button>
                             <Transition
