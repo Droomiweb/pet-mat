@@ -742,6 +742,21 @@ export default function PetDetailPage() {
           </div>
 
           <div className="lg:col-span-4 space-y-6">
+            {/* --- NEW: DOCUMENT VIEWER CARD --- */}
+            {pet.certificateUrl && (
+              <div className="bg-white rounded-[2.5rem] p-8 shadow-sm">
+                <h3 className="text-lg font-extrabold text-[#2D3648] mb-4 flex items-center gap-2">
+                  <span className="text-xl">📄</span> Verified Document
+                </h3>
+                <button 
+                  onClick={() => window.open(pet.certificateUrl, '_blank')}
+                  className="w-full py-4 border-2 border-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-50 hover:border-gray-300 transition flex items-center justify-center gap-2"
+                >
+                  <span className="text-lg">👁️</span> View Certificate
+                </button>
+              </div>
+            )}
+
             <div className="bg-white rounded-[2.5rem] p-8 shadow-sm">
               <h3 className="text-lg font-extrabold text-[#2D3648] mb-6">{isOwner ? "Owner Controls" : (isAdoption ? "Adoption Request" : "Mating Request")}</h3>
               {isOwner ? (

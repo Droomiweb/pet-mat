@@ -112,7 +112,7 @@ export default function AdminPanel() {
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
   const [panelLoading, setPanelLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState("verification"); 
+  const [activeTab, setActiveTab] = useState("users"); 
   const router = useRouter();
 
   // Fetch admin data
@@ -342,11 +342,11 @@ export default function AdminPanel() {
 
         {/* Tabs */}
         <div className="flex gap-3 overflow-x-auto pb-4 mb-4 no-scrollbar">
-            <TabButton id="verification" label="Verification" count={pendingVerificationPets.length} />
+            {/* <TabButton id="verification" label="Verification" count={pendingVerificationPets.length} /> */}
             <TabButton id="users" label="Users" count={users.length} />
-            <TabButton id="mating" label="Litters" count={acceptedRequests.length} />
+            {/* <TabButton id="mating" label="Litters" count={acceptedRequests.length} /> */}
             <TabButton id="pets" label="All Pets" count={pets.length} />
-            <TabButton id="products" label="Products" count={products.length} />
+            {/* <TabButton id="products" label="Products" count={products.length} /> */}
             
             <Link href="/admin/ai-logs" className="px-5 py-3 rounded-full font-bold text-sm transition-all whitespace-nowrap bg-white text-blue-600 hover:bg-blue-50 border border-blue-200">
                ✨ AI Logs
@@ -485,21 +485,197 @@ export default function AdminPanel() {
             {/* All Pets / Products */}
             {(activeTab === "pets" || activeTab === "products") && (
                 <div className="p-6">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {(activeTab === "pets" ? pets : products).map((item) => (
-                            <div key={item._id} className="bg-white p-4 rounded-2xl border border-gray-100 flex justify-between items-center">
-                                <div>
-                                    <h4 className="font-bold text-gray-700 text-sm">{item.name}</h4>
-                                    <p className="text-xs text-gray-400">{item._id}</p>
+{/* --- REDESIGN: All Pets Grouped by User --- */}
+{(activeTab === "pets" && pets.length > 0) && (
+    <div className="p-6 space-y-4">
+        {users.map(user => {
+            // Filter pets for this user
+            // Mismatch Fix: Check against firebaseUid (string) AND _id (stringified)
+            const userPets = pets.filter(p => 
+                p.ownerId === user.firebaseUid || 
+                p.ownerId === user._id || 
+                p.ownerId === String(user._id)
+            );
+            
+            if (userPets.length === 0) return null; // Skip users with no pets
+
+            return (
+                <div key={user._id} className="border border-gray-200 rounded-2xl bg-white overflow-hidden shadow-sm">
+                    {/* User Header (Accordion Trigger) */}
+                    <details className="group">
+                        <summary className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition select-none list-none">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-lg">
+                                    {user.name ? user.name.charAt(0).toUpperCase() : "U"}
                                 </div>
-                                {activeTab === "pets" ? (
-                                    <button onClick={() => handleDeletePet(item._id)} className="text-red-400 hover:text-red-600 p-2"><TrashIcon /></button>
-                                ) : (
-                                    <button onClick={() => handleProductDelete(item._id)} className="text-red-400 hover:text-red-600 p-2"><TrashIcon /></button>
-                                )}
+                                <div>
+                                    <h3 className="font-bold text-gray-800">{user.name || "Unknown User"}</h3>
+                                    <p className="text-xs text-gray-500">
+                                        {user.email || user.firebaseUid || user._id}
+                                    </p>
+                                </div>
+                                <span className="ml-3 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full font-bold">
+                                    {userPets.length} Pets
+                                </span>
                             </div>
-                        ))}
+                            <div className="text-gray-400 transform group-open:rotate-180 transition-transform">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                            </div>
+                        </summary>
+
+                        {/* User's Pets Grid */}
+                        <div className="p-4 border-t border-gray-100 bg-gray-50/50">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                {userPets.map(pet => (
+                                    <div key={pet._id} className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-3 relative group/card hover:shadow-md transition-all">
+                                        
+                                        {/* Header: Image & Basic Info */}
+                                        <div className="flex items-start gap-3">
+                                            <div className="w-16 h-16 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden border border-gray-100">
+                                                {pet.imageUrls?.[0] ? (
+                                                    <img src={pet.imageUrls[0]} alt={pet.name} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center text-2xl text-gray-300">🐾</div>
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <h4 className="font-bold text-gray-800 truncate">{pet.name}</h4>
+                                                <p className="text-xs text-gray-500 truncate">{pet.breed || "Unknown Breed"}</p>
+                                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                                     {/* Listing Type Badge */}
+                                                    {/* Listing Type Badge */}
+                                                    <span className={`px-1.5 py-0.5 text-[10px] rounded font-bold border ${
+                                                        pet.listingType === 'Adoption' ? 'bg-purple-50 text-purple-600 border-purple-100' : 
+                                                        pet.listingType === 'Mating' ? 'bg-pink-50 text-pink-600 border-pink-100' : 
+                                                        'bg-gray-50 text-gray-500 border-gray-100'
+                                                    }`}>
+                                                        {pet.listingType || 'None'}
+                                                    </span>
+                                                    
+                                                    {/* Pregnant Badge */}
+                                                    {pet.isPregnant && (
+                                                        <span className="px-1.5 py-0.5 text-[10px] rounded font-bold border bg-rose-50 text-rose-600 border-rose-100 flex items-center gap-1">
+                                                            🤰 Pregnant
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Status Badge Line */}
+                                        <div className="flex items-center gap-2">
+                                            <span className={`flex-1 text-center py-1 text-[10px] uppercase font-bold rounded-lg border ${
+                                                pet.verificationStatus === 'verified' ? 'bg-green-50 text-green-600 border-green-100' :
+                                                pet.verificationStatus === 'pending' ? 'bg-yellow-50 text-yellow-600 border-yellow-100' :
+                                                pet.verificationStatus === 'rejected' ? 'bg-red-50 text-red-600 border-red-100' :
+                                                'bg-gray-50 text-gray-500 border-gray-200'
+                                            }`}>
+                                                {pet.verificationStatus || 'Unknown'}
+                                            </span>
+                                        </div>
+
+                                        {/* Actions */}
+                                        <div className="flex items-center gap-2 pt-2 border-t border-gray-50 mt-auto">
+                                            <Link 
+                                                href={`/pet/${pet._id}`} 
+                                                target="_blank"
+                                                className="flex-1 py-1.5 text-xs text-center font-bold text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                                            >
+                                                Visit Profile
+                                            </Link>
+                                            <button 
+                                                onClick={() => handleDeletePet(pet._id)} 
+                                                className="py-1.5 px-3 text-xs font-bold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors" 
+                                                title="Delete Pet"
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            );
+        })}
+        
+        {/* Handle Orphaned Pets (Owner not in users list) */}
+        {(() => {
+            const validOwnerIds = new Set(users.flatMap(u => [u.firebaseUid, u._id, String(u._id)]));
+            
+            const orphanPets = pets.filter(p => !validOwnerIds.has(p.ownerId));
+            
+            if (orphanPets.length > 0) return (
+                <div className="border border-red-200 rounded-2xl bg-white overflow-hidden shadow-sm mt-4">
+                    <details className="group">
+                        <summary className="flex items-center justify-between p-4 cursor-pointer bg-red-50 hover:bg-red-100 transition select-none list-none text-red-800">
+                             <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-red-200 flex items-center justify-center text-red-600 font-bold text-lg">?</div>
+                                <div>
+                                    <h3 className="font-bold">Orphaned / Unknown Owner</h3>
+                                    <p className="text-xs opacity-75">IDs: {orphanPets.slice(0, 3).map(p => p.ownerId).join(', ')}...</p>
+                                </div>
+                                <span className="ml-3 px-2 py-0.5 bg-red-200 text-red-800 text-xs rounded-full font-bold">
+                                    {orphanPets.length} Pets
+                                </span>
+                            </div>
+                             <div className="text-red-400 transform group-open:rotate-180 transition-transform">▼</div>
+                        </summary>
+                         <div className="p-4 border-t border-red-100 bg-red-50/30">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                {orphanPets.map(pet => (
+                                     <div key={pet._id} className="bg-white p-3 rounded-xl border border-red-100 shadow-sm flex flex-col gap-3">
+                                         {/* Minimal Card for Orphans */}
+                                         <div className="flex items-center gap-3">
+                                            <div className="w-12 h-12 rounded-lg bg-gray-100 overflow-hidden">
+                                                {pet.imageUrls?.[0] && <img src={pet.imageUrls[0]} className="w-full h-full object-cover"/>}
+                                            </div>
+                                            <div>
+                                                 <h4 className="font-bold text-gray-800 text-sm">{pet.name}</h4>
+                                                 <p className="text-xs text-red-400 font-mono" title={pet.ownerId}>OwnerID: {pet.ownerId}</p>
+                                            </div>
+                                         </div>
+                                          <button onClick={() => handleDeletePet(pet._id)} className="w-full py-1 text-xs bg-red-100 text-red-600 rounded font-bold hover:bg-red-200">Delete</button>
+                                     </div>
+                                ))}
+                            </div>
+                         </div>
+                    </details>
+                </div>
+            )
+        })()}
+    </div>
+)}
+
+
+{/* --- Original Product View (Unchanged) --- */}
+{(activeTab === "products" && products.length > 0) && (
+     <div className="p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {products.map((item) => (
+                <div key={item._id} className="bg-white p-4 rounded-2xl border border-gray-100 flex gap-4 items-center relative overflow-hidden group hover:shadow-md transition-all">
+                    {/* Image Display */}
+                    <div className="relative w-16 h-16 rounded-xl bg-gray-50 flex-shrink-0 overflow-hidden border border-gray-100">
+                        {item.imageUrls?.[0] ? (
+                            <img src={item.imageUrls[0]} alt={item.name} className="w-full h-full object-cover" />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center text-2xl bg-gray-50 text-gray-400">📦</div>
+                        )}
                     </div>
+                    <div className="flex-1 min-w-0">
+                        <h4 className="font-bold text-gray-800 text-sm truncate">{item.name}</h4>
+                        <p className="text-[10px] text-gray-400 font-mono truncate">ID: {item._id}</p>
+                        {item.price && <p className="text-xs text-green-600 font-bold mt-0.5">₹{item.price}</p>}
+                    </div>
+                    <button onClick={() => handleProductDelete(item._id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors"><TrashIcon /></button>
+                </div>
+            ))}
+        </div>
+    </div>
+)}
                 </div>
             )}
 
