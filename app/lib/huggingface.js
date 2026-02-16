@@ -1,8 +1,8 @@
 // app/lib/huggingface.js
-import { visionModel } from "./gemini";
+import { visionModel, logInteraction } from "./gemini";
 
 /**
- * Classifies an image using Google Gemini Vision (replacing deprecated HF API).
+ * Classifies an image using Hugging Face (Primary) with Gemini Vision Fallback.
  * @param {string} base64Data - The base64 encoded image data (without prefix).
  * @returns {Promise<Object>} - The formatted analysis result { isHuman, type, breed }.
  */
@@ -17,7 +17,7 @@ async function callHuggingFaceAPI(base64Data) {
   const buffer = Buffer.from(base64Data, "base64");
 
   const response = await fetch(
-    "https://api-inference.huggingface.co/models/google/vit-base-patch16-224",
+    "https://router.huggingface.co/hf-inference/models/google/vit-base-patch16-224",
     {
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -56,7 +56,7 @@ async function callHuggingFaceAPI(base64Data) {
 export async function classifyImage(base64Data) {
   // --- STRATEGY 1: Hugging Face (Primary) ---
   try {
-    console.log("🔍 Analyzing image with Hugging Face (ViT)...");
+    console.log("🔍 Analyzing image with Hugging Face (ViT via Router)...");
     const hfResults = await callHuggingFaceAPI(base64Data);
     
     // Check if Human/Person is detected with high confidence
@@ -74,6 +74,16 @@ export async function classifyImage(base64Data) {
     if (topLabel.includes("dog") || topLabel.includes("terrier") || topLabel.includes("retriever")) animalType = "Dog";
     else if (topLabel.includes("cat") || topLabel.includes("kitten") || topLabel.includes("tabby")) animalType = "Cat";
     
+    // Log Success
+    logInteraction({
+        model: "HuggingFace (ViT)",
+        endpoint: "classification",
+        input: "Image Classification Request", // we don't log the full base64 to save space
+        output: JSON.stringify(hfResults).substring(0, 5000),
+        status: "Success",
+        metadata: { topLabel, score: topResult?.score }
+    });
+
     // If it's human, override
     if (isHuman) {
         return { isHuman: true, type: "Human", breed: "Human" };
@@ -87,6 +97,16 @@ export async function classifyImage(base64Data) {
 
   } catch (hfError) {
     console.warn("⚠️ Hugging Face Failed. Switching to Gemini Backup...", hfError.message);
+    
+    // Log Failure
+    logInteraction({
+        model: "HuggingFace (ViT)",
+        endpoint: "classification",
+        input: "Image Classification Request",
+        output: hfError.message,
+        status: "Failed",
+        metadata: { error: hfError.toString() }
+    });
   }
 
   // --- STRATEGY 2: Gemini Vision (Fallback) ---

@@ -14,8 +14,8 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-// 1x1 Transparent pixel
-const BASE64_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKwAEQAAAABJRU5ErkJggg==";
+// 1x1 Red Pixel PNG (RGB)
+const BASE64_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP8z/8/AAPEA/8Dwv4+AAAAAElFTkSuQmCC";
 
 async function testModel(modelId) {
   console.log(`Testing ${modelId}...`);
@@ -25,12 +25,10 @@ async function testModel(modelId) {
       {
         headers: {
           Authorization: `Bearer ${API_KEY}`,
-          "Content-Type": "application/json",
+          "Content-Type": "application/octet-stream", // App uses octet-stream
         },
         method: "POST",
-        body: JSON.stringify({
-          inputs: BASE64_IMAGE, 
-        }),
+        body: Buffer.from(BASE64_IMAGE, "base64"), // App sends buffer
       }
     );
 
@@ -48,10 +46,7 @@ async function testModel(modelId) {
 
 async function run() {
   const models = [
-    "google/vit-base-patch16-224-in21k", 
-    "facebook/convnext-tiny-224",
-    "microsoft/swin-tiny-patch4-window7-224",
-    "microsoft/resnet-18"
+    "google/vit-base-patch16-224"
   ];
     
   for (const model of models) {

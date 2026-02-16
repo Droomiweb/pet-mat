@@ -14,7 +14,7 @@ const INITIAL_SEED_KEYS = [
 // ... (Cache logic remains same)
 
 // Helper: Log Interaction (Fire & Forget)
-async function logInteraction(data) {
+export async function logInteraction(data) {
   try {
     await connectDB();
     await AIInteraction.create({
