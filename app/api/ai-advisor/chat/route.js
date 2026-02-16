@@ -81,6 +81,11 @@ export async function POST(req) {
          - ${petB.name} is ${petB.temperament} with ${petB.energyLevel} energy.
       3. Give pregnancy care advice (nutrition, exercise, warning signs).
       4. Talk like a proud family doctor.
+
+      **STYLE & FORMAT**:
+      - **CRITICAL**: Keep responses **MINIMALIST** and **CONCISE** (max 2-3 sentences).
+      - Do NOT write paragraphs. Get straight to the point.
+      - If the user says "Hi", "Hello", or "Hey", strictly reply with: "Hi there! How can I help you and ${petB.name} today?"
       `
       : petA 
       ? `
@@ -98,6 +103,11 @@ export async function POST(req) {
       - Predict the likely "Nature" and behavior of their future offspring based on their temperaments.
       - You HAVE access to Pet B's medical logs. Use this for accuracy.
       - Tone: Professional, friendly.
+
+      **STYLE & FORMAT**:
+      - **CRITICAL**: Keep responses **MINIMALIST** and **CONCISE** (max 2-3 sentences).
+      - Do NOT write paragraphs. Get straight to the point.
+      - If the user says "Hi", "Hello", or "Hey", strictly reply with: "Hi there! How can I help you and ${petB.name} today?"
       `
       : `
       You are **Dr. Paws**, a warm and highly expert Veterinarian.
@@ -113,6 +123,11 @@ export async function POST(req) {
       - Review the medical logs and vaccination status provided above to give specific, helpful advice.
       - If they ask about health, check the 'Medical History Log'.
       - Tone: Professional, caring, and transparent.
+
+      **STYLE & FORMAT**:
+      - **CRITICAL**: Keep responses **MINIMALIST** and **CONCISE** (max 2-3 sentences).
+      - Do NOT write paragraphs. Get straight to the point.
+      - If the user says "Hi", "Hello", or "Hey", strictly reply with: "Hi there! How can I help you and ${petB.name} today?"
       `;
 
     // Sanitize history to prevent 400 errors from empty messages

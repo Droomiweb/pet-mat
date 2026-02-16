@@ -1,15 +1,19 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import connectDB from "./mongodb";
-import AIInteraction from "../models/AIInteraction";
+import connectDB from "./mongodb.js";
+import AIInteraction from "../models/AIInteraction.js";
 
 // 1. CONFIGURATION
 const groqKey = process.env.GROQ_API_KEY;
 
 // User provided key + Env keys
-const INITIAL_SEED_KEYS = [
-  ...(process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || "")
-    .split(",").map(k => k.replace(/["']/g, "").trim()).filter(k => k)
-];
+const INITIAL_SEED_KEYS = 
+  // Combine all possible sources
+  [
+    process.env.GEMINI_API_KEYS || "", 
+    process.env.GEMINI_API_KEY || "", 
+    process.env.NEXT_PUBLIC_GEMINI_API_KEY || ""
+  ].join(",")
+  .split(",").map(k => k.replace(/["']/g, "").trim()).filter(k => k);
 
 // ... (Cache logic remains same)
 
@@ -74,7 +78,8 @@ async function callGroqAPI(messages, isVision = false) {
         messages: messages,
         temperature: 0.7,
         max_tokens: 1024
-      })
+      }),
+      signal: AbortSignal.timeout(15000) // 15s timeout
     });
 
     if (!response.ok) {
@@ -133,14 +138,59 @@ function convertToGroqFormat(history, newMessage, inlineImages = []) {
   return messages;
 }
 
-// 4. MAIN ENGINE (Gemini -> Failover -> Groq)
+// 4. HUGGING FACE (FINAL BACKUP) HANDLER
+async function callHFTextBackup(prompt) {
+  const hfKey = process.env.HUGGINGFACE_API_KEY;
+  if (!hfKey) throw new Error("Hugging Face API Key is missing.");
+
+  const model = "mistralai/Mistral-7B-Instruct-v0.2";
+  console.log(`🛡️ ACTIVATING FINAL SHIELD: Switching to Hugging Face Backup (${model})...`);
+
+  try {
+    const response = await fetch(`https://router.huggingface.co/hf-inference/models/${model}`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${hfKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        inputs: `[INST] ${prompt} [/INST]`, // Mistral instruction format
+        parameters: { max_new_tokens: 500, return_full_text: false }
+      }),
+    });
+
+    if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`HF API Error: ${response.status} - ${err}`);
+    }
+
+    const result = await response.json();
+    // HF returns array: [{ generated_text: "..." }]
+    const text = result[0]?.generated_text || "";
+    return { response: { text: () => text } };
+
+  } catch (error) {
+    console.error("❌ Hugging Face Backup Failed:", error);
+    throw error;
+  }
+}
+
+// 5. MAIN ENGINE (Gemini -> Failover -> Groq -> Failover -> HF)
 async function executeHybridRequest(type, params) {
   let lastError = null;
   const startTime = Date.now();
+  
+  // Extract simple text prompt for fallbacks if it's a complex object
+  let fallbackPrompt = "";
+  if (params.message) fallbackPrompt = params.message;
+  else if (Array.isArray(params.inputParts)) {
+      params.inputParts.forEach(p => fallbackPrompt += (typeof p === 'string' ? p : p.text || ""));
+  }
+
   let interactionLog = {
     model: "Gemini",
     endpoint: type,
-    input: params.message || params.inputParts,
+    input: fallbackPrompt,
     status: "Failed",
     metadata: {}
   };
@@ -228,7 +278,7 @@ async function executeHybridRequest(type, params) {
   for (const key of shuffledKeys) {
     try {
       const genAI = new GoogleGenerativeAI(key);
-      const modelName = "gemini-flash-latest"; // or gemini-1.5-flash
+      const modelName = "gemini-flast-latest"; // Explicit version
       const model = genAI.getGenerativeModel({ model: modelName });
 
       let result;
@@ -255,26 +305,43 @@ async function executeHybridRequest(type, params) {
       lastError = error;
       const maskedKey = `...${key.slice(-4)}`;
       console.warn(`⚠️ Gemini Key ${maskedKey} Failed. Detail: ${error.message}`);
-      
       // Async failure reporting
       reportKeyFailure(key).catch(e => {});
-
       continue;
     }
   }
 
   // --- STRATEGY C: FALLBACK TO GROQ (If Gemini failed) ---
-  if (params.preferModel !== 'groq') { // Only try if we haven't already tried above
+  if (params.preferModel !== 'groq') { 
       console.warn("⚠️ All Gemini Keys failed. Switching to Groq (Free Tier)...");
       try {
           return await tryGroq(true);
       } catch (groqError) {
-          lastError = groqError; // Update last error
+          lastError = groqError; // Update last error, but continue to next fallback
       }
   }
 
+  // --- STRATEGY D: FALLBACK TO HUGGING FACE (If Groq failed) ---
+  console.warn("⚠️ Groq also failed. Switching to Hugging Face (Mistral)...");
+  try {
+      const hfResult = await callHFTextBackup(fallbackPrompt);
+      console.log(`✅ Hugging Face Fallback Success`);
+      
+      logInteraction({
+          ...interactionLog,
+          model: "Hugging Face (Mistral)",
+          output: hfResult.response.text(),
+          status: "Success",
+          metadata: { latencyMs: Date.now() - startTime, fallback: true, tier: "final" }
+      });
+      return hfResult;
+
+  } catch (hfError) {
+      lastError = hfError;
+  }
+
   // --- FAILURE ---
-  console.error("❌ CRITICAL: AI Request Failed.");
+  console.error("❌ CRITICAL: AI Request Failed on All Providers (Gemini -> Groq -> HF).");
   logInteraction({
       ...interactionLog,
       output: `Final Failure: ${lastError?.message}`,

@@ -90,10 +90,14 @@ export async function POST(req) {
     // 3. Define ENHANCED vision prompt
     // 3. Define ENHANCED vision prompt - Hyper-concise to prevent Pollination HTML errors
     const prompt = `
-      1. Create a short, descriptive image prompt (under 30 words) for an animal offspring pup based on parents: ${petA?.breed} and ${petB?.breed}. Focus on blending coat color and features.
+      1. Create a highly detailed image prompt (max 40 words) for a **${babyTerm}** (baby/juvenile) that is a mix of ${petA?.breed} and ${petB?.breed}. 
+      - **CRITICAL**: Subject MUST be a **baby ${babyTerm}** (approx 8 weeks old).
+      - Explicit mention of "A generic, adorable ${babyTerm}, mix of ${petA?.breed} and ${petB?.breed}"
+      - Combine physical traits from both parents (ears, coat, snout) but keep features distinctly juvenile (big eyes, clumsy paws, soft fur).
+      - Do NOT use generic words like "fluffy" or "cute" unless the breeds are actually fluffy.
       2. Provide a separate "Behavior Prediction" (max 12 words) about its personality.
       Return format: Prompt: [image prompt] | Behavior: [behavior prediction]
-      Style: Full-body, realistic 8k photo, natural background, 1:1.
+      Style: Realistic 8k photo, studio lighting, macro photography, highly detailed.
     `;
 
     // Prepare input data
@@ -126,107 +130,86 @@ export async function POST(req) {
     console.log("Generated Prompt:", imageDescription);
     console.log("Behavior Prediction:", behaviorPrediction);
 
-    // 4. Generate Image URL (Pollinations)
-    const apiKey = process.env.POLLINATIONS_API_KEY;
-    console.log(`[ImageGen] API Key configured: ${apiKey ? "YES (" + apiKey.slice(0, 5) + "...)" : "NO"}`);
+    // 4. Generate Image URL (Hugging Face - SDXL)
+    const apiKey = process.env.HUGGINGFACE_API_KEY;
+    console.log(`[ImageGen] Using Hugging Face SDXL...`);
 
-    // Sanitize and shorten prompt for Pollinations stability
-    const cleanDescription = imageDescription.replace(/["\n\r]/g, " ").substring(0, 200);
-    const encodedPrompt = encodeURIComponent(cleanDescription);
-    let pollinationsUrl = "";
-
-    let imageRes;
+    let finalImageUrl = "";
+    
+    // Retry logic for HF
     let retries = 0;
-    const MAX_RETRIES = 4;
-    const models = ["flux", "turbo", "unity"]; // Prioritize flux
-    const subdomains = ["image.pollinations.ai", "gen.pollinations.ai"];
+    const MAX_RETRIES = 3;
+    const hfModel = "stabilityai/stable-diffusion-xl-base-1.0";
 
     while (retries <= MAX_RETRIES) {
-      // Rotate through models and subdomains
-      const model = models[retries % models.length];
-      const subdomain = subdomains[retries % subdomains.length];
-      const newSeed = Math.floor(Math.random() * 99999);
-      
-      // Use the updated URL structure: /prompt/{prompt} or /image/{prompt}
-      pollinationsUrl = `https://${subdomain}/prompt/${encodedPrompt}?nologo=true&seed=${newSeed}&model=${model}&width=1024&height=1024`;
-      
-      try {
-        console.log(`[ImageGen] Attempt ${retries + 1} (${model} on ${subdomain})...`);
-        imageRes = await fetch(pollinationsUrl, {
-          headers: apiKey ? { "Authorization": `Bearer ${apiKey}` } : {}
-        });
-        
-        const contentType = imageRes.headers.get("content-type") || "";
-        if (imageRes.ok && contentType.startsWith("image/")) {
-          console.log(`✅ Success with model: ${model} on ${subdomain}`);
-          break; // Success
-        }
-        
-        if (contentType.includes("text/html")) {
-          const html = await imageRes.text();
-          console.warn(`[ImageGen] HTML Error (Attempt ${retries + 1}): ${html.substring(0, 200).replace(/\n/g, " ")}`);
-        } else if (!imageRes.ok) {
-          try {
-            const errorData = await imageRes.json();
-            console.warn(`[ImageGen] API Error (Attempt ${retries + 1}):`, errorData);
-          } catch (e) {
-            console.warn(`[ImageGen] Attempt ${retries + 1} failed with status ${imageRes.status}`);
-          }
-        }
-      } catch (e) {
-        console.warn(`[ImageGen] Attempt ${retries + 1} exception:`, e.message);
-      }
-      
-      retries++;
-      if (retries <= MAX_RETRIES) {
-        const waitTime = 1000 + (retries * 500); // Gradual backoff
-        console.log(`[ImageGen] Retrying in ${waitTime}ms...`);
-        await new Promise(r => setTimeout(r, waitTime));
-      }
-    }
-
-    if (!imageRes || !imageRes.ok || !(imageRes.headers.get("content-type") || "").startsWith("image/")) {
-       throw new Error(`AI image engine is currently busy. Please try again in 10 seconds.`);
-    }
-
-    const contentType = imageRes.headers.get("content-type") || "";
-    let finalImageUrl = pollinationsUrl;
-
-    if (contentType.startsWith("image/")) {
-      const buffer = Buffer.from(await imageRes.arrayBuffer());
-      console.log(`Fetched image of type ${contentType}, size: ${buffer.length} bytes`);
-
-      if (process.env.CLOUDINARY_URL || (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY)) {
         try {
-          const uploadToCloudinary = () => {
-            return new Promise((resolve, reject) => {
-              const uploadStream = cloudinary.uploader.upload_stream(
-                { folder: "pet_generated_art" },
-                (error, result) => {
-                  if (error) reject(error);
-                  else resolve(result);
+            console.log(`[ImageGen] Attempt ${retries + 1} (${hfModel})...`);
+            const hfRes = await fetch(
+                `https://router.huggingface.co/hf-inference/models/${hfModel}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${apiKey}`,
+                        "Content-Type": "application/json",
+                    },
+                    method: "POST",
+                    body: JSON.stringify({ inputs: imageDescription }),
                 }
-              );
-              uploadStream.end(buffer);
-            });
-          };
+            );
 
-          const cloudinaryResult = await uploadToCloudinary();
-          finalImageUrl = cloudinaryResult.secure_url;
-        } catch (cloudErr) {
-          console.error("Cloudinary Upload Failed, falling back to direct URL:", cloudErr);
+            if (hfRes.ok) {
+                const buffer = Buffer.from(await hfRes.arrayBuffer());
+                console.log(`Fetched image from HF, size: ${buffer.length} bytes`);
+
+                if (process.env.CLOUDINARY_URL || (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY)) {
+                    try {
+                        const uploadToCloudinary = () => {
+                            return new Promise((resolve, reject) => {
+                                const uploadStream = cloudinary.uploader.upload_stream(
+                                { folder: "pet_generated_art" },
+                                (error, result) => {
+                                    if (error) reject(error);
+                                    else resolve(result);
+                                }
+                                );
+                                uploadStream.end(buffer);
+                            });
+                        };
+
+                        const cloudinaryResult = await uploadToCloudinary();
+                        finalImageUrl = cloudinaryResult.secure_url;
+                        break; // Success
+                    } catch (cloudErr) {
+                        console.error("Cloudinary Upload Failed:", cloudErr);
+                        throw new Error("Failed to save generated image.");
+                    }
+                } else {
+                    throw new Error("Cloudinary not configured. Cannot save binary image.");
+                }
+            } else {
+                 const errText = await hfRes.text();
+                 console.warn(`[ImageGen] HF Error (Attempt ${retries + 1}): ${hfRes.status} - ${errText}`);
+                 if (hfRes.status === 503 || hfRes.status === 500) {
+                     // Retryable
+                 } else {
+                     throw new Error(`HF API Error: ${errText}`);
+                 }
+            }
+
+        } catch (e) {
+            console.warn(`[ImageGen] Attempt ${retries + 1} exception:`, e.message);
+            if (!e.message.includes("503") && !e.message.includes("500")) throw e;
         }
-      } else {
-        console.warn("Cloudinary not configured. Using direct Pollinations URL.");
-      }
-    } else {
-      console.error(`Pollinations ERROR: Returned ${contentType} instead of image.`);
-      
-      // Fallback: If it's a small breed, sometimes shorter prompts work better
-      if (contentType.includes("text/html")) {
-        throw new Error("The AI image engine is currently busy. Please try again in a few seconds.");
-      }
-      throw new Error("AI engine is overloaded. Please try again in 10 seconds.");
+
+        retries++;
+        if (retries <= MAX_RETRIES) {
+            const waitTime = 2000 + (retries * 1000);
+            console.log(`[ImageGen] Retrying in ${waitTime}ms...`);
+            await new Promise(r => setTimeout(r, waitTime));
+        }
+    }
+
+    if (!finalImageUrl) {
+        throw new Error("Failed to generate image after retries.");
     }
 
     // 5. Save to Database
