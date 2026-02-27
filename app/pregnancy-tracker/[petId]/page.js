@@ -57,11 +57,34 @@ export default function PregnancyTracker() {
           }
           setPet(data);
           
-          const daysPassed = getDaysPassed(data.pregnancyStartDate);
-          const dayIndex = Math.min(Math.max(0, daysPassed - 1), data.pregnancyPlan.length - 1);
+          // Because plans are now dynamically generated and not exactly 63 items long,
+          // we cannot rely on direct array indexing (e.g., plan[50] for Day 51).
+          // We must find the plan object where the 'day' property is closest to, but not exceeding, daysPassed.
           
-          setCurrentDayIndex(dayIndex);
-          setTodayPlan(data.pregnancyPlan[dayIndex]);
+          let bestMatchIndex = 0;
+          let minDiff = Infinity;
+          const daysPassed = getDaysPassed(data.pregnancyStartDate);
+
+          data.pregnancyPlan.forEach((plan, index) => {
+            // Some plans use 'week' (e.g., 'Week 1' = day 7) and some use 'day'
+             let planDay = 0;
+             if (plan.day) {
+                 planDay = parseInt(plan.day);
+             } else if (plan.week) {
+                 planDay = parseInt(plan.week) * 7;
+             }
+
+             if (planDay <= daysPassed) {
+                 const diff = daysPassed - planDay;
+                 if (diff < minDiff) {
+                     minDiff = diff;
+                     bestMatchIndex = index;
+                 }
+             }
+          });
+          
+          setCurrentDayIndex(bestMatchIndex);
+          setTodayPlan(data.pregnancyPlan[bestMatchIndex]);
         }
       } catch (err) {
         console.error(err);
@@ -123,7 +146,23 @@ export default function PregnancyTracker() {
     );
   }
 
-  const progress = ((currentDayIndex + 1) / pet.pregnancyPlan.length) * 100;
+  const daysPassed = getDaysPassed(pet.pregnancyStartDate);
+  
+  // Use a biologically accurate divisor for the percentage based on the new logic
+  let bioTotalDays = 63; 
+  if (pet.type) {
+      const typeLow = pet.type.toLowerCase();
+      if (typeLow === 'rabbit') bioTotalDays = 31;
+      else if (typeLow === 'horse') bioTotalDays = 340;
+      else if (typeLow === 'cow') bioTotalDays = 283;
+      else if (typeLow === 'bird') bioTotalDays = 28;
+      else if (typeLow === 'pig') bioTotalDays = 114;
+      else if (typeLow === 'goat' || typeLow === 'sheep') bioTotalDays = 150;
+      else if (typeLow === 'hamster') bioTotalDays = 16;
+      else if (typeLow === 'guinea pig') bioTotalDays = 65;
+  }
+
+  const progress = Math.min((daysPassed / bioTotalDays) * 100, 100);
 
   return (
     <div className="min-h-screen bg-[#FDF6F6] p-4 md:p-10">
@@ -144,7 +183,7 @@ export default function PregnancyTracker() {
                    <h1 className="text-3xl md:text-4xl font-extrabold text-gray-800 mb-1">Pregnancy Tracker</h1>
                    <div className="flex flex-wrap justify-center md:justify-start gap-3 text-sm font-medium text-gray-500">
                       <span className="bg-pink-50 px-3 py-1 rounded-lg text-pink-600 border border-pink-100">❤️ {pet.name}</span>
-                      <span className="bg-purple-50 px-3 py-1 rounded-lg text-purple-600 border border-purple-100">📅 {todayPlan?.week ? `Week ${todayPlan.week}` : todayPlan?.day ? `Day ${todayPlan.day}` : `Day ${currentDayIndex + 1}`} of {pet.pregnancyPlan.length}</span>
+                      <span className="bg-purple-50 px-3 py-1 rounded-lg text-purple-600 border border-purple-100">📅 Day {getDaysPassed(pet.pregnancyStartDate)} of Biology</span>
                    </div>
                </div>
            </div>
