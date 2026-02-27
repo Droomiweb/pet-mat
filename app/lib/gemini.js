@@ -3,7 +3,7 @@ import connectDB from "./mongodb.js";
 import AIInteraction from "../models/AIInteraction.js";
 
 // 1. CONFIGURATION
-const groqKey = process.env.GROQ_API_KEY;
+const groqKey = process.env.GROQ_API_KEY ? process.env.GROQ_API_KEY.split(',')[0].trim() : undefined;
 
 // User provided key + Env keys
 const INITIAL_SEED_KEYS = 
@@ -11,7 +11,8 @@ const INITIAL_SEED_KEYS =
   [
     process.env.GEMINI_API_KEYS || "", 
     process.env.GEMINI_API_KEY || "", 
-    process.env.NEXT_PUBLIC_GEMINI_API_KEY || ""
+    process.env.NEXT_PUBLIC_GEMINI_API_KEY || "",
+    (process.env.GROQ_API_KEY || "").split(",").slice(1).join(",") // Extract accidental Gemini keys from Groq env
   ].join(",")
   .split(",").map(k => k.replace(/["']/g, "").trim()).filter(k => k);
 
@@ -24,8 +25,8 @@ export async function logInteraction(data) {
     await AIInteraction.create({
       model: data.model,
       endpoint: data.endpoint,
-      input: typeof data.input === 'string' ? data.input.substring(0, 5000) : JSON.stringify(data.input).substring(0, 5000),
-      output: typeof data.output === 'string' ? data.output.substring(0, 5000) : JSON.stringify(data.output).substring(0, 5000),
+      input: typeof data.input === 'string' ? (data.input || "[Empty]").substring(0, 5000) : (JSON.stringify(data.input) || "[Empty]").substring(0, 5000),
+      output: typeof data.output === 'string' ? (data.output || "[Empty]").substring(0, 5000) : (JSON.stringify(data.output) || "[Empty]").substring(0, 5000),
       status: data.status,
       metadata: data.metadata || {}
     });
@@ -143,11 +144,11 @@ async function callHFTextBackup(prompt) {
   const hfKey = process.env.HUGGINGFACE_API_KEY;
   if (!hfKey) throw new Error("Hugging Face API Key is missing.");
 
-  const model = "mistralai/Mistral-7B-Instruct-v0.2";
+  const model = "mistralai/Mistral-7B-Instruct-v0.3";
   console.log(`🛡️ ACTIVATING FINAL SHIELD: Switching to Hugging Face Backup (${model})...`);
 
   try {
-    const response = await fetch(`https://router.huggingface.co/hf-inference/models/${model}`, {
+    const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${hfKey}`,
@@ -183,6 +184,9 @@ async function executeHybridRequest(type, params) {
   // Extract simple text prompt for fallbacks if it's a complex object
   let fallbackPrompt = "";
   if (params.message) fallbackPrompt = params.message;
+  else if (typeof params.inputParts === 'string') {
+      fallbackPrompt = params.inputParts;
+  }
   else if (Array.isArray(params.inputParts)) {
       params.inputParts.forEach(p => fallbackPrompt += (typeof p === 'string' ? p : p.text || ""));
   }
@@ -278,7 +282,7 @@ async function executeHybridRequest(type, params) {
   for (const key of shuffledKeys) {
     try {
       const genAI = new GoogleGenerativeAI(key);
-      const modelName = "gemini-flast-latest"; // Explicit version
+      const modelName = "gemini-flash-latest"; // Explicit version
       const model = genAI.getGenerativeModel({ model: modelName });
 
       let result;

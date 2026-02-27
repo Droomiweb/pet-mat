@@ -24,18 +24,34 @@ export async function POST(req) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 403 });
     }
 
-    // Define AI prompt - Reverting to daily plan but with strict length limits
+    // Determine accurate gestation period based on species
+    let gestationDays = 63; // Default (Dogs/Cats)
+    const normalizedType = pet.type?.toLowerCase() || '';
+    
+    if (normalizedType === 'rabbit') {
+        gestationDays = 31;
+    } else if (normalizedType === 'bird') {
+        gestationDays = 28; // Average egg incubation period
+    } else if (normalizedType === 'horse') {
+        gestationDays = 340;
+    } else if (normalizedType === 'guinea pig') {
+        gestationDays = 65;
+    } else if (normalizedType === 'hamster') {
+        gestationDays = 16;
+    }
+
+    // Define AI prompt - Dynamic to the species' specific gestation
     const prompt = `
       Create a detailed, day-by-day pregnancy care plan for a **${pet.breed} ${pet.type}**.
-      1. Gestation period: ~63 days.
-      2. Provide a care plan for EVERY SINGLE DAY (Day 1 to 63).
+      1. Gestation period: ~${gestationDays} days.
+      2. Provide a care plan for EVERY SINGLE DAY (Day 1 to ${gestationDays}).
       
       Respond ONLY with a valid JSON object:
       {
-        "gestationDays": 63,
+        "gestationDays": ${gestationDays},
         "plan": [
           { "day": 1, "food": "...", "activity": "...", "careTips": "...", "warningSigns": "..." },
-          ... up to 63
+          ... up to ${gestationDays}
         ]
       }
       IMPORTANT: Keep descriptions to 5-8 words MAX so the response stays within limits.
@@ -57,17 +73,17 @@ export async function POST(req) {
         aiData = JSON.parse(responseText);
     } catch (e) {
         console.error("AI JSON Parse Error:", responseText);
-        // Better fallback: Generate basic daily items if AI fails
-        const fallbackPlan = Array.from({ length: 63 }, (_, i) => ({
+        // Better fallback: Generate basic daily items dynamically based on gestation length
+        const fallbackPlan = Array.from({ length: gestationDays }, (_, i) => ({
             day: i + 1,
-            food: i < 40 ? "Normal high-quality diet" : "Higher calorie intake",
-            activity: i < 50 ? "Normal exercise" : "Gentle walks only",
+            food: i < (gestationDays * 0.6) ? "Normal high-quality diet" : "Higher calorie intake",
+            activity: i < (gestationDays * 0.8) ? "Normal exercise" : "Gentle walks only",
             careTips: "Regular monitoring",
             warningSigns: "Lethargy or refusal to eat"
         }));
         
         aiData = {
-            gestationDays: 63,
+            gestationDays: gestationDays,
             plan: fallbackPlan
         };
     }

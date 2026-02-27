@@ -130,38 +130,82 @@ export async function POST(req) {
     console.log("Generated Prompt:", imageDescription);
     console.log("Behavior Prediction:", behaviorPrediction);
 
-    // 4. Generate Image URL (Hugging Face - SDXL)
-    const apiKey = process.env.HUGGINGFACE_API_KEY;
-    console.log(`[ImageGen] Using Hugging Face SDXL...`);
+    // 4. Generate Image URL (Pollinations AI - Flux Model)
+    console.log(`[ImageGen] Using Pollinations AI (Flux)...`);
 
     let finalImageUrl = "";
     
-    // Retry logic for HF
-    let retries = 0;
-    const MAX_RETRIES = 3;
-    const hfModel = "stabilityai/stable-diffusion-xl-base-1.0";
+    // Try Pollinations first
+    try {
+        const encodedPrompt = encodeURIComponent(imageDescription);
+        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&model=flux&nologo=true`;
+        
+        console.log(`[ImageGen] Trying Pollinations...`);
+        // Fast timeout for Pollinations (5s) because when it's down (like error 1033), it fails fast or hangs.
+        const polRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(10000) });
 
-    while (retries <= MAX_RETRIES) {
-        try {
-            console.log(`[ImageGen] Attempt ${retries + 1} (${hfModel})...`);
-            const hfRes = await fetch(
-                `https://router.huggingface.co/hf-inference/models/${hfModel}`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${apiKey}`,
-                        "Content-Type": "application/json",
-                    },
-                    method: "POST",
-                    body: JSON.stringify({ inputs: imageDescription }),
-                }
-            );
+        if (polRes.ok) {
+            const buffer = Buffer.from(await polRes.arrayBuffer());
+            console.log(`Fetched image from Pollinations, size: ${buffer.length} bytes`);
 
-            if (hfRes.ok) {
-                const buffer = Buffer.from(await hfRes.arrayBuffer());
-                console.log(`Fetched image from HF, size: ${buffer.length} bytes`);
+            if (process.env.CLOUDINARY_URL || (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY)) {
+                const uploadToCloudinary = () => {
+                    return new Promise((resolve, reject) => {
+                        const uploadStream = cloudinary.uploader.upload_stream(
+                        { folder: "pet_generated_art" },
+                        (error, result) => {
+                            if (error) reject(error);
+                            else resolve(result);
+                        }
+                        );
+                        uploadStream.end(buffer);
+                    });
+                };
+                const cloudinaryResult = await uploadToCloudinary();
+                finalImageUrl = cloudinaryResult.secure_url;
+            } else {
+                console.warn("Cloudinary not configured. Cannot save binary image.");
+            }
+        } else {
+            const errText = await polRes.text();
+            console.warn(`[ImageGen] Pollinations Error: ${polRes.status} - ${errText}`);
+        }
+    } catch (e) {
+        console.warn(`[ImageGen] Pollinations exception:`, e.message);
+    }
 
-                if (process.env.CLOUDINARY_URL || (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY)) {
-                    try {
+    // --- FALLBACK TO HUGGING FACE SDXL ---
+    if (!finalImageUrl) {
+        console.log(`[ImageGen] Pollinations failed. Falling back to Hugging Face SDXL...`);
+        const apiKey = process.env.HUGGINGFACE_API_KEY;
+        const hfModel = "stabilityai/stable-diffusion-xl-base-1.0";
+        
+        // Enhance the prompt for SDXL specifically
+        const enhancedPrompt = `High quality, photorealistic macro photo of a cute ${imageDescription}, perfect lighting, award winning pet photography, 8k, highly detailed`;
+
+        let retries = 0;
+        const MAX_RETRIES = 2;
+
+        while (retries <= MAX_RETRIES && !finalImageUrl) {
+            try {
+                console.log(`[ImageGen] Attempt ${retries + 1} (${hfModel})...`);
+                const hfRes = await fetch(
+                    `https://router.huggingface.co/hf-inference/models/${hfModel}`,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${apiKey}`,
+                            "Content-Type": "application/json",
+                        },
+                        method: "POST",
+                        body: JSON.stringify({ inputs: enhancedPrompt }),
+                    }
+                );
+
+                if (hfRes.ok) {
+                    const buffer = Buffer.from(await hfRes.arrayBuffer());
+                    console.log(`Fetched image from HF, size: ${buffer.length} bytes`);
+
+                    if (process.env.CLOUDINARY_URL || (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY)) {
                         const uploadToCloudinary = () => {
                             return new Promise((resolve, reject) => {
                                 const uploadStream = cloudinary.uploader.upload_stream(
@@ -174,42 +218,28 @@ export async function POST(req) {
                                 uploadStream.end(buffer);
                             });
                         };
-
                         const cloudinaryResult = await uploadToCloudinary();
                         finalImageUrl = cloudinaryResult.secure_url;
-                        break; // Success
-                    } catch (cloudErr) {
-                        console.error("Cloudinary Upload Failed:", cloudErr);
-                        throw new Error("Failed to save generated image.");
                     }
                 } else {
-                    throw new Error("Cloudinary not configured. Cannot save binary image.");
+                     const errText = await hfRes.text();
+                     console.warn(`[ImageGen] HF Error: ${hfRes.status} - ${errText}`);
                 }
-            } else {
-                 const errText = await hfRes.text();
-                 console.warn(`[ImageGen] HF Error (Attempt ${retries + 1}): ${hfRes.status} - ${errText}`);
-                 if (hfRes.status === 503 || hfRes.status === 500) {
-                     // Retryable
-                 } else {
-                     throw new Error(`HF API Error: ${errText}`);
-                 }
+            } catch (e) {
+                console.warn(`[ImageGen] HF exception:`, e.message);
             }
 
-        } catch (e) {
-            console.warn(`[ImageGen] Attempt ${retries + 1} exception:`, e.message);
-            if (!e.message.includes("503") && !e.message.includes("500")) throw e;
-        }
-
-        retries++;
-        if (retries <= MAX_RETRIES) {
-            const waitTime = 2000 + (retries * 1000);
-            console.log(`[ImageGen] Retrying in ${waitTime}ms...`);
-            await new Promise(r => setTimeout(r, waitTime));
+            if (!finalImageUrl) {
+                retries++;
+                if (retries <= MAX_RETRIES) {
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+            }
         }
     }
 
     if (!finalImageUrl) {
-        throw new Error("Failed to generate image after retries.");
+        throw new Error("Failed to generate image from all providers (Pollinations API + HuggingFace SDXL).");
     }
 
     // 5. Save to Database

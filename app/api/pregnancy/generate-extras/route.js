@@ -42,29 +42,31 @@ export async function POST(req) {
 
     // Handle visual comparison
     if (action === "fetus_visual") {
-      // DETERMINISTIC SIZE CHART (Accurate Veterinary Data)
-      // Based on ~63-65 day gestation for dogs/cats
+      // DETERMINISTIC SIZE CHART (Accurate Veterinary Data scaling)
+      // Converted to percentages so it works for a 30-day rabbit or 63-day dog
       const FETUS_SIZE_CHART = [
-        { day: 7,  object: "Dust Speck", text: "Your babies are currently the size of a Dust Speck (microscopic)!" },
-        { day: 14, object: "Grain of Sand", text: "Your babies are currently the size of a Grain of Sand!" },
-        { day: 21, object: "Poppy Seed", text: "Your babies are currently the size of a Poppy Seed!" },
-        { day: 28, object: "Blueberry", text: "Your babies are currently the size of a Blueberry!" },
-        { day: 35, object: "Raspberry", text: "Your babies are currently the size of a Raspberry!" }, // Week 5
-        { day: 42, object: "Fig", text: "Your babies are currently the size of a Fig!" },           // Week 6
-        { day: 49, object: "Lime", text: "Your babies are currently the size of a Lime!" },          // Week 7
-        { day: 56, object: "Avocado", text: "Your babies are currently the size of an Avocado!" },   // Week 8
-        { day: 63, object: "Sweet Potato", text: "Your babies are currently the size of a Sweet Potato!" } // Week 9
+        { percent: 0,   object: "Dust Speck", text: "Your babies are currently the size of a Dust Speck (microscopic)!" },
+        { percent: 20,  object: "Grain of Sand", text: "Your babies are currently the size of a Grain of Sand!" },
+        { percent: 35,  object: "Poppy Seed", text: "Your babies are currently the size of a Poppy Seed!" },
+        { percent: 45,  object: "Blueberry", text: "Your babies are currently the size of a Blueberry!" },
+        { percent: 55,  object: "Raspberry", text: "Your babies are currently the size of a Raspberry!" }, 
+        { percent: 66,  object: "Fig", text: "Your babies are currently the size of a Fig!" },           
+        { percent: 77,  object: "Lime", text: "Your babies are currently the size of a Lime!" },          
+        { percent: 88,  object: "Avocado", text: "Your babies are currently the size of an Avocado!" },   
+        { percent: 95,  object: "Sweet Potato", text: "Your babies are currently the size of a Sweet Potato!" } 
       ];
 
+      // Calculate progress percentage
+      const progressPercent = (currentDay / totalDays) * 100;
+
       // Find the closest milestone without going over
-      // Default to "Dust Speck" if < 7 days
       let sizeData = FETUS_SIZE_CHART[0]; 
       
       for (let i = 0; i < FETUS_SIZE_CHART.length; i++) {
-        if (currentDay >= FETUS_SIZE_CHART[i].day) {
+        if (progressPercent >= FETUS_SIZE_CHART[i].percent) {
           sizeData = FETUS_SIZE_CHART[i];
         } else {
-          break; // Stop once we surpass the current day
+          break; // Stop once we surpass the current progress
         }
       }
 
