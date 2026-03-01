@@ -63,16 +63,24 @@ export async function classifyImage(base64Data) {
     const topResult = hfResults[0]; // Highest score
     const topLabel = topResult?.label?.toLowerCase() || "";
     
-    // Simple logic: if label contains "person", "man", "woman", "boy", "girl"
+    // Use word boundaries to avoid matching substrings inside words (e.g., "Doberman" contains "man")
+    // Simple logic: if label contains standalone "person", "man", "woman", "boy", "girl"
     const humanKeywords = ["groom", "person", "man", "woman", "boy", "girl", "human", "people"];
-    const isHuman = humanKeywords.some(k => topLabel.includes(k));
+    const isHuman = humanKeywords.some(k => new RegExp(`\\b${k}\\b`, 'i').test(topLabel));
 
     // For breed/type, we just use the top label
     // ViT returns specific classes (e.g. "golden retriever", "Egyptian cat")
-    // Use simple heuristics for type
+    // Use extended heuristics for type to catch common ImageNet classes without 'dog' or 'cat' in the name
+    const dogKeywords = ["dog", "terrier", "retriever", "spaniel", "hound", "husky", "poodle", "collie", "setter", "shepherd", "pug", "chow", "corgi", "bulldog", "mastiff", "dane", "chihuahua", "dachshund", "shiba", "akita", "malamute", "samoyed", "pom", "pinscher", "schnauzer", "beagle", "rottweiler", "boxer", "dalmatian", "basset", "bloodhound", "pointer", "ridgeback", "weimaraner", "vizsla", "kuvasz", "komondor", "borzoi", "whippet", "saluki", "greyhound", "deerhound", "wolfhound", "affenpinscher", "griffon", "papillon", "leonberger", "pyrenees", "pekingese", "shih-tzu", "bichon", "coyote", "dingo", "dhole", "wolf", "puggle", "mut", "mix", "shiba inu", "shar-pei", "heeler", "kelpie"];
+    const catKeywords = ["cat", "kitten", "tabby", "persian", "siamese", "maine coon", "bengal", "ragdoll", "sphynx", "shorthair", "lynx", "leopard", "tiger", "lion", "cheetah", "puma", "cougar", "jaguar", "panther", "caracal", "ocelot", "serval"];
+    const birdKeywords = ["bird", "parrot", "canary", "cockatiel", "lovebird", "finch", "macaw", "cockatoo", "owl", "toucan", "eagle", "hawk", "falcon", "crow", "raven", "dove", "pigeon", "swan", "goose", "duck", "peacock", "penguin", "ostrich", "emu", "kiwi", "flamingo", "pelican"];
+    const rabbitKeywords = ["rabbit", "bunny", "hare", "angora", "lop", "flemish giant"];
+
     let animalType = "Other";
-    if (topLabel.includes("dog") || topLabel.includes("terrier") || topLabel.includes("retriever")) animalType = "Dog";
-    else if (topLabel.includes("cat") || topLabel.includes("kitten") || topLabel.includes("tabby")) animalType = "Cat";
+    if (dogKeywords.some(k => topLabel.includes(k))) animalType = "Dog";
+    else if (catKeywords.some(k => topLabel.includes(k))) animalType = "Cat";
+    else if (birdKeywords.some(k => topLabel.includes(k))) animalType = "Bird";
+    else if (rabbitKeywords.some(k => topLabel.includes(k))) animalType = "Rabbit";
     
     // Log Success
     logInteraction({
@@ -89,10 +97,20 @@ export async function classifyImage(base64Data) {
         return { isHuman: true, type: "Human", breed: "Human" };
     }
 
+    // ViT sometimes returns a comma-separated list of synonyms (e.g., "Doberman, Doberman pinscher").
+    // We only want to keep the first, most prominent name.
+    let finalBreed = topResult?.label || "Unknown";
+    if (finalBreed.includes(",")) {
+        finalBreed = finalBreed.split(",")[0].trim();
+    }
+    
+    // Capitalize the first letter of each word in the breed name for better UI display
+    finalBreed = finalBreed.split(" ").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+
     return {
        isHuman: false,
        type: animalType,
-       breed: topResult?.label || "Unknown"
+       breed: finalBreed
     };
 
   } catch (hfError) {

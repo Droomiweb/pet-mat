@@ -36,6 +36,8 @@ export default function MarketplacePage() {
     const router = useRouter();
     const { user, loading: authLoading } = useAuth();
 
+    const selectedPet = myPets.find(p => p._id === selectedPetId);
+
     // 1. Fetch User Pets
     useEffect(() => {
         if (authLoading || !user) return;
@@ -54,7 +56,6 @@ export default function MarketplacePage() {
             } catch (err) { console.error(err); }
         };
 
-        fetchUserPets();
         fetchUserPets();
     }, [user, authLoading]);
 
@@ -99,7 +100,39 @@ export default function MarketplacePage() {
         if (myPets.length > 0) {
             fetchRecommendations();
         }
-    }, [selectedPetId, myPets, recommendationsCache]);
+    }, [selectedPetId, selectedPet?.aiProfileString]); // Fix for dependency size changing
+
+    const handleRefreshRecommendations = async () => {
+        if (!selectedPetId || !selectedPet?.aiProfileString) return;
+        
+        // Remove from cache
+        setRecommendationsCache(prev => {
+            const newCache = { ...prev };
+            delete newCache[selectedPetId];
+            return newCache;
+        });
+
+        setRecData({ recommendations: [] });
+        setRecLoading(true);
+
+        try {
+            const res = await fetch("/api/marketplace/recommendations", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ petId: selectedPetId })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setRecData(data);
+                // Update cache
+                setRecommendationsCache(prev => ({
+                    ...prev,
+                    [selectedPetId]: data
+                }));
+            }
+        } catch (err) { console.error(err); }
+        finally { setRecLoading(false); }
+    };
 
     // Filter Logic
     const filteredProducts = recData.recommendations.filter(item => {
@@ -127,8 +160,6 @@ export default function MarketplacePage() {
             </div>
         );
     }
-
-    const selectedPet = myPets.find(p => p._id === selectedPetId);
 
     return (
         <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-8 pb-20">
@@ -200,20 +231,32 @@ export default function MarketplacePage() {
                     </div>
                 ) : (
                     <div>
-                        {/* Categories */}
-                        <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
-                            {["All", "Nutrition", "Toys & Gear"].map(cat => (
-                                <button
-                                    key={cat}
-                                    onClick={() => setActiveCategory(cat)}
-                                    className={`px-5 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all ${activeCategory === cat
-                                        ? "bg-[#333333] text-white shadow-md"
-                                        : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
-                                        }`}
-                                >
-                                    {cat}
-                                </button>
-                            ))}
+                        {/* Categories & Refresh */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                            <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 w-full sm:w-auto">
+                                {["All", "Nutrition", "Toys & Gear"].map(cat => (
+                                    <button
+                                        key={cat}
+                                        onClick={() => setActiveCategory(cat)}
+                                        className={`px-5 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all ${activeCategory === cat
+                                            ? "bg-[#333333] text-white shadow-md"
+                                            : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+                                            }`}
+                                    >
+                                        {cat}
+                                    </button>
+                                ))}
+                            </div>
+                            <button
+                                onClick={handleRefreshRecommendations}
+                                disabled={recLoading}
+                                className="flex items-center justify-center gap-2 px-5 py-2 bg-white text-[#4A90E2] border border-[#4A90E2] rounded-full text-sm font-bold shadow-sm hover:bg-blue-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-4 h-4 ${recLoading ? 'animate-spin' : ''}`}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                </svg>
+                                {recLoading ? 'Refreshing...' : 'Refresh Ideas'}
+                            </button>
                         </div>
 
                         {/* Grid */}

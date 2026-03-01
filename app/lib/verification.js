@@ -187,31 +187,43 @@ export const runCertificateAnalysis = async (petData) => {
     };
   }
 
-  // Logic to finalize verification (Owner Match Check)
-  // Re-verify owner name just in case the AI was hallucinating or lenient
+  // Logic to finalize verification (Match Check)
+  // Re-verify both owner name AND pet name
   const extractedOwnerName = aiResult.extractedData?.ownerName?.toLowerCase() || "";
   const expectedOwnerName = ownerName.toLowerCase();
-
-  const isSubstringMatch =
+  const isOwnerSubstringMatch =
     extractedOwnerName.includes(expectedOwnerName) ||
     expectedOwnerName.includes(extractedOwnerName);
+  const isOwnerSane = extractedOwnerName.length >= 3 || expectedOwnerName.length >= 3;
+  ownerNameMatch = isOwnerSubstringMatch && isOwnerSane;
 
-  const isSane = extractedOwnerName.length >= 3 || expectedOwnerName.length >= 3;
-  ownerNameMatch = isSubstringMatch && isSane;
+  const extractedPetName = aiResult.extractedData?.petName?.toLowerCase() || "";
+  const expectedPetName = name.toLowerCase();
+  const isPetSubstringMatch =
+    extractedPetName.includes(expectedPetName) ||
+    expectedPetName.includes(extractedPetName);
+  const isPetSane = extractedPetName.length >= 2 || expectedPetName.length >= 2;
+  const petNameMatch = isPetSubstringMatch && isPetSane;
 
   let finalStatus;
   let finalReason;
 
-  if (ownerNameMatch) {
+  if (ownerNameMatch && petNameMatch) {
     finalStatus = "verified";
     finalReason = "Verified via " + (aiResult.extractedData.aiOcrText?.includes("OCR") ? "OCR Text Analysis" : "Visual Analysis");
-  } else {
+  } else if (!ownerNameMatch && !petNameMatch) {
+    finalStatus = "rejected";
+    finalReason = `Owner Mismatch & Pet Mismatch. Owner found: ${extractedOwnerName}, expected: ${expectedOwnerName}. Pet found: ${extractedPetName}, expected: ${expectedPetName}.`;
+  } else if (!ownerNameMatch) {
     finalStatus = "rejected";
     finalReason = `Owner Mismatch (${aiResult.extractedData.aiOcrText?.includes("OCR") ? "OCR" : "Vision"}). found: ${extractedOwnerName}, expected: ${expectedOwnerName}`;
+  } else if (!petNameMatch) {
+    finalStatus = "rejected";  
+    finalReason = `Pet Name Mismatch (${aiResult.extractedData.aiOcrText?.includes("OCR") ? "OCR" : "Vision"}). found: ${extractedPetName}, expected: ${expectedPetName}`;  
   }
 
   aiResult.finalStatus = finalStatus;
   aiResult.reason = finalReason;
 
-  return { aiResult, ownerNameMatch };
+  return { aiResult, ownerNameMatch, petNameMatch };
 };

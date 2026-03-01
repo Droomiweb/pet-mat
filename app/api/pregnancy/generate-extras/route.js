@@ -74,14 +74,115 @@ export async function POST(req) {
       const cleanObjectName = sizeData.object.replace(/[^a-zA-Z0-9 ]/g, "");
 
       // Generate image URL (Pollinations.ai)
-      const imagePrompt = `cute ${cleanObjectName} minimalistic vector illustration, white background, single object`;
+      const imagePrompt = `highly detailed cute ${cleanObjectName} minimalistic illustration, white background, single object centered`;
       const encodedPrompt = encodeURIComponent(imagePrompt);
-      const randomSeed = Math.floor(Math.random() * 1000);
-      const imageUrl = `https://pollinations.ai/p/${encodedPrompt}?nologo=true&seed=${randomSeed}&width=512&height=512`;
+      const randomSeed = Math.floor(Math.random() * 100000);
+      const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true&seed=${randomSeed}&width=512&height=512`;
+
+      let finalImageUrl = pollinationsUrl; // Default to direct link
+
+        // Attempt to fetch and store in Cloudinary so the frontend doesn't break on redirects
+        try {
+            console.log(`[FetusVisual] Fetching from Pollinations: ${pollinationsUrl}`);
+            const polRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(8000) });
+            
+            if (polRes.ok) {
+                const buffer = Buffer.from(await polRes.arrayBuffer());
+                
+                // Cloudinary import (requires it to be available in this file or globally)
+                const cloudinary = require('cloudinary').v2;
+                cloudinary.config({
+                    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+                    api_key: process.env.CLOUDINARY_API_KEY,
+                    api_secret: process.env.CLOUDINARY_API_SECRET,
+                });
+
+                if (process.env.CLOUDINARY_CLOUD_NAME) {
+                    const uploadToCloudinary = () => {
+                        return new Promise((resolve, reject) => {
+                            const uploadStream = cloudinary.uploader.upload_stream(
+                            { folder: "pregnancy_tracker_visuals" },
+                            (error, result) => {
+                                if (error) reject(error);
+                                else resolve(result);
+                            }
+                            );
+                            uploadStream.end(buffer);
+                        });
+                    };
+                    const cloudinaryResult = await uploadToCloudinary();
+                    finalImageUrl = cloudinaryResult.secure_url;
+                    console.log(`[FetusVisual] Saved to Cloudinary: ${finalImageUrl}`);
+                }
+            } else {
+                 console.warn(`[FetusVisual] Failed to fetch. Status: ${polRes.status}`);
+                 finalImageUrl = ""; // Force fallback
+            }
+        } catch (e) {
+            console.warn(`[FetusVisual] Exception fetching/saving image:`, e.message);
+            finalImageUrl = ""; // Force fallback
+        }
+
+        // --- FALLBACK TO HUGGING FACE SDXL ---
+        if (!finalImageUrl) {
+            console.log(`[FetusVisual] Pollinations failed. Falling back to Hugging Face SDXL...`);
+            const apiKey = process.env.HUGGINGFACE_API_KEY;
+            const hfModel = "stabilityai/stable-diffusion-xl-base-1.0";
+
+            let retries = 0;
+            const MAX_RETRIES = 1;
+
+            while (retries <= MAX_RETRIES && !finalImageUrl) {
+                try {
+                    const hfRes = await fetch(
+                        `https://router.huggingface.co/hf-inference/models/${hfModel}`,
+                        {
+                            headers: {
+                                Authorization: `Bearer ${apiKey}`,
+                                "Content-Type": "application/json",
+                            },
+                            method: "POST",
+                            body: JSON.stringify({ inputs: imagePrompt }),
+                        }
+                    );
+
+                    if (hfRes.ok) {
+                        const buffer = Buffer.from(await hfRes.arrayBuffer());
+                        
+                        const cloudinary = require('cloudinary').v2;
+                        cloudinary.config({
+                            cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+                            api_key: process.env.CLOUDINARY_API_KEY,
+                            api_secret: process.env.CLOUDINARY_API_SECRET,
+                        });
+
+                        const uploadToCloudinary = () => {
+                            return new Promise((resolve, reject) => {
+                                const uploadStream = cloudinary.uploader.upload_stream(
+                                { folder: "pregnancy_tracker_visuals" },
+                                (error, result) => {
+                                    if (error) reject(error);
+                                    else resolve(result);
+                                }
+                                );
+                                uploadStream.end(buffer);
+                            });
+                        };
+                        const cloudinaryResult = await uploadToCloudinary();
+                        finalImageUrl = cloudinaryResult.secure_url;
+                        console.log(`[FetusVisual] Saved HF Fallback to Cloudinary: ${finalImageUrl}`);
+                    }
+                } catch (e) {
+                    console.warn(`[FetusVisual] HF Fallback exception:`, e.message);
+                }
+                
+                if (!finalImageUrl) retries++;
+            }
+        }
 
       return NextResponse.json({ 
         result: sizeData.text, 
-        imageUrl: imageUrl 
+        imageUrl: finalImageUrl || "https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg" // absolute final fail-safe
       });
     }
 

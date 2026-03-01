@@ -1,29 +1,43 @@
 // lib/greenApi.js
-import whatsAppClient from "@green-api/whatsapp-api-client";
 
-let restAPI = null;
-
-function getRestAPI() {
-  if (restAPI) return restAPI;
-
+/**
+ * Sends a WhatsApp text message using Green API.
+ * @param {string} phoneNumber - Full number with country code (e.g., "919876543210")
+ * @param {string} message - The text content to send
+ */
+export async function sendWhatsAppText(phoneNumber, message) {
   const idInstance = process.env.GREEN_API_INSTANCE_ID;
-  const apiTokenInstance = process.env.GREEN_API_TOKEN;
+  const apiToken = process.env.GREEN_API_TOKEN;
 
-  if (!idInstance || !apiTokenInstance) {
-    throw new Error("GreenAPI credentials missing");
+  if (!idInstance || !apiToken) {
+    console.error("Green API Credentials missing in .env");
+    return null;
   }
 
-  restAPI = whatsAppClient.restAPI({
-    idInstance,
-    apiTokenInstance,
-  });
-  return restAPI;
-}
+  const url = `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiToken}`;
 
-export async function sendWhatsAppText(phoneNumber, text) {
-  // phoneNumber like "919876543210"
-  const chatId = `${phoneNumber}@c.us`;
-  // Initialize lazily
-  const api = getRestAPI();
-  return api.message.sendMessage(chatId, null, text);
+  const payload = {
+    chatId: `${phoneNumber}@c.us`,
+    message: message
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Green API Error: ${JSON.stringify(errorData)}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Failed to send WhatsApp message:", error.message);
+    throw error; 
+  }
 }
