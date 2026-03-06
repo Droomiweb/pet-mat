@@ -10,8 +10,8 @@ export async function sendWhatsAppText(phoneNumber, message) {
   const apiToken = process.env.GREEN_API_TOKEN;
 
   if (!idInstance || !apiToken) {
-    console.error("Green API Credentials missing in .env");
-    return null;
+    console.error("Green API Credentials missing in .env.local: GREEN_API_INSTANCE_ID or GREEN_API_TOKEN is empty.");
+    return { error: "CREDENTIALS_MISSING", details: "ID Instance or Token not found in environment." };
   }
 
   const url = `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiToken}`;
@@ -31,11 +31,21 @@ export async function sendWhatsAppText(phoneNumber, message) {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Green API Error: ${JSON.stringify(errorData)}`);
+      let errorInfo;
+      try {
+        errorInfo = await response.json();
+      } catch (e) {
+        errorInfo = await response.text();
+      }
+      throw new Error(`Green API Error (${response.status}): ${typeof errorInfo === 'object' ? JSON.stringify(errorInfo) : errorInfo}`);
     }
 
-    return await response.json();
+    try {
+      return await response.json();
+    } catch (e) {
+      const text = await response.text();
+      return { success: true, message: "Message sent, but response was not JSON", raw: text };
+    }
   } catch (error) {
     console.error("Failed to send WhatsApp message:", error.message);
     throw error; 

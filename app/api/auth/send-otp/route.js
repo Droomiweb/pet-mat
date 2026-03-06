@@ -46,7 +46,8 @@ export async function POST(req) {
     const whatsappMessage = `Your PetLink Password Reset OTP is: *${otpCode}*. It expires in 5 minutes. Do not share this code.`;
     
     // Format phone number
-    const fullPhoneNumber = `91${user.phone}`;
+    const cleanPhone = String(user.phone).replace(/\D/g, "");
+    const fullPhoneNumber = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`;
     
     // Send WhatsApp message
     try {

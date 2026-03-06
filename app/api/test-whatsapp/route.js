@@ -1,44 +1,35 @@
-// lib/greenApi.js
+import { sendWhatsAppText } from "../../lib/greenApi";
 
-/**
- * Sends a WhatsApp text message using Green API.
- * @param {string} phoneNumber - Full number with country code (e.g., "919876543210")
- * @param {string} message - The text content to send
- */
-export async function sendWhatsAppText(phoneNumber, message) {
-  const idInstance = process.env.GREEN_API_INSTANCE_ID;
-  const apiToken = process.env.GREEN_API_TOKEN;
-
-  if (!idInstance || !apiToken) {
-    console.error("Green API Credentials missing in .env");
-    return null;
-  }
-
-  const url = `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiToken}`;
-
-  const payload = {
-    chatId: `${phoneNumber}@c.us`,
-    message: message
-  };
-
+export async function POST(req) {
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Green API Error: ${JSON.stringify(errorData)}`);
+    const { phone, message } = await req.json();
+    
+    if (!phone || !message) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "Missing phone number or message content." 
+      }), { status: 400 });
     }
 
-    return await response.json();
+    const result = await sendWhatsAppText(phone, message);
+    
+    if (!result) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "Green API credentials (INSTANCE_ID or TOKEN) are missing in .env.local" 
+      }), { status: 500 });
+    }
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      data: result 
+    }), { status: 200 });
+
   } catch (error) {
-    console.error("Failed to send WhatsApp message:", error.message);
-    // We throw the error so the calling function (like the OTP route) knows it failed
-    throw error; 
+    console.error("Test WhatsApp API Route Error:", error);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: error.message 
+    }), { status: 500 });
   }
 }

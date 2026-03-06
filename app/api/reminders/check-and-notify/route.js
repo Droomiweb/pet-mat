@@ -42,7 +42,8 @@ export async function GET(req) {
             // Validate contact info
             if (!owner || !owner.phone) continue;
 
-            const fullPhoneNumber = `91${owner.phone}`; // Assuming India prefix
+            const cleanPhone = String(owner.phone).replace(/\D/g, "");
+            const fullPhoneNumber = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`; 
             
             // Check vaccines
             for (let i = 0; i < pet.vaccinationHistory.length; i++) {

@@ -6,6 +6,7 @@ import User from "../../../models/User";
 // Import Firebase Admin
 import admin from "../../../lib/firebaseAdmin";
 import jwt from 'jsonwebtoken';
+import { sendWhatsAppText } from "../../../lib/greenApi";
 
 export async function POST(req) {
   try {
@@ -45,6 +46,18 @@ export async function POST(req) {
       });
 
       console.log(`Password reset for user: ${user.username} (UID: ${user.firebaseUid})`);
+
+      // 🛡️ SEND WHATSAPP CONFIRMATION
+      if (user.phone) {
+          try {
+              const cleanPhone = user.phone.replace(/\D/g, ''); 
+              const formattedPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`;
+              const whatsappMessage = `🛡️ *PetLink Security*: Hello ${user.name}, your password has been successfully reset. If this was not you, please contact support immediately.`;
+              await sendWhatsAppText(formattedPhone, whatsappMessage);
+          } catch (waErr) {
+              console.error("WhatsApp reset notification failed:", waErr);
+          }
+      }
 
     } catch (firebaseErr) {
       console.error("Firebase update failed:", firebaseErr);

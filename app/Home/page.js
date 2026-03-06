@@ -220,9 +220,10 @@ export default function Main() {
     }
   }, [authLoading, user, filters]); // (userData.city is indirectly handled when auth/user stabilises)
 
-  const handlePetClick = (identifier) => {
+  const handlePetClick = (identifier, requesterId = null) => {
     if (!user) return router.push("/Login");
-    router.push(`/pet/${identifier}`);
+    const query = requesterId ? `?requesterPetId=${requesterId}` : "";
+    router.push(`/pet/${identifier}${query}`);
   };
 
   return (
@@ -306,7 +307,7 @@ export default function Main() {
                     {matches.map((pet) => (
                       <div
                         key={pet._id}
-                        onClick={() => handlePetClick(pet.slug || pet._id)}
+                        onClick={() => handlePetClick(pet.slug || pet._id, myPet._id)}
                         className="snap-center shrink-0 w-64 bg-white/80 backdrop-blur-md rounded-[2rem] p-3 shadow-lg hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 border border-white cursor-pointer group relative"
                       >
                         <div className="absolute top-3 right-3 z-10 bg-gradient-to-r from-[#FF9A00] to-[#FF5E62] text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md">

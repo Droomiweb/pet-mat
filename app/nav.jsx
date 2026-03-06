@@ -25,13 +25,14 @@ const HeartIcon = () => <span className="text-lg">❤️</span>;
 export default function Navbar({ reminderCount = 0 }) {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [scrolled, setScrolled] = useState(false);
-    const [pregnantPetId, setPregnantPetId] = useState(null);
+    const [pregnantPets, setPregnantPets] = useState([]);
     const [showNoPregnancyModal, setShowNoPregnancyModal] = useState(false);
     const [realtimeUnreadCount, setRealtimeUnreadCount] = useState(0);
     const [hasLostPets, setHasLostPets] = useState(false);
 
     // --- NEW: Track hover state for sliding animation ---
     const [hoveredPath, setHoveredPath] = useState(null);
+    const [showPetPicker, setShowPetPicker] = useState(false); // For multi-pet picker
 
     const { user, userData } = useAuth();
     const router = useRouter();
@@ -94,8 +95,8 @@ export default function Navbar({ reminderCount = 0 }) {
                     const res = await fetch(`/api/pet/user/${user.uid}?t=${timestamp}`);
                     if (res.ok) {
                         const pets = await res.json();
-                        const pregnant = pets.find(p => p.isPregnant);
-                        setPregnantPetId(pregnant ? pregnant._id : null);
+                        const pregnant = pets.filter(p => p.isPregnant);
+                        setPregnantPets(pregnant);
                     }
                 } catch (e) { console.error(e); }
             };
@@ -111,9 +112,16 @@ export default function Navbar({ reminderCount = 0 }) {
 
     const handlePregnancyClick = (e) => {
         e.preventDefault();
-        setMobileMenuOpen(false);
-        if (pregnantPetId) router.push(`/pregnancy-tracker/${pregnantPetId}`);
-        else setShowNoPregnancyModal(true);
+        if (pregnantPets.length === 0) {
+            setMobileMenuOpen(false);
+            setShowNoPregnancyModal(true);
+        } else if (pregnantPets.length === 1) {
+            setMobileMenuOpen(false);
+            router.push(`/pregnancy-tracker/${pregnantPets[0]._id}`);
+        } else {
+            // If multiple, just toggle the picker (for mobile)
+            setShowPetPicker(!showPetPicker);
+        }
     };
 
     const mainNavItems = [
@@ -224,13 +232,42 @@ export default function Navbar({ reminderCount = 0 }) {
                                 <Menu.Items className="absolute top-full right-0 mt-4 w-64 bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 p-2 ring-1 ring-black/5 focus:outline-none">
                                     <Menu.Item>
                                         {({ active }) => (
-                                            <button onClick={handlePregnancyClick} className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-left ${active ? 'bg-pink-50' : ''}`}>
-                                                <div className="p-2 bg-pink-100 rounded-lg text-pink-500"><HeartIcon /></div>
-                                                <div>
-                                                    <p className="text-sm font-bold text-gray-800">Pregnancy Tracker</p>
-                                                    <p className="text-xs text-gray-500">{pregnantPetId ? "View Active Status" : "Daily Care Plan"}</p>
-                                                </div>
-                                            </button>
+                                            <div className="relative group/preg">
+                                                <button 
+                                                    onClick={handlePregnancyClick} 
+                                                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-left ${active ? 'bg-pink-50' : ''}`}
+                                                >
+                                                    <div className="p-2 bg-pink-100 rounded-lg text-pink-500"><HeartIcon /></div>
+                                                    <div className="flex-1">
+                                                        <p className="text-sm font-bold text-gray-800">Pregnancy Tracker</p>
+                                                        <p className="text-xs text-gray-500">
+                                                            {pregnantPets.length > 0 
+                                                                ? (pregnantPets.length > 1 ? `${pregnantPets.length} Active Trackers` : "View Active Status") 
+                                                                : "Daily Care Plan"}
+                                                        </p>
+                                                    </div>
+                                                    {pregnantPets.length > 1 && <ChevronDownIcon className="w-4 h-4 text-gray-400 -rotate-90" />}
+                                                </button>
+
+                                                {/* --- Fly-out for multiple pets --- */}
+                                                {pregnantPets.length > 1 && (
+                                                    <div className="absolute right-full top-0 mr-2 w-56 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 p-2 opacity-0 invisible group-hover/preg:opacity-100 group-hover/preg:visible transition-all duration-200">
+                                                        <p className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Select Mama Profile</p>
+                                                        {pregnantPets.map(p => (
+                                                            <Link 
+                                                                key={p._id} 
+                                                                href={`/pregnancy-tracker/${p._id}`}
+                                                                className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-pink-50 transition-colors"
+                                                            >
+                                                                <div className="relative w-8 h-8 rounded-full overflow-hidden border border-pink-100">
+                                                                    <Image src={p.imageUrls[0]} alt={p.name} fill className="object-cover" />
+                                                                </div>
+                                                                <span className="text-sm font-bold text-gray-700">{p.name}</span>
+                                                            </Link>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
                                         )}
                                     </Menu.Item>
                                     {subMenuItems.map(item => (
@@ -326,12 +363,35 @@ export default function Navbar({ reminderCount = 0 }) {
                                         </div>
                                         <div>
                                             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Explore</p>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <button onClick={handlePregnancyClick} className="flex flex-col items-center justify-center p-4 bg-pink-50 rounded-2xl hover:bg-pink-100 transition active:scale-95"><span className="text-2xl mb-1">❤️</span><span className="text-xs font-bold text-pink-600">Pregnancy</span></button>
+                                            <div className="grid grid-cols-2 gap-3 mb-3">
+                                                <button onClick={handlePregnancyClick} className={`flex flex-col items-center justify-center p-4 rounded-2xl transition all active:scale-95 ${pregnantPets.length > 0 ? 'bg-pink-50 hover:bg-pink-100' : 'bg-gray-50 hover:bg-gray-100'}`}>
+                                                    <span className="text-2xl mb-1">❤️</span>
+                                                    <span className={`text-xs font-bold ${pregnantPets.length > 0 ? 'text-pink-600' : 'text-gray-500'}`}>Pregnancy</span>
+                                                </button>
                                                 {subMenuItems.map(item => (
                                                     <Link key={item.name} href={item.href} onClick={() => setMobileMenuOpen(false)} className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-2xl hover:bg-blue-50 transition active:scale-95"><item.icon /><span className="text-xs font-bold text-gray-700 mt-1 text-center leading-tight">{item.name}</span></Link>
                                                 ))}
                                             </div>
+
+                                            {/* Mobile Pet Picker */}
+                                            {showPetPicker && pregnantPets.length > 1 && (
+                                                <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
+                                                    <p className="text-[10px] font-bold text-pink-400 pl-2">SELECT PREGNANT PET</p>
+                                                    {pregnantPets.map(p => (
+                                                        <Link 
+                                                            key={p._id} 
+                                                            href={`/pregnancy-tracker/${p._id}`}
+                                                            onClick={() => setMobileMenuOpen(false)}
+                                                            className="flex items-center gap-4 p-3 bg-pink-50/50 rounded-xl border border-pink-100"
+                                                        >
+                                                            <div className="relative w-10 h-10 rounded-full overflow-hidden border border-pink-200">
+                                                                <Image src={p.imageUrls[0]} alt={p.name} fill className="object-cover" />
+                                                            </div>
+                                                            <span className="font-bold text-gray-800">{p.name}</span>
+                                                        </Link>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="p-6 border-t border-gray-200 bg-gray-50/50">

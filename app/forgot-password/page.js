@@ -23,6 +23,7 @@ export default function ForgotPassword() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
+  const [resetToken, setResetToken] = useState("");
   const hasInitialized = useRef(false);
 
   useEffect(() => {
@@ -92,6 +93,8 @@ export default function ForgotPassword() {
         });
 
       if (res.ok) {
+        const data = await res.json();
+        setResetToken(data.resetToken);
         setMessage("OTP verified. Set your new password.");
         setStep(3);
       } else {
@@ -120,7 +123,7 @@ export default function ForgotPassword() {
       const res = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), newPassword }),
+        body: JSON.stringify({ username: username.trim(), newPassword, resetToken }),
       });
 
       if (res.ok) {

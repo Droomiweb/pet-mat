@@ -29,8 +29,8 @@ export async function GET(req, context) {
             "matingHistory": {
                 $elemMatch: {
                     requesterId: uid,
-                    // Match active status
-                    status: { $in: ['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'] }
+                    // Match active status including pending
+                    status: { $in: ['pending', 'accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'] }
                 }
             }
         },
@@ -102,7 +102,7 @@ export async function GET(req, context) {
             if (partnerPet.matingHistory) {
                 partnerPet.matingHistory.forEach(req => {
                     // Verify request status
-                    if (req.requesterId === uid && ['accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'].includes(req.status)) {
+                    if (req.requesterId === uid && ['pending', 'accepted', 'ownerConfirmedMating', 'requesterConfirmedMating', 'mated'].includes(req.status)) {
                         
                         // Identify source pet
                         const requesterPetIdStr = req.requesterPetId ? req.requesterPetId.toString() : null;

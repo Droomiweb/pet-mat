@@ -66,7 +66,7 @@ export default function MessagesPage() {
             }
           });
           // Sort by date (newest first)
-          flatRequests.sort((a, b) => new Date(b.timestamp || b.requestDate) - new Date(a.timestamp || a.requestDate));
+          flatRequests.sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt));
           setAllRequests(flatRequests);
         }
       } catch (err) { console.error("Error fetching pets:", err); }

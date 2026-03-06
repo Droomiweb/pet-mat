@@ -147,7 +147,8 @@ export default function Login() {
     setLoading(true);
     setError(null); 
     try {
-      const email = username + "@example.com";
+      const cleanUsername = username.trim().replace(/\s+/g, '');
+      const email = cleanUsername + "@example.com";
       await signInWithEmailAndPassword(auth, email, password);
       router.push("/Home");
     } catch (err) {

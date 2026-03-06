@@ -75,7 +75,9 @@ export async function POST(req) {
             // Send WhatsApp alert
             if (user.phone) {
                 try {
-                    await sendWhatsAppText(`91${user.phone}`, alertMessage);
+                    const cleanPhone = String(user.phone).replace(/\D/g, "");
+                    const fullPhoneNumber = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`;
+                    await sendWhatsAppText(fullPhoneNumber, alertMessage);
                     console.log(`[WhatsApp] Sent successfully to ${user.username}`);
                 } catch (e) { 
                     console.error(`[WhatsApp] Failed to send to ${user.username}:`, e.message); 

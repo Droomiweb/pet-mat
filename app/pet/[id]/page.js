@@ -1,7 +1,7 @@
 // app/pet/[id]/page.js
 "use client";
-import { useEffect, useState, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState, useRef, Suspense } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../../auth-provider";
 import Image from "next/image";
@@ -99,7 +99,7 @@ const DrPawsMascot = ({ onClick }) => {
   );
 };
 
-export default function PetDetailPage() {
+function PetDetailPage() {
   const [pet, setPet] = useState(null);
 
   // --- FORM STATES ---
@@ -134,6 +134,9 @@ export default function PetDetailPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 
+  const searchParams = useSearchParams();
+  const incomingRequesterPetId = searchParams.get("requesterPetId");
+
   // --- 1. DATA FETCHING ---
   const fetchPet = async () => {
     try {
@@ -146,7 +149,8 @@ export default function PetDetailPage() {
       if (data.slug && params.id !== data.slug) {
         // Prevent infinite loop if params.id somehow matches weirdly, but usually safe
         console.log("Redirecting to pretty URL:", data.slug);
-        router.replace(`/pet/${data.slug}`);
+        const query = incomingRequesterPetId ? `?requesterPetId=${incomingRequesterPetId}` : "";
+        router.replace(`/pet/${data.slug}${query}`);
         // We continue to render state to show content immediately
       }
 
@@ -173,7 +177,11 @@ export default function PetDetailPage() {
         console.log(`[DrPaws] Matching for: ${petType} ${petBreed} (${petGender}). Found: ${pets.length}, Compatible: ${compatible.length}`);
         
         setRequesterPets(compatible);
-        if (compatible.length > 0) {
+        
+        // Use the incoming ID if valid and present, otherwise default to first compatible
+        if (incomingRequesterPetId && compatible.some(p => p._id === incomingRequesterPetId)) {
+          setRequesterPetId(incomingRequesterPetId);
+        } else if (compatible.length > 0) {
           setRequesterPetId(compatible[0]._id);
         } else {
           setRequesterPetId("");
@@ -472,12 +480,11 @@ export default function PetDetailPage() {
     finally { setImageLoading(false); }
   };
 
-  // --- 3. AUTO-FETCH IMAGE ON LOAD ---
   useEffect(() => {
     if (requesterPetId && pet && !hasTriedGeneration) {
       handleGenerateOrFetchImage(false);
     }
-  }, [requesterPetId, pet]);
+  }, [requesterPetId, pet, hasTriedGeneration, handleGenerateOrFetchImage]);
 
   const downloadImage = async () => {
     if (!generatedImage) return;
@@ -512,8 +519,8 @@ export default function PetDetailPage() {
     <div className="min-h-screen bg-[#E2F4EF] font-sans pb-20 overflow-x-hidden selection:bg-pink-200 relative">
 
       {/* --- FLOATING MASCOT (Entry Point) --- */}
-      {/* Only show if not already chatting and if user is logged in (optional) */}
-      {!showAdvisorModal && (
+      {/* Show that chatbot if and only if another user who got that pet as match, or if pet is pregnant so owner can view puppies */}
+      {!showAdvisorModal && ((!isOwner && requesterPets.length > 0) || pet.isPregnant) && (
         <DrPawsMascot onClick={() => setShowAdvisorModal(true)} />
       )}
 
@@ -572,8 +579,12 @@ export default function PetDetailPage() {
                   <GeneticsLoader />
                 ) : generatedImage ? (
                   <>
-                    <div className="relative w-full aspect-square rounded-xl overflow-hidden shadow-2xl ring-2 ring-purple-500/50 group">
-                      <Image src={generatedImage} alt="Predicted Offspring" width={1024} height={1024} unoptimized={true} className="object-cover w-full h-full transition-transform duration-700 group-hover:scale-110" />
+                    <div className="relative w-[80%] aspect-square rounded-xl overflow-hidden shadow-2xl ring-2 ring-purple-500/50 group mx-auto">
+                      <img 
+                        src={generatedImage} 
+                        alt="Predicted Offspring" 
+                        className="object-cover w-full h-full transition-transform duration-700 group-hover:scale-110" 
+                      />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-4">
                         <p className="text-white text-xs font-bold">Generated with AI Flux Model</p>
                       </div>
@@ -612,7 +623,7 @@ export default function PetDetailPage() {
                     </p>
                     {requesterPets.length > 0 || pet.isPregnant ? (
                       <button onClick={() => handleGenerateOrFetchImage(false)} className="mt-4 px-6 py-2 bg-purple-600 text-white font-bold rounded-lg text-sm hover:bg-purple-500 transition">
-                        {pet.isPregnant ? "View Puppies" : "Generate Preview"}
+                        {pet.isPregnant ? "View Puppies" : (generatedImage ? "View Lab Results" : "Generate Preview")}
                       </button>
                     ) : null}
                   </div>
@@ -807,5 +818,17 @@ export default function PetDetailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PetDetailPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-[#E2F4EF]">
+        <div className="w-12 h-12 border-4 border-[#4A90E2] border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    }>
+      <PetDetailPage />
+    </Suspense>
   );
 }

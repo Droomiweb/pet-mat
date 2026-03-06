@@ -122,23 +122,17 @@ export async function POST(req) {
       );
     }
 
-    // Upload certificate
-    const certUpload = await cloudinary.uploader.upload(certificateBase64, {
+    // Start asynchronous operations concurrently to massively speed up registration
+    const certUploadPromise = cloudinary.uploader.upload(certificateBase64, {
       folder: `certificates/${ownerId}`,
       resource_type: "auto",
     });
 
-    // Upload pet photo
-    const imageUrls = [];
-    if (imagesBase64.length > 0) {
-      const upload = await cloudinary.uploader.upload(imagesBase64[0], {
-        folder: `pets/${ownerId}`,
-      });
-      imageUrls.push(upload.secure_url);
-    }
+    const imageUploadPromise = imagesBase64.length > 0
+      ? cloudinary.uploader.upload(imagesBase64[0], { folder: `pets/${ownerId}` })
+      : Promise.resolve(null);
 
-    // Run AI analysis
-    const analysisResult = await runCertificateAnalysis({
+    const aiAnalysisPromise = runCertificateAnalysis({
       name,
       breed,
       age: userProvidedAge,
@@ -146,6 +140,15 @@ export async function POST(req) {
       certificateMimeType,
       ownerName,
     });
+
+    // Wait for all 3 slow external network requests to finish at the same time
+    const [certUpload, imgUpload, analysisResult] = await Promise.all([
+      certUploadPromise,
+      imageUploadPromise,
+      aiAnalysisPromise
+    ]);
+
+    const imageUrls = imgUpload ? [imgUpload.secure_url] : [];
 
     // Handle AI error with Visual Fallback
     if (analysisResult.error) {
@@ -202,8 +205,8 @@ export async function POST(req) {
       const newPet = new Pet(petCreationData);
       await newPet.save();
       
-      // Trigger matching even if verification is pending/fallback
-      await integrateNewPetIntoMatches(newPet);
+      // Trigger matching in the background to return response instantly
+      integrateNewPetIntoMatches(newPet).catch(e => console.error("Background matching error:", e));
 
       return new Response(
         JSON.stringify({
@@ -297,9 +300,9 @@ export async function POST(req) {
     const newPet = new Pet(petCreationData);
     await newPet.save();
 
-    // --- TRIGGER EVENT-DRIVEN MATCHING ---
-    // Update other pets' caches to include this new pet immediately
-    await integrateNewPetIntoMatches(newPet);
+    // --- TRIGGER EVENT-DRIVEN MATCHING IN BACKGROUND ---
+    // Update other pets' caches without blocking the user response
+    integrateNewPetIntoMatches(newPet).catch(e => console.error("Background matching error:", e));
 
     return new Response(
       JSON.stringify({

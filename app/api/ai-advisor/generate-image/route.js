@@ -1,10 +1,11 @@
 // app/api/ai-advisor/generate-image/route.js
 
 // Standard imports
-import { visionModel } from "../../../lib/gemini";
+import { executeHybridRequest } from "../../../lib/gemini";
 import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
 import GeneratedImage from "../../../models/GeneratedImage";
+import { generateStableAIImage } from "../../../lib/imageGenerator";
 import cloudinary from "../../../lib/cloudinary";
 
 // Convert image format
@@ -41,13 +42,14 @@ export async function POST(req) {
         ]
       }).sort({ createdAt: -1 }); // Get latest
 
-      if (existingImage) {
+      if (existingImage && existingImage.imageUrl && existingImage.imageUrl.includes("cloudinary.com")) {
         return new Response(JSON.stringify({
           imageUrl: existingImage.imageUrl,
           behaviorPrediction: existingImage.behaviorPrediction,
           fromCache: true
         }), { status: 200 });
       }
+      console.log("ℹ️ Found broken or old image link. Forcing regeneration via Stable Flow...");
     }
 
     // 2. Fetch parent pets for generation
@@ -88,16 +90,19 @@ export async function POST(req) {
     else if (targetSpecies === "Bird") babyTerm = "Chick";
 
     // 3. Define ENHANCED vision prompt
-    // 3. Define ENHANCED vision prompt - Hyper-concise to prevent Pollination HTML errors
     const prompt = `
-      1. Create a highly detailed image prompt (max 40 words) for a **${babyTerm}** (baby/juvenile) that is a mix of ${petA?.breed} and ${petB?.breed}. 
-      - **CRITICAL**: Subject MUST be a **baby ${babyTerm}** (approx 8 weeks old).
-      - Explicit mention of "A generic, adorable ${babyTerm}, mix of ${petA?.breed} and ${petB?.breed}"
-      - Combine physical traits from both parents (ears, coat, snout) but keep features distinctly juvenile (big eyes, clumsy paws, soft fur).
-      - Do NOT use generic words like "fluffy" or "cute" unless the breeds are actually fluffy.
-      2. Provide a separate "Behavior Prediction" (max 12 words) about its personality.
-      Return format: Prompt: [image prompt] | Behavior: [behavior prediction]
-      Style: Realistic 8k photo, studio lighting, macro photography, highly detailed.
+      You are an expert animal geneticist and skilled visual prompt engineer. 
+      Analyze the provided photos of Pet A (${petA?.name}, ${petA?.breed}) and Pet B (${petB?.name}, ${petB?.breed}).
+      
+      1. Create a HYPER-DETAILED, photorealistic image generation prompt (max 50 words) for their **baby ${babyTerm}** (approx 8 weeks old).
+      - **CRITICAL**: Do not use generic descriptions. You MUST extract specific visual phenotypes from the parent photos (e.g., exact fur color patches, eye colors, ear shapes, coat texture, snout length) and blend them realistically into the baby.
+      - Make the description highly specific so the image generator produces a baby that looks *unmistakably* like a genetic mix of these exact two specific animals.
+      - Start the prompt with: "A hyper-realistic 8k photograph of a baby ${babyTerm}..."
+      
+      2. Provide a separate "Behavior Prediction" (max 12 words) about its personality based on the parents' breeds.
+      
+      Return EXACTLY in this format: 
+      Prompt: [highly detailed visual prompt] | Behavior: [behavior prediction]
     `;
 
     // Prepare input data
@@ -114,8 +119,8 @@ export async function POST(req) {
       if (imgB) inputParts.push({ inlineData: { data: imgB, mimeType: "image/jpeg" } });
     }
 
-    // Generate visual description and behavior
-    const result = await visionModel.generateContent(inputParts);
+    // 3. Execute Hybrid AI Request (Gemini -> Groq -> HF Fallback)
+    const result = await executeHybridRequest("generate", { inputParts: inputParts });
     const aiText = result.response.text();
     
     let imageDescription = aiText;
@@ -127,130 +132,53 @@ export async function POST(req) {
         behaviorPrediction = parts[1].replace(/Behavior:/i, "").trim();
     }
 
-    console.log("Generated Prompt:", imageDescription);
-    console.log("Behavior Prediction:", behaviorPrediction);
 
-    // 4. Generate Image URL (Pollinations AI - Flux Model)
-    console.log(`[ImageGen] Using Pollinations AI (Flux)...`);
+    // 4. Generate Final Image URL (Stable Server-Side Gen + Cloudinary Proxy)
+    let finalImageUrl = await generateStableAIImage(imageDescription);
 
-    let finalImageUrl = "";
-    
-    // Try Pollinations first
-    try {
-        const encodedPrompt = encodeURIComponent(imageDescription);
-        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&model=flux&nologo=true`;
-        
-        console.log(`[ImageGen] Trying Pollinations...`);
-        // Fast timeout for Pollinations (5s) because when it's down (like error 1033), it fails fast or hangs.
-        const polRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(10000) });
+    // 5. Final Fail-safe Fallback 
+    if (!finalImageUrl) {
+        console.warn("⚠️ All AI Image Generators failed. Using breed-specific placeholder.");
+        const randomSeed = Math.floor(Math.random() * 100000);
+        const breedKeyword = petA?.breed ? encodeURIComponent(petA.breed.split(' ')[0].toLowerCase()) : "dog";
+        finalImageUrl = `https://loremflickr.com/1024/1024/${babyTerm.toLowerCase()},${breedKeyword}?random=${randomSeed}`;
+    }
 
-        if (polRes.ok) {
-            const buffer = Buffer.from(await polRes.arrayBuffer());
-            console.log(`Fetched image from Pollinations, size: ${buffer.length} bytes`);
+    // 6. Save to Database (Update old one if migrating, otherwise create new)
+    if (!regenerate) {
+        const oldImage = await GeneratedImage.findOne({
+            $or: [
+                { parentAId: petAId, parentBId: petBId },
+                { parentAId: petBId, parentBId: petAId }
+            ]
+        });
 
-            if (process.env.CLOUDINARY_URL || (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY)) {
-                const uploadToCloudinary = () => {
-                    return new Promise((resolve, reject) => {
-                        const uploadStream = cloudinary.uploader.upload_stream(
-                        { folder: "pet_generated_art" },
-                        (error, result) => {
-                            if (error) reject(error);
-                            else resolve(result);
-                        }
-                        );
-                        uploadStream.end(buffer);
-                    });
-                };
-                const cloudinaryResult = await uploadToCloudinary();
-                finalImageUrl = cloudinaryResult.secure_url;
-            } else {
-                console.warn("Cloudinary not configured. Cannot save binary image.");
-            }
+        if (oldImage && !oldImage.imageUrl.includes("cloudinary")) {
+            oldImage.imageUrl = finalImageUrl;
+            oldImage.promptUsed = imageDescription;
+            oldImage.behaviorPrediction = behaviorPrediction;
+            await oldImage.save();
+            console.log("✅ Migrated broken image record to Cloudinary.");
         } else {
-            const errText = await polRes.text();
-            console.warn(`[ImageGen] Pollinations Error: ${polRes.status} - ${errText}`);
+             await GeneratedImage.create({
+                userId: userId,
+                parentAId: petAId,
+                parentBId: petBId,
+                imageUrl: finalImageUrl,
+                promptUsed: imageDescription,
+                behaviorPrediction: behaviorPrediction
+            });
         }
-    } catch (e) {
-        console.warn(`[ImageGen] Pollinations exception:`, e.message);
+    } else {
+        await GeneratedImage.create({
+            userId: userId,
+            parentAId: petAId,
+            parentBId: petBId,
+            imageUrl: finalImageUrl,
+            promptUsed: imageDescription,
+            behaviorPrediction: behaviorPrediction
+        });
     }
-
-    // --- FALLBACK TO HUGGING FACE SDXL ---
-    if (!finalImageUrl) {
-        console.log(`[ImageGen] Pollinations failed. Falling back to Hugging Face SDXL...`);
-        const apiKey = process.env.HUGGINGFACE_API_KEY;
-        const hfModel = "stabilityai/stable-diffusion-xl-base-1.0";
-        
-        // Enhance the prompt for SDXL specifically
-        const enhancedPrompt = `High quality, photorealistic macro photo of a cute ${imageDescription}, perfect lighting, award winning pet photography, 8k, highly detailed`;
-
-        let retries = 0;
-        const MAX_RETRIES = 2;
-
-        while (retries <= MAX_RETRIES && !finalImageUrl) {
-            try {
-                console.log(`[ImageGen] Attempt ${retries + 1} (${hfModel})...`);
-                const hfRes = await fetch(
-                    `https://router.huggingface.co/hf-inference/models/${hfModel}`,
-                    {
-                        headers: {
-                            Authorization: `Bearer ${apiKey}`,
-                            "Content-Type": "application/json",
-                        },
-                        method: "POST",
-                        body: JSON.stringify({ inputs: enhancedPrompt }),
-                    }
-                );
-
-                if (hfRes.ok) {
-                    const buffer = Buffer.from(await hfRes.arrayBuffer());
-                    console.log(`Fetched image from HF, size: ${buffer.length} bytes`);
-
-                    if (process.env.CLOUDINARY_URL || (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY)) {
-                        const uploadToCloudinary = () => {
-                            return new Promise((resolve, reject) => {
-                                const uploadStream = cloudinary.uploader.upload_stream(
-                                { folder: "pet_generated_art" },
-                                (error, result) => {
-                                    if (error) reject(error);
-                                    else resolve(result);
-                                }
-                                );
-                                uploadStream.end(buffer);
-                            });
-                        };
-                        const cloudinaryResult = await uploadToCloudinary();
-                        finalImageUrl = cloudinaryResult.secure_url;
-                    }
-                } else {
-                     const errText = await hfRes.text();
-                     console.warn(`[ImageGen] HF Error: ${hfRes.status} - ${errText}`);
-                }
-            } catch (e) {
-                console.warn(`[ImageGen] HF exception:`, e.message);
-            }
-
-            if (!finalImageUrl) {
-                retries++;
-                if (retries <= MAX_RETRIES) {
-                    await new Promise(r => setTimeout(r, 2000));
-                }
-            }
-        }
-    }
-
-    if (!finalImageUrl) {
-        throw new Error("Failed to generate image from all providers (Pollinations API + HuggingFace SDXL).");
-    }
-
-    // 5. Save to Database
-    await GeneratedImage.create({
-      userId: userId,
-      parentAId: petAId,
-      parentBId: petBId,
-      imageUrl: finalImageUrl,
-      promptUsed: imageDescription,
-      behaviorPrediction: behaviorPrediction
-    });
 
     return new Response(JSON.stringify({ 
       imageUrl: finalImageUrl, 

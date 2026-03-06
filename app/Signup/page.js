@@ -88,8 +88,10 @@ export default function Signup() {
     let createdUser = null;
 
     try {
+      const cleanUsername = formData.username.trim().replace(/\s+/g, '');
+
       // 1. PRE-CHECK
-      const checkRes = await fetch(`/api/user?username=${formData.username}&phone=${formData.phone}`);
+      const checkRes = await fetch(`/api/user?username=${cleanUsername}&phone=${formData.phone}`);
       const checkData = await checkRes.json();
       
       if (checkData.exists) {
@@ -101,7 +103,7 @@ export default function Signup() {
       }
 
       // 2. Create User in Firebase
-      const cred = await createUserWithEmailAndPassword(auth, formData.username + "@example.com", formData.password);
+      const cred = await createUserWithEmailAndPassword(auth, cleanUsername + "@example.com", formData.password);
       createdUser = cred.user;
 
       // 3. Create User in MongoDB
@@ -110,7 +112,7 @@ export default function Signup() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: formData.name,
-          username: formData.username,
+          username: cleanUsername,
           phone: formData.phone,
           location,
           firebaseUid: cred.user.uid

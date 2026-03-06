@@ -96,7 +96,11 @@ export async function PATCH(req, context) {
       return new Response(JSON.stringify({ error: "Authentication failed or mismatch." }), { status: 403 });
     }
 
-    const pet = await Pet.findById(id);
+    // Determine if we are looking up by ID or Slug
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(id);
+    const query = isObjectId ? { _id: id } : { slug: id };
+    
+    const pet = await Pet.findOne(query);
     if (!pet) return new Response(JSON.stringify({ error: "Pet not found" }), { status: 404 });
 
     // --- HANDLE: CHANGE LISTING TYPE (Mating ↔ Adoption ↔ None) ---
@@ -289,9 +293,11 @@ export async function PATCH(req, context) {
       try {
         const ownerUser = await User.findOne({ firebaseUid: pet.ownerId }).select('phone name').lean();
         if (ownerUser && ownerUser.phone) {
-          const petProfileLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pet/${pet._id}`;
-          const whatsappMessage = `🔔 NEW MATING REQUEST for ${pet.name}! ${requesterPetName} is interested. Check PetLink: ${petProfileLink}`;
-          const fullPhoneNumber = `91${ownerUser.phone}`;
+          // Use absolute URL for the link
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://petmate.com';
+          const petProfileLink = `${appUrl}/pet/${pet._id}`;
+          const whatsappMessage = `🔔 NEW MATING REQUEST for ${pet.name}! ${requesterPetName} is interested. \n\nCheck profile: ${petProfileLink}`;
+          const fullPhoneNumber = ownerUser.phone.startsWith('91') ? ownerUser.phone : `91${ownerUser.phone}`;
           await sendWhatsAppText(fullPhoneNumber, whatsappMessage);
         }
       } catch (waError) { console.error("Error sending WhatsApp notification:", waError); }

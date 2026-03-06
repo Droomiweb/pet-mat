@@ -3,16 +3,22 @@ import connectDB from "./mongodb.js";
 import AIInteraction from "../models/AIInteraction.js";
 
 // 1. CONFIGURATION
-const groqKey = process.env.GROQ_API_KEY ? process.env.GROQ_API_KEY.split(',')[0].trim() : undefined;
+const ALL_GROQ_KEYS = (process.env.GROQ_API_KEY || "")
+  .split(",")
+  .map(k => k.replace(/["']/g, "").trim())
+  .filter(k => k);
 
-// User provided key + Env keys
+// Separate Groq keys and potential Gemini keys (some users put Gemini keys in GROQ_API_KEY env)
+const REAL_GROQ_KEYS = ALL_GROQ_KEYS.filter(k => k.startsWith("gsk_"));
+const MISPLACED_GEMINI_KEYS = ALL_GROQ_KEYS.filter(k => k.startsWith("AIza"));
+
+// Combined list of Gemini keys
 const INITIAL_SEED_KEYS = 
-  // Combine all possible sources
   [
     process.env.GEMINI_API_KEYS || "", 
     process.env.GEMINI_API_KEY || "", 
     process.env.NEXT_PUBLIC_GEMINI_API_KEY || "",
-    (process.env.GROQ_API_KEY || "").split(",").slice(1).join(",") // Extract accidental Gemini keys from Groq env
+    MISPLACED_GEMINI_KEYS.join(",")
   ].join(",")
   .split(",").map(k => k.replace(/["']/g, "").trim()).filter(k => k);
 
@@ -41,7 +47,7 @@ let globalKeyCache = [];
 let lastCacheUpdate = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 Minutes
 
-if (!groqKey) console.warn("⚠️ No Groq API Key found. Free backup will not work.");
+if (REAL_GROQ_KEYS.length === 0) console.warn("⚠️ No Groq API Key found. Free backup will not work.");
 
 // 2. DATABASE MANAGEMENT
 // 2. KEY MANAGEMENT (Env Vars Only)
@@ -58,8 +64,9 @@ async function reportKeyFailure(key) {
 }
 
 // 3. GROQ (FREE BACKUP) HANDLER
-async function callGroqAPI(messages, isVision = false) {
-  if (!groqKey) throw new Error("Groq API Key is missing.");
+async function callGroqAPI(messages, specificKey = null) {
+  const currentGroqKey = specificKey || REAL_GROQ_KEYS[0];
+  if (!currentGroqKey) throw new Error("Groq API Key is missing.");
 
   // NOTE: Groq vision models (Llama 3.2 Vision) are currently decommissioned.
   // We use the powerful 70b model for text-only fallback.
@@ -72,7 +79,7 @@ async function callGroqAPI(messages, isVision = false) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${groqKey}`
+        "Authorization": `Bearer ${currentGroqKey}`
       },
       body: JSON.stringify({
         model: model,
@@ -85,6 +92,7 @@ async function callGroqAPI(messages, isVision = false) {
 
     if (!response.ok) {
       const err = await response.text();
+      if (response.status === 401) throw new Error(`Groq API Key is invalid or expired.`);
       throw new Error(`Groq API Error: ${response.status} - ${err}`);
     }
 
@@ -129,12 +137,13 @@ function convertToGroqFormat(history, newMessage, inlineImages = []) {
       content.push({ type: "text", text: "Analyze this." });
   }
 
-  // 4. Construct Message
-  if (content.length === 1 && content[0].type === "text") {
-       messages.push({ role: "user", content: content[0].text });
-  } else {
-       messages.push({ role: "user", content: content });
-  }
+  // 4. Construct Message: MUST be a string for text-only models like Llama 3.3
+  let finalContent = "";
+  content.forEach(c => {
+    if (c.type === "text") finalContent += c.text + " ";
+  });
+  
+  messages.push({ role: "user", content: finalContent.trim() || "Analyze this." });
 
   return messages;
 }
@@ -148,6 +157,7 @@ async function callHFTextBackup(prompt) {
   console.log(`🛡️ ACTIVATING FINAL SHIELD: Switching to Hugging Face Backup (${model})...`);
 
   try {
+    // UPDATED: Standard Hugging Face Inference API endpoint
     const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
       method: "POST",
       headers: {
@@ -162,6 +172,7 @@ async function callHFTextBackup(prompt) {
 
     if (!response.ok) {
         const err = await response.text();
+        if (response.status === 401) throw new Error(`HF API Key is invalid or expired.`);
         throw new Error(`HF API Error: ${response.status} - ${err}`);
     }
 
@@ -177,18 +188,24 @@ async function callHFTextBackup(prompt) {
 }
 
 // 5. MAIN ENGINE (Gemini -> Failover -> Groq -> Failover -> HF)
-async function executeHybridRequest(type, params) {
+export async function executeHybridRequest(type, params) {
   let lastError = null;
   const startTime = Date.now();
   
   // Extract simple text prompt for fallbacks if it's a complex object
   let fallbackPrompt = "";
-  if (params.message) fallbackPrompt = params.message;
-  else if (typeof params.inputParts === 'string') {
+  if (typeof params.message === 'string') {
+      fallbackPrompt = params.message;
+  } else if (Array.isArray(params.message)) {
+      params.message.forEach(p => {
+          if (typeof p === 'string') fallbackPrompt += p + " ";
+          else if (p.text) fallbackPrompt += p.text + " ";
+          else if (p.inlineData) fallbackPrompt += "[Image Data] ";
+      });
+  } else if (typeof params.inputParts === 'string') {
       fallbackPrompt = params.inputParts;
-  }
-  else if (Array.isArray(params.inputParts)) {
-      params.inputParts.forEach(p => fallbackPrompt += (typeof p === 'string' ? p : p.text || ""));
+  } else if (Array.isArray(params.inputParts)) {
+      params.inputParts.forEach(p => fallbackPrompt += (typeof p === 'string' ? p : p.text || "") + " ");
   }
 
   let interactionLog = {
@@ -199,76 +216,58 @@ async function executeHybridRequest(type, params) {
     metadata: {}
   };
 
-  const tryGroq = async (fallback = false) => {
-      try {
-        if (type === "chat") {
-          const messages = convertToGroqFormat(params.history, params.message);
-          const result = await callGroqAPI(messages, false);
-          console.log(`✅ Groq ${fallback? 'Fallback' : 'Preferred'} Success (Chat)`);
-          
-          logInteraction({
-            ...interactionLog,
-            model: "Groq (Llama 3.3)",
-            output: result.response.text(),
-            status: "Success",
-            metadata: { latencyMs: Date.now() - startTime, fallback, preferred: !fallback }
-          });
+  const executeGroqChain = async (fallback = false) => {
+      let groqError = null;
+      for (const gKey of REAL_GROQ_KEYS) {
+          try {
+              if (type === "chat") {
+                  const messages = convertToGroqFormat(params.history, params.message);
+                  const result = await callGroqAPI(messages, gKey);
+                  console.log(`✅ Groq Success (Chat) using key ...${gKey.slice(-4)}`);
+                  
+                  logInteraction({
+                      ...interactionLog,
+                      model: "Groq (Llama 3.3)",
+                      output: result.response.text(),
+                      status: "Success",
+                      metadata: { latencyMs: Date.now() - startTime, fallback, preferred: !fallback }
+                  });
+                  return result;
+              } else {
+                  let textPrompt = "";
+                  const parts = Array.isArray(params.inputParts) ? params.inputParts : [params.inputParts];
+                  parts.forEach(part => {
+                      if (typeof part === 'string') textPrompt += part;
+                      else if (part.text) textPrompt += part.text;
+                  });
 
-          return result;
-        } else {
-          // HANDLE GENERATE (Possible Vision)
-          let textPrompt = "";
-          let inlineImages = [];
-
-          const parts = Array.isArray(params.inputParts) ? params.inputParts : [params.inputParts];
-          parts.forEach(part => {
-            if (typeof part === 'string') textPrompt += part;
-            else if (part.text) textPrompt += part.text;
-            else if (part.inlineData) inlineImages.push(part);
-          });
-
-          if (inlineImages.length > 0) {
-              console.log(`ℹ️ Groq ${fallback? 'Fallback' : 'Preferred'}: Sending ${inlineImages.length} images to Llama Vision.`);
-              const messages = convertToGroqFormat([], textPrompt, inlineImages);
-              const result = await callGroqAPI(messages, true); // isVision = true
-              console.log(`✅ Groq ${fallback? 'Fallback' : 'Preferred'} Success (Vision)`);
-              
-              logInteraction({
-                ...interactionLog,
-                model: "Groq (Llama Vision)",
-                output: result.response.text(),
-                status: "Success",
-                metadata: { latencyMs: Date.now() - startTime, fallback, preferred: !fallback }
-              });
-
-              return result;
-          } else {
-              console.log(`ℹ️ Groq ${fallback? 'Fallback' : 'Preferred'}: Text-only prompt.`);
-              const messages = convertToGroqFormat([], textPrompt, []);
-              const result = await callGroqAPI(messages, false);
-              console.log(`✅ Groq ${fallback? 'Fallback' : 'Preferred'} Success (Text)`);
-              
-              logInteraction({
-                ...interactionLog,
-                model: "Groq (Llama 3.3)",
-                output: result.response.text(),
-                status: "Success",
-                metadata: { latencyMs: Date.now() - startTime, fallback, preferred: !fallback }
-              });
-
-              return result;
+                  const messages = convertToGroqFormat([], textPrompt, []);
+                  const result = await callGroqAPI(messages, gKey);
+                  console.log(`✅ Groq Success (Text) using key ...${gKey.slice(-4)}`);
+                  
+                  logInteraction({
+                      ...interactionLog,
+                      model: "Groq (Llama 3.3)",
+                      output: result.response.text(),
+                      status: "Success",
+                      metadata: { latencyMs: Date.now() - startTime, fallback, preferred: !fallback }
+                  });
+                  return result;
+              }
+          } catch (e) {
+              groqError = e;
+              console.warn(`⚠️ Groq Key ...${gKey.slice(-4)} failed: ${e.message}`);
+              if (e.message.includes("401") || e.message.includes("invalid_api_key")) continue;
+              break; // If it's a rate limit or other error, maybe don't loop? (Actually usually try next)
           }
-        }
-      } catch (err) {
-          console.warn(`⚠️ Groq ${fallback? 'Fallback' : 'Preferred'} Failed:`, err.message);
-          throw err;
       }
+      throw groqError || new Error("All Groq keys failed");
   };
 
   // --- STRATEGY A: PREFER GROQ ---
   if (params.preferModel === 'groq') {
       try {
-          return await tryGroq(false);
+          return await executeGroqChain(false);
       } catch (e) {
           console.warn("⚠️ Preferred Groq failed. Falling back to Gemini...");
           // Fallthrough to Standard Flow
@@ -279,7 +278,11 @@ async function executeHybridRequest(type, params) {
   const activeKeys = await fetchActiveKeys();
   const shuffledKeys = [...activeKeys].sort(() => 0.5 - Math.random());
 
-  for (const key of shuffledKeys) {
+  // CRITICAL SPEED FIX: Only try a max of 2 keys. If they fail, instantly fallback to Grok
+  // to prevent the user from waiting 2+ minutes while the server iterates through dead keys.
+  const keysToTry = shuffledKeys.slice(0, 2);
+
+  for (const key of keysToTry) {
     try {
       const genAI = new GoogleGenerativeAI(key);
       const modelName = "gemini-flash-latest"; // Explicit version
@@ -319,7 +322,7 @@ async function executeHybridRequest(type, params) {
   if (params.preferModel !== 'groq') { 
       console.warn("⚠️ All Gemini Keys failed. Switching to Groq (Free Tier)...");
       try {
-          return await tryGroq(true);
+          return await executeGroqChain(true);
       } catch (groqError) {
           lastError = groqError; // Update last error, but continue to next fallback
       }
@@ -345,14 +348,20 @@ async function executeHybridRequest(type, params) {
   }
 
   // --- FAILURE ---
-  console.error("❌ CRITICAL: AI Request Failed on All Providers (Gemini -> Groq -> HF).");
+  console.error("❌ CRITICAL: AI Request Failed on All Providers. Returning Mock Response.");
   logInteraction({
       ...interactionLog,
       output: `Final Failure: ${lastError?.message}`,
       status: "Failed",
       metadata: { latencyMs: Date.now() - startTime }
   });
-  throw lastError;
+  
+  // FINAL FAILSAFE: Don't crash the app if all keys are dead. Return a polite mock response.
+  return {
+    response: {
+      text: () => "🐾 *Dr. Paws is currently resting!* My AI connection (API Keys) seems to be invalid or out of quota. Please ask my developer to update the API keys in the system settings, and I'll be back to help you right away!"
+    }
+  };
 }
 
 // 5. EXPORTS

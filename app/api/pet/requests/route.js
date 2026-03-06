@@ -95,9 +95,11 @@ export async function PATCH(req) {
           try {
             const requesterUser = await User.findOne({ firebaseUid: targetRequesterId }).select('phone name').lean();
             if (requesterUser && requesterUser.phone) {
+                const cleanPhone = requesterUser.phone.replace(/\D/g, ''); 
+                const formattedPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`;
                 const petProfileLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pet/${pet._id}`;
                 const whatsappMessage = `🎉 Mating request for ${pet.name} ACCEPTED! Start chatting now: ${petProfileLink}`;
-                await sendWhatsAppText(`91${requesterUser.phone}`, whatsappMessage);
+                await sendWhatsAppText(formattedPhone, whatsappMessage);
             }
           } catch (waError) {
               console.error("WhatsApp error:", waError);
@@ -149,9 +151,11 @@ export async function PATCH(req) {
               try {
                   const requesterUser = await User.findOne({ firebaseUid: request.requesterId }).select('phone name').lean();
                   if (requesterUser && requesterUser.phone) {
+                      const cleanPhone = requesterUser.phone.replace(/\D/g, ''); 
+                      const formattedPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`;
                       const chatLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/messages`;
                       const whatsappMessage = `🎉 ADOPTION APPROVED! The owner has accepted your request for ${pet.name}. \n\nPlease coordinate the meetup in the chat: ${chatLink}`;
-                      await sendWhatsAppText(`91${requesterUser.phone}`, whatsappMessage);
+                      await sendWhatsAppText(formattedPhone, whatsappMessage);
                   }
               } catch (wa) { console.error(wa); }
           }

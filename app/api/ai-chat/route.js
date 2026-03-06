@@ -39,29 +39,30 @@ export async function POST(req) {
         }
     }
 
-    // Start chat session
+    // Start chat session with a system-aware initial state
     const chat = textModel.startChat({
-      history: [
-        ...history,
-        { role: "user", parts: [{ text: contextPrompt || "System: No specific pet selected." }] }
-      ],
+      history: history.length === 0 ? [
+        { role: "user", parts: [{ text: contextPrompt || "System initialized." }] },
+        { role: "model", parts: [{ text: "Understood. I'm ready to assist with your pet's health. How can I help today?" }] }
+      ] : history,
     });
 
-    // Define AI rules
+    // Define AI rules (CONCISE & DIRECT)
     const systemInstruction = `
-      [SYSTEM PROTOCOLS]:
-      1. **IDENTITY**: You are Dr. Paws, a professional AI Veterinarian.
-      2. **SCOPE**: Answer questions related to animal health and care.
+      [STRICT PROTOCOLS]:
+      1. **IDENTITY**: You are Dr. Paws, a friendly but highly efficient AI Veterinarian.
+      2. **STYLE**: Be extremely concise and direct. Avoid long-winded explanations.
+      3. **NO BOILERPLATE**: Do NOT introduce yourself or acknowledge the pet's details in every message (e.g., skip "Hello, I'm analyzing..."). Just answer the user's specific question immediately.
+      4. **FORMAT**: Use brief bullet points for medical advice or instructions.
+      5. **TONE**: Conversational and professional, but brief.
       
-      3. **MEMORY UPDATE RULE (CRITICAL)**:
-         - You must track the pet's health journey in detail.
-         - IF the user mentions a NEW medical event (symptoms, injury, vet visit, medication, surgery, vaccination), you MUST append a summary tag at the very end of your response.
-         - **Format:** ||MEMORY_UPDATE||: [Date] - [Detailed Clinical Note]
-         - **INSTRUCTION FOR NOTE:** Do not be brief. Store ALL specific details.
-         - If no new medical info is shared, do NOT output the tag.
+      6. **MEMORY UPDATE RULE (HIDDEN)**:
+         - IF new medical info (symptoms, medication, surgery) is shared, append:
+           ||MEMORY_UPDATE||: [Clinical Note]
+         - Hide this from the user's view (it will be processed internally).
     `;
 
-    const textPart = `${message}\n\n${systemInstruction}`;
+    const textPart = `${message}\n\n(Remember: Be very brief/concise. ${systemInstruction})`;
     let result;
 
     // Send AI message

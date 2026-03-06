@@ -41,6 +41,35 @@ export default function PregnancyTracker() {
     return diffDays; 
   };
 
+  const getBioTotalDays = (type) => {
+    let bioTotalDays = 63; 
+    if (type) {
+        const typeLow = type.toLowerCase();
+        if (typeLow === 'rabbit') bioTotalDays = 31;
+        else if (typeLow === 'horse') bioTotalDays = 340;
+        else if (typeLow === 'cow') bioTotalDays = 283;
+        else if (typeLow === 'bird') bioTotalDays = 28;
+        else if (typeLow === 'pig') bioTotalDays = 114;
+        else if (typeLow === 'goat' || typeLow === 'sheep') bioTotalDays = 150;
+        else if (typeLow === 'hamster') bioTotalDays = 16;
+        else if (typeLow === 'guinea pig') bioTotalDays = 65;
+    }
+    return bioTotalDays;
+  };
+
+  const getPlanDay = (plan, fallbackIndex) => {
+    if (!plan) return fallbackIndex + 1;
+    if (plan.day) {
+        const m = String(plan.day).match(/\d+/);
+        if (m) return parseInt(m[0], 10);
+    }
+    if (plan.week) {
+        const m = String(plan.week).match(/\d+/);
+        if (m) return parseInt(m[0], 10) * 7;
+    }
+    return fallbackIndex + 1;
+  };
+
   useEffect(() => {
     if (authLoading) return;
     if (!user) return router.push("/Login");
@@ -69,9 +98,11 @@ export default function PregnancyTracker() {
             // Some plans use 'week' (e.g., 'Week 1' = day 7) and some use 'day'
              let planDay = 0;
              if (plan.day) {
-                 planDay = parseInt(plan.day);
+                 const m = String(plan.day).match(/\d+/);
+                 if (m) planDay = parseInt(m[0], 10);
              } else if (plan.week) {
-                 planDay = parseInt(plan.week) * 7;
+                 const m = String(plan.week).match(/\d+/);
+                 if (m) planDay = parseInt(m[0], 10) * 7;
              }
 
              if (planDay <= daysPassed) {
@@ -107,8 +138,8 @@ export default function PregnancyTracker() {
           action: "meal_plan",
           petBreed: pet.breed,
           petType: pet.type,
-          currentDay: todayPlan.day || (currentDayIndex + 1),
-          totalDays: pet.pregnancyPlan.length
+          currentDay: getPlanDay(todayPlan, currentDayIndex),
+          totalDays: getBioTotalDays(pet.type)
         }),
       });
       const data = await res.json();
@@ -127,8 +158,8 @@ export default function PregnancyTracker() {
           action: "fetus_visual",
           petBreed: pet.breed,
           petType: pet.type,
-          currentDay: todayPlan?.day || (currentDayIndex + 1),
-          totalDays: pet.pregnancyPlan.length
+          currentDay: getPlanDay(todayPlan, currentDayIndex),
+          totalDays: getBioTotalDays(pet.type)
         }),
       });
       const data = await res.json();
@@ -147,22 +178,16 @@ export default function PregnancyTracker() {
   }
 
   const daysPassed = getDaysPassed(pet.pregnancyStartDate);
-  
-  // Use a biologically accurate divisor for the percentage based on the new logic
-  let bioTotalDays = 63; 
-  if (pet.type) {
-      const typeLow = pet.type.toLowerCase();
-      if (typeLow === 'rabbit') bioTotalDays = 31;
-      else if (typeLow === 'horse') bioTotalDays = 340;
-      else if (typeLow === 'cow') bioTotalDays = 283;
-      else if (typeLow === 'bird') bioTotalDays = 28;
-      else if (typeLow === 'pig') bioTotalDays = 114;
-      else if (typeLow === 'goat' || typeLow === 'sheep') bioTotalDays = 150;
-      else if (typeLow === 'hamster') bioTotalDays = 16;
-      else if (typeLow === 'guinea pig') bioTotalDays = 65;
-  }
-
+  const bioTotalDays = getBioTotalDays(pet.type);
   const progress = Math.min((daysPassed / bioTotalDays) * 100, 100);
+
+  const startDate = new Date(pet.pregnancyStartDate);
+  const dueDate = new Date(startDate);
+  dueDate.setDate(startDate.getDate() + bioTotalDays);
+
+  const formatDate = (date) => {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
 
   return (
     <div className="min-h-screen bg-[#FDF6F6] p-4 md:p-10">
@@ -190,10 +215,15 @@ export default function PregnancyTracker() {
 
            {/* Progress Bar */}
            <div className="mt-10 relative">
-               <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+               <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
                    <span>Conception</span>
                    <span>Current Stage</span>
                    <span>Due Date</span>
+               </div>
+               <div className="flex justify-between text-[9px] font-medium text-gray-500 mb-2">
+                   <span>{formatDate(startDate)}</span>
+                   <span></span>
+                   <span>{formatDate(dueDate)}</span>
                </div>
                <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
                    <div className="bg-gradient-to-r from-pink-300 to-pink-500 h-3 rounded-full transition-all duration-1000 relative" style={{ width: `${progress}%` }}>
@@ -288,7 +318,7 @@ export default function PregnancyTracker() {
                                         <ChefIcon />
                                     </div>
                                     <h4 className="font-bold text-gray-700 mb-1">Hungry Momma?</h4>
-                                    <p className="text-xs text-gray-400 mb-4">Get a specialized menu for {todayPlan?.week ? `Week ${todayPlan.week}` : `Day ${todayPlan?.day || (currentDayIndex + 1)}`}</p>
+                                    <p className="text-xs text-gray-400 mb-4">Get a specialized menu for {todayPlan?.week ? `Week ${todayPlan.week}` : `Day ${getPlanDay(todayPlan, currentDayIndex)}`}</p>
                                     <button 
                                         onClick={generateMenu} 
                                         disabled={menuLoading}
