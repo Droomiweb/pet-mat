@@ -54,20 +54,22 @@ export async function POST(req) {
           location: {
             $near: {
               $geometry: pet.lastSeenLocation,
-              $maxDistance: 50000 // Increased to 50km radius for better coverage
+              $maxDistance: 5000 // 5km radius as requested
             }
           },
           firebaseUid: { $ne: userId } // Exclude owner
         }).limit(50); // Limit results
 
-        console.log(`[LostPet] Found ${nearbyUsers.length} nearby users within 50km.`);
+        console.log(`[LostPet] Found ${nearbyUsers.length} nearby users within 5km.`);
 
         const petProfileUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pet/${petId}`;
-        
+        const [lng, lat] = pet.lastSeenLocation.coordinates;
+        const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+
         // Prepare alert messages
-        const alertMessage = `🚨 *LOST PET ALERT* 🚨\n\nHELP! "${pet.name}" (${pet.breed}) was just reported lost near you.\n\nPLEASE KEEP A LOOKOUT.\nView Profile: ${petProfileUrl}`;
+        const alertMessage = `🚨 *LOST PET ALERT* 🚨\n\nHELP! "${pet.name}" (${pet.breed}) was just reported lost near you.\n\n📌 *Last Seen Location:*\n${googleMapsUrl}\n\nPLEASE KEEP A LOOKOUT.\nView Profile: ${petProfileUrl}`;
         
-        const internalChatMessage = `🚨 LOST PET ALERT! \n\n"${pet.name}" is missing nearby. Please check their profile and help us find them.\n\nView Profile: ${petProfileUrl}`;
+        const internalChatMessage = `🚨 *EMERGENCY: ${pet.name} is Lost!* \n\n📌 *Last Seen Location:* \n${googleMapsUrl}\n\nPLEASE HELP US FIND THEM.\n\nView Profile: ${petProfileUrl}`;
 
         // Initialize Firestore Admin
         const db = admin.firestore();
@@ -106,7 +108,7 @@ export async function POST(req) {
                 await db.collection("conversations").doc(conversationId).set({
                     petId: petId,
                     participants: ["system", user.firebaseUid],
-                    lastMessage: "🚨 LOST PET ALERT!",
+                    lastMessage: `🚨 EMERGENCY: ${pet.name} is Lost!`,
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                     unreadCounts: {
                         [user.firebaseUid]: admin.firestore.FieldValue.increment(1)
