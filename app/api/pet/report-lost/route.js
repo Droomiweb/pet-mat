@@ -69,7 +69,7 @@ export async function POST(req) {
         // Prepare alert messages
         const alertMessage = `🚨 *LOST PET ALERT* 🚨\n\nHELP! "${pet.name}" (${pet.breed}) was just reported lost near you.\n\n📌 *Last Seen Location:*\n${googleMapsUrl}\n\nPLEASE KEEP A LOOKOUT.\nView Profile: ${petProfileUrl}`;
         
-        const internalChatMessage = `🚨 *EMERGENCY: ${pet.name} is Lost!* \n\n📌 *Last Seen Location:* \n${googleMapsUrl}\n\nPLEASE HELP US FIND THEM.\n\nView Profile: ${petProfileUrl}`;
+        const internalChatMessage = `🚨 *EMERGENCY: I found ${pet.name}!* \n\n📌 *My Current Location:* \n${googleMapsUrl}\n\nPLEASE HELP US FIND THEM.\n\nView Profile: ${petProfileUrl}`;
 
         // Initialize Firestore Admin
         const db = admin.firestore();
@@ -108,7 +108,7 @@ export async function POST(req) {
                 await db.collection("conversations").doc(conversationId).set({
                     petId: petId,
                     participants: ["system", user.firebaseUid],
-                    lastMessage: `🚨 EMERGENCY: ${pet.name} is Lost!`,
+                    lastMessage: `🚨 EMERGENCY: I found ${pet.name}!`,
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                     unreadCounts: {
                         [user.firebaseUid]: admin.firestore.FieldValue.increment(1)
