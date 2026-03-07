@@ -5,9 +5,8 @@ import connectDB from "../../../lib/mongodb";
 import Pet from "../../../models/PetModel";
 import User from "../../../models/User";
 import { sendWhatsAppText } from "../../../lib/greenApi";
-// Firebase imports
-import { db } from "../../../lib/firebase"; 
-import { collection, addDoc, serverTimestamp, doc, setDoc, increment } from "firebase/firestore";
+// Firebase Admin import
+import admin from "../../../lib/firebaseAdmin";
 
 // POST request handler
 export async function POST(req) {
@@ -55,11 +54,13 @@ export async function POST(req) {
           location: {
             $near: {
               $geometry: pet.lastSeenLocation,
-              $maxDistance: 5000 // 5km radius
+              $maxDistance: 50000 // Increased to 50km radius for better coverage
             }
           },
           firebaseUid: { $ne: userId } // Exclude owner
         }).limit(50); // Limit results
+
+        console.log(`[LostPet] Found ${nearbyUsers.length} nearby users within 50km.`);
 
         const petProfileUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pet/${petId}`;
         
@@ -67,6 +68,9 @@ export async function POST(req) {
         const alertMessage = `🚨 *LOST PET ALERT* 🚨\n\nHELP! "${pet.name}" (${pet.breed}) was just reported lost near you.\n\nPLEASE KEEP A LOOKOUT.\nView Profile: ${petProfileUrl}`;
         
         const internalChatMessage = `🚨 LOST PET ALERT! \n\n"${pet.name}" is missing nearby. Please check their profile and help us find them.\n\nView Profile: ${petProfileUrl}`;
+
+        // Initialize Firestore Admin
+        const db = admin.firestore();
 
         // Broadcast notifications
         await Promise.all(nearbyUsers.map(async (user) => {
@@ -84,28 +88,28 @@ export async function POST(req) {
                 }
             }
 
-            // Send in-app alert
+            // Send in-app alert via Firebase Admin
             try {
                 // Generate conversation ID
                 const conversationId = `${petId}_system_${user.firebaseUid}`;
 
                 // Add system message
-                await addDoc(collection(db, "conversations", conversationId, "messages"), {
+                await db.collection("conversations").doc(conversationId).collection("messages").add({
                     senderId: "system", // Bot sender
                     senderName: "🚨 PetLink Alert",
                     text: internalChatMessage,
-                    createdAt: serverTimestamp(),
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
                     read: false
                 });
 
                 // Update chat metadata
-                await setDoc(doc(db, "conversations", conversationId), {
+                await db.collection("conversations").doc(conversationId).set({
                     petId: petId,
                     participants: ["system", user.firebaseUid],
                     lastMessage: "🚨 LOST PET ALERT!",
-                    updatedAt: serverTimestamp(),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                     unreadCounts: {
-                        [user.firebaseUid]: increment(1) // Increment unread count
+                        [user.firebaseUid]: admin.firestore.FieldValue.increment(1)
                     }
                 }, { merge: true });
 
